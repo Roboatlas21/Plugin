@@ -2335,6 +2335,25 @@
                                 </select>
                             </div>
                             <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="DefaultCinemaModeSkipCountdown">Cinema Mode Skip Countdown</label>
+                                <select id="DefaultCinemaModeSkipCountdown" is="emby-select">
+                                    <option value="">Not set (user decides)</option>
+                                    <option value="progressBar">Progress bar</option>
+                                    <option value="timer">Timer</option>
+                                    <option value="both">Both</option>
+                                    <option value="none">None</option>
+                                </select>
+                            </div>
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="DefaultCinemaModeSkipAutoHide">Cinema Mode Skip Button Auto Hide</label>
+                                <select id="DefaultCinemaModeSkipAutoHide" is="emby-select">
+                                    <option value="">Not set (user decides)</option>
+                                    <option value="s5">5 seconds</option>
+                                    <option value="s10">10 seconds</option>
+                                    <option value="off">Never</option>
+                                </select>
+                            </div>
+                            <div class="inputContainer">
                                 <label class="inputLabel inputLabelUnfocused" for="DefaultAutoplayNextEpisode">Autoplay Next Episode</label>
                                 <select id="DefaultAutoplayNextEpisode" is="emby-select">
                                     <option value="">Not set (user decides)</option>
@@ -6216,6 +6235,8 @@
                     setNullableBoolSelect('#DefaultPreferSdhSubtitles', defaults.preferSdhSubtitles);
 
                     setNullableBoolSelect('#DefaultCinemaModeEnabled', defaults.cinemaModeEnabled);
+                    setSelectValue('#DefaultCinemaModeSkipCountdown', defaults.cinemaModeSkipCountdown, 'Configured countdown');
+                    setSelectValue('#DefaultCinemaModeSkipAutoHide', defaults.cinemaModeSkipAutoHide, 'Configured timeout');
                     setNullableBoolSelect('#DefaultAutoplayNextEpisode', defaults.autoplayNextEpisode);
                     setSelectValue('#DefaultNextUpTimeout', defaults.nextUpTimeout != null ? String(defaults.nextUpTimeout) : '', 'Configured timeout');
                     setSelectValue('#DefaultStillWatchingBehavior', defaults.stillWatchingBehavior, 'Configured behavior');
@@ -6976,6 +6997,8 @@
                         config.DefaultUserSettings.preferSdhSubtitles = getNullableBoolSelect('#DefaultPreferSdhSubtitles');
 
                         config.DefaultUserSettings.cinemaModeEnabled = getNullableBoolSelect('#DefaultCinemaModeEnabled');
+                        config.DefaultUserSettings.cinemaModeSkipCountdown = document.querySelector('#DefaultCinemaModeSkipCountdown').value || null;
+                        config.DefaultUserSettings.cinemaModeSkipAutoHide = document.querySelector('#DefaultCinemaModeSkipAutoHide').value || null;
                         config.DefaultUserSettings.autoplayNextEpisode = getNullableBoolSelect('#DefaultAutoplayNextEpisode');
                         config.DefaultUserSettings.nextUpTimeout = getNullableIntInput('#DefaultNextUpTimeout');
                         config.DefaultUserSettings.stillWatchingBehavior = document.querySelector('#DefaultStillWatchingBehavior').value || null;

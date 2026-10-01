@@ -129,10 +129,18 @@ public sealed class AdminDefaultsMergeTests : IDisposable
         var alice = await SeedUserAsync(
             new MoonfinSettingsProfile { HiddenContinueWatchingItems = "{\"alice-item\":\"1\"}" });
 
-        await _service.MergeDefaultsToAllUsersAsync(new MoonfinSettingsProfile { CinemaModeEnabled = true });
+        await _service.MergeDefaultsToAllUsersAsync(
+            new MoonfinSettingsProfile
+            {
+                CinemaModeEnabled = true,
+                CinemaModeSkipCountdown = "progressBar",
+                CinemaModeSkipAutoHide = "s10",
+            });
 
         var settings = Read(alice);
         Assert.True(settings.Global?.CinemaModeEnabled);
+        Assert.Equal("progressBar", settings.Global?.CinemaModeSkipCountdown);
+        Assert.Equal("s10", settings.Global?.CinemaModeSkipAutoHide);
         Assert.Contains("alice-item", settings.Global?.HiddenContinueWatchingItems ?? string.Empty, StringComparison.Ordinal);
     }
 

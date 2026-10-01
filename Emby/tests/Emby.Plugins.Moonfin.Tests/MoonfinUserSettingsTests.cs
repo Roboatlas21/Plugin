@@ -145,6 +145,22 @@ public class MoonfinUserSettingsTests
         Assert.Contains("\"jellyseerrApiKey\":\"abc\"", json, StringComparison.Ordinal);
     }
 
+
+    [Fact]
+    public void CinemaModeSkipSettingsRoundTrip()
+    {
+        var settings = Parse(
+            "{\"global\":{\"cinemaModeSkipCountdown\":\"progressBar\"," +
+            "\"cinemaModeSkipAutoHide\":\"s10\"}}");
+
+        Assert.Equal("progressBar", settings.Global?.CinemaModeSkipCountdown);
+        Assert.Equal("s10", settings.Global?.CinemaModeSkipAutoHide);
+
+        var json = JsonSerializer.Serialize(settings);
+        Assert.Contains("\"cinemaModeSkipCountdown\":\"progressBar\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"cinemaModeSkipAutoHide\":\"s10\"", json, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void AFreshEnvelopeDefaultsToTheCurrentSchemaWithSyncOn()
     {

@@ -602,6 +602,12 @@ public class MoonfinSettingsProfile
     [JsonPropertyName("cinemaModeEnabled")]
     public bool? CinemaModeEnabled { get; set; }
 
+    [JsonPropertyName("cinemaModeSkipCountdown")]
+    public string? CinemaModeSkipCountdown { get; set; }
+
+    [JsonPropertyName("cinemaModeSkipAutoHide")]
+    public string? CinemaModeSkipAutoHide { get; set; }
+
     [JsonPropertyName("mediaSegmentActions")]
     public string? MediaSegmentActions { get; set; }
 

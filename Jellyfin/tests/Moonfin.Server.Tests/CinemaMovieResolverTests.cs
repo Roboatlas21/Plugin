@@ -48,11 +48,11 @@ public sealed class CinemaMovieResolverTests
     }
 
     [Fact]
-    public void NoYearRequiresAnUnambiguousExactTitle()
+    public void YearlessMoviesAreNeverResolvedEvenWhenTheTitleIsUnique()
     {
         var name = new CinemaMovieResolver.MovieName("Batman", null);
         Assert.Null(CinemaMovieResolver.Match(name, [Result(1, "Batman", 1966), Result(2, "Batman", 1989)]));
-        Assert.Equal(1, CinemaMovieResolver.Match(name, [Result(1, "Batman", 1966)]));
+        Assert.Null(CinemaMovieResolver.Match(name, [Result(1, "Batman", 1966)]));
         Assert.Null(CinemaMovieResolver.Match(name, [Result(1, "The Batman", 2022)]));
     }
 
@@ -72,8 +72,7 @@ public sealed class CinemaMovieResolverTests
         Assert.Equal(new CinemaMovieResolver.Resolution(693134, "owner"),
             await resolver.ResolveAsync(intro.Id, user, CancellationToken.None));
         intro.ProviderIds["tmdb"] = "42";
-        Assert.Equal(new CinemaMovieResolver.Resolution(42, "direct"),
-            await resolver.ResolveAsync(intro.Id, user, CancellationToken.None));
+        Assert.Null((await resolver.ResolveAsync(intro.Id, user, CancellationToken.None)).TmdbId); // conflicting owner
         intro.ProviderIds.Clear();
         items.Remove(movie.Id); // Owner absent or filtered by user access.
         Assert.Null((await resolver.ResolveAsync(intro.Id, user, CancellationToken.None)).TmdbId);
@@ -82,7 +81,7 @@ public sealed class CinemaMovieResolverTests
     [Fact]
     public async Task PrivateVideosCanResolveButEpisodesAndInaccessibleItemsCannot()
     {
-        var item = new Video { Id = Guid.NewGuid(), ProviderIds = new() { ["Tmdb"] = "42" } };
+        var item = new Video { Id = Guid.NewGuid(), ProviderIds = new() { ["Tmdb"] = "42", ["trailers4jellyfin.trailer"] = "/trailer.mp4" } };
         var library = new FakeLibraryManager { ItemForUserHandler = (_, _) => item };
         var resolver = new CinemaMovieResolver(library, null!);
         Assert.Equal(42, (await resolver.ResolveAsync(item.Id, Guid.NewGuid(), CancellationToken.None)).TmdbId);
@@ -123,6 +122,8 @@ public sealed class CinemaMovieResolverTests
         };
         Assert.IsType<Microsoft.AspNetCore.Mvc.UnauthorizedResult>(
             (await controller.ResolveMovie(Guid.NewGuid(), CancellationToken.None)).Result);
+        Assert.IsType<Microsoft.AspNetCore.Mvc.UnauthorizedResult>(
+            (await controller.ResolveMedia(Guid.NewGuid(), "tv", CancellationToken.None)).Result);
     }
 
     public class SearchProvider : DispatchProxy

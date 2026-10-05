@@ -123,6 +123,19 @@ public sealed class AdminDefaultsMergeTests : IDisposable
         Assert.Same(section, defaults.HomeSections[0]);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(15)]
+    [InlineData(60)]
+    public async Task CinemaMinimumIsNumericAndNullDefaultsLeaveItAlone(int seconds)
+    {
+        var user = await SeedUserAsync(new MoonfinSettingsProfile { CinemaModeSkipMinDurationSeconds = seconds });
+        await _service.MergeDefaultsToAllUsersAsync(new MoonfinSettingsProfile());
+        Assert.Equal(seconds, Read(user).Global?.CinemaModeSkipMinDurationSeconds);
+        await _service.MergeDefaultsToAllUsersAsync(new MoonfinSettingsProfile { CinemaModeSkipMinDurationSeconds = 0 });
+        Assert.Equal(0, Read(user).Global?.CinemaModeSkipMinDurationSeconds);
+    }
+
     [Fact]
     public async Task MergingDefaultsStillAppliesWhatTheAdminDidSet()
     {

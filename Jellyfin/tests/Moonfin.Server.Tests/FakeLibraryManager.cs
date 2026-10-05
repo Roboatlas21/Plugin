@@ -15,6 +15,8 @@ namespace Moonfin.Server.Tests;
 /// </summary>
 internal sealed class FakeLibraryManager : ILibraryManager
 {
+    internal Func<Guid, Guid, MediaBrowser.Controller.Entities.BaseItem?>? ItemForUserHandler { get; set; }
+
     private readonly List<VirtualFolderInfo> _folders;
     private readonly Action? _beforeGetVirtualFolders;
 
@@ -153,9 +155,10 @@ internal sealed class FakeLibraryManager : ILibraryManager
         throw new NotImplementedException();
     }
 
-    T ILibraryManager.GetItemById<T>(System.Guid id, System.Guid userId)
+    T ILibraryManager.GetItemById<T>(System.Guid id, System.Guid userId) where T : class
     {
-        throw new NotImplementedException();
+        if (ItemForUserHandler == null) throw new NotImplementedException();
+        return (ItemForUserHandler(id, userId) as T)!;
     }
 
     T ILibraryManager.GetItemById<T>(System.Guid id, Jellyfin.Data.Entities.User? user)

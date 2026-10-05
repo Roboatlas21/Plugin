@@ -161,6 +161,19 @@ public class MoonfinUserSettingsTests
         Assert.Contains("\"cinemaModeSkipAutoHide\":\"s10\"", json, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(15)]
+    [InlineData(60)]
+    public void CinemaMinimumPreservesNumericZeroAndNull(int seconds)
+    {
+        var settings = Parse("{\"global\":{\"cinemaModeSkipMinDurationSeconds\":" + seconds + "}}");
+        Assert.Equal(seconds, settings.Global?.CinemaModeSkipMinDurationSeconds);
+        var roundTrip = Parse(JsonSerializer.Serialize(settings));
+        Assert.Equal(seconds, roundTrip.Global?.CinemaModeSkipMinDurationSeconds);
+        Assert.Null(Parse("{\"global\":{}}").Global?.CinemaModeSkipMinDurationSeconds);
+    }
+
     [Fact]
     public void AFreshEnvelopeDefaultsToTheCurrentSchemaWithSyncOn()
     {

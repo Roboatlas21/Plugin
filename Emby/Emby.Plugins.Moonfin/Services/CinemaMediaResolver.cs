@@ -38,13 +38,13 @@ namespace Emby.Plugins.Moonfin.Services
             CancellationToken cancellationToken)
         {
             var item = _library.GetItemById(itemId) as Video;
-            if (item == null || item is Episode || !item.IsVisible(user)) return new Resolution(null, null);
+            if (item == null || item is Episode || !item.IsVisibleStandalone(user)) return new Resolution(null, null);
 
             BaseItem? owner = null;
             if (item.ExtraType == ExtraType.Trailer && item.OwnerId != Guid.Empty)
             {
                 owner = _library.GetItemById(item.OwnerId);
-                if (owner == null || !owner.IsVisible(user) || (owner is not Movie && owner is not Series))
+                if (owner == null || !owner.IsVisibleStandalone(user) || (owner is not Movie && owner is not Series))
                     return new Resolution(null, null);
             }
 

@@ -12,7 +12,7 @@ using Xunit;
 
 namespace Moonfin.Server.Tests;
 
-public sealed class CinemaMovieResolverTests
+public sealed class CinemaMediaResolverCompatibilityTests
 {
     [Theory]
     [InlineData("Dune.Part.Two.2024.Official.Trailer.mp4", "Dune Part Two", 2024)]
@@ -23,7 +23,7 @@ public sealed class CinemaMovieResolverTests
     [InlineData("2001 A Space Odyssey Trailer 2160p.mp4", "2001 A Space Odyssey", null)]
     public void ExtractsOnlyTrailingDecorations(string name, string title, int? year)
     {
-        var parsed = CinemaMovieResolver.ParseName(name);
+        var parsed = CinemaMediaResolver.ParseName(name);
         Assert.NotNull(parsed);
         Assert.Equal(title, parsed.Title);
         Assert.Equal(year, parsed.Year);
@@ -38,22 +38,22 @@ public sealed class CinemaMovieResolverTests
     [Fact]
     public void ExactTitleAndYearRequiredAndProvidersDeduplicated()
     {
-        var name = new CinemaMovieResolver.MovieName("Dune Part Two", 2024);
-        Assert.Equal(693134, CinemaMovieResolver.Match(name, [Result(693134), Result(693134)]));
-        Assert.Null(CinemaMovieResolver.Match(name, [Result(1, year: 2021)]));
-        Assert.Null(CinemaMovieResolver.Match(name, [Result(1, title: "Dune")]));
-        Assert.Null(CinemaMovieResolver.Match(name, [Result(1), Result(2)]));
-        Assert.Null(CinemaMovieResolver.Match(name, [Result(0)]));
-        Assert.Null(CinemaMovieResolver.Match(name, []));
+        var name = new CinemaMediaResolver.MediaName("Dune Part Two", 2024);
+        Assert.Equal(693134, CinemaMediaResolver.Match(name, [Result(693134), Result(693134)]));
+        Assert.Null(CinemaMediaResolver.Match(name, [Result(1, year: 2021)]));
+        Assert.Null(CinemaMediaResolver.Match(name, [Result(1, title: "Dune")]));
+        Assert.Null(CinemaMediaResolver.Match(name, [Result(1), Result(2)]));
+        Assert.Null(CinemaMediaResolver.Match(name, [Result(0)]));
+        Assert.Null(CinemaMediaResolver.Match(name, []));
     }
 
     [Fact]
     public void YearlessMoviesAreNeverResolvedEvenWhenTheTitleIsUnique()
     {
-        var name = new CinemaMovieResolver.MovieName("Batman", null);
-        Assert.Null(CinemaMovieResolver.Match(name, [Result(1, "Batman", 1966), Result(2, "Batman", 1989)]));
-        Assert.Null(CinemaMovieResolver.Match(name, [Result(1, "Batman", 1966)]));
-        Assert.Null(CinemaMovieResolver.Match(name, [Result(1, "The Batman", 2022)]));
+        var name = new CinemaMediaResolver.MediaName("Batman", null);
+        Assert.Null(CinemaMediaResolver.Match(name, [Result(1, "Batman", 1966), Result(2, "Batman", 1989)]));
+        Assert.Null(CinemaMediaResolver.Match(name, [Result(1, "Batman", 1966)]));
+        Assert.Null(CinemaMediaResolver.Match(name, [Result(1, "The Batman", 2022)]));
     }
 
     [Fact]
@@ -68,8 +68,8 @@ public sealed class CinemaMovieResolverTests
             ItemForUserHandler = (id, uid) => { Assert.Equal(user, uid); return items.GetValueOrDefault(id); },
         };
         // No provider should be consulted by either authoritative path.
-        var resolver = new CinemaMovieResolver(library, null!);
-        Assert.Equal(new CinemaMovieResolver.Resolution(693134, "owner"),
+        var resolver = new CinemaMediaResolver(library, null!);
+        Assert.Equal(new CinemaMediaResolver.Resolution(693134, "owner"),
             await resolver.ResolveAsync(intro.Id, user, CancellationToken.None));
         intro.ProviderIds["tmdb"] = "42";
         Assert.Null((await resolver.ResolveAsync(intro.Id, user, CancellationToken.None)).TmdbId); // conflicting owner
@@ -83,7 +83,7 @@ public sealed class CinemaMovieResolverTests
     {
         var item = new Video { Id = Guid.NewGuid(), ProviderIds = new() { ["Tmdb"] = "42", ["trailers4jellyfin.trailer"] = "/trailer.mp4" } };
         var library = new FakeLibraryManager { ItemForUserHandler = (_, _) => item };
-        var resolver = new CinemaMovieResolver(library, null!);
+        var resolver = new CinemaMediaResolver(library, null!);
         Assert.Equal(42, (await resolver.ResolveAsync(item.Id, Guid.NewGuid(), CancellationToken.None)).TmdbId);
         library.ItemForUserHandler = (_, _) => new Episode { ProviderIds = new() { ["Tmdb"] = "42" } };
         Assert.Null((await resolver.ResolveAsync(item.Id, Guid.NewGuid(), CancellationToken.None)).TmdbId);
@@ -105,8 +105,8 @@ public sealed class CinemaMovieResolverTests
             Assert.False(query.IncludeDisabledProviders);
             return [Result(693134), Result(693134)];
         };
-        var resolver = new CinemaMovieResolver(library, provider);
-        Assert.Equal(new CinemaMovieResolver.Resolution(693134, "filename"),
+        var resolver = new CinemaMediaResolver(library, provider);
+        Assert.Equal(new CinemaMediaResolver.Resolution(693134, "filename"),
             await resolver.ResolveAsync(intro.Id, Guid.NewGuid(), CancellationToken.None));
     }
 

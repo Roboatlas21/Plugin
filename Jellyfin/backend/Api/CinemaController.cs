@@ -8,10 +8,10 @@ namespace Moonfin.Server.Api;
 [ApiController]
 [Authorize]
 [Route("Moonfin/Cinema")]
-public sealed class CinemaController(CinemaMovieResolver resolver, ILogger<CinemaController> logger) : ControllerBase
+public sealed class CinemaController(CinemaMediaResolver resolver, ILogger<CinemaController> logger) : ControllerBase
 {
     [HttpGet("ResolveMedia")]
-    public async Task<ActionResult<CinemaMovieResolver.Resolution>> ResolveMedia(
+    public async Task<ActionResult<CinemaMediaResolver.Resolution>> ResolveMedia(
         [FromQuery] Guid itemId, [FromQuery] string? expectedMediaType, CancellationToken cancellationToken)
     {
         var userId = this.GetUserIdFromClaims();
@@ -25,17 +25,17 @@ public sealed class CinemaController(CinemaMovieResolver resolver, ILogger<Cinem
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return Ok(new CinemaMovieResolver.Resolution(null, null));
+            return Ok(new CinemaMediaResolver.Resolution(null, null));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogDebug(ex, "Cinema media resolution failed for {ItemId}", itemId);
-            return Ok(new CinemaMovieResolver.Resolution(null, null));
+            return Ok(new CinemaMediaResolver.Resolution(null, null));
         }
     }
 
     [HttpGet("ResolveMovie")]
-    public async Task<ActionResult<CinemaMovieResolver.Resolution>> ResolveMovie(
+    public async Task<ActionResult<CinemaMediaResolver.Resolution>> ResolveMovie(
         [FromQuery] Guid itemId, CancellationToken cancellationToken)
     {
         var userId = this.GetUserIdFromClaims();
@@ -49,12 +49,12 @@ public sealed class CinemaController(CinemaMovieResolver resolver, ILogger<Cinem
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return Ok(new CinemaMovieResolver.Resolution(null, null));
+            return Ok(new CinemaMediaResolver.Resolution(null, null));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogDebug(ex, "Cinema movie resolution failed for {ItemId}", itemId);
-            return Ok(new CinemaMovieResolver.Resolution(null, null));
+            return Ok(new CinemaMediaResolver.Resolution(null, null));
         }
     }
 }

@@ -12,10 +12,10 @@ using MediaBrowser.Model.Providers;
 namespace Moonfin.Server.Services;
 
 /// <summary>Resolves one intro, without scanning the library or retaining search results.</summary>
-public sealed class CinemaMovieResolver(ILibraryManager library, IProviderManager providers)
+public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManager providers)
 {
     public sealed record Resolution(int? TmdbId, string? Source, string? MediaType = null, int? Season = null);
-    public sealed record MovieName(string Title, int? Year, int? Season = null);
+    public sealed record MediaName(string Title, int? Year, int? Season = null);
 
     public async Task<Resolution> ResolveAsync(Guid itemId, Guid userId, CancellationToken cancellationToken)
     {
@@ -112,7 +112,7 @@ public sealed class CinemaMovieResolver(ILibraryManager library, IProviderManage
         return int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id > 0 ? id : null;
     }
 
-    public static MovieName? ParseName(string? pathOrName)
+    public static MediaName? ParseName(string? pathOrName)
     {
         if (string.IsNullOrWhiteSpace(pathOrName)) return null;
         // Either host's path separator can occur in provider metadata.
@@ -144,14 +144,14 @@ public sealed class CinemaMovieResolver(ILibraryManager library, IProviderManage
         return new(title, year, season);
     }
 
-    public static int? Match(MovieName name, IEnumerable<RemoteSearchResult> results)
+    public static int? Match(MediaName name, IEnumerable<RemoteSearchResult> results)
     {
         var matches = Matches(name, results, "movie").Take(2).ToArray();
         // Duplicate provider results for the same movie are fine; distinct IDs are ambiguous.
         return matches.Length == 1 && matches[0] > 0 ? matches[0] : null;
     }
 
-    private static IEnumerable<int> Matches(MovieName name, IEnumerable<RemoteSearchResult> results, string type)
+    private static IEnumerable<int> Matches(MediaName name, IEnumerable<RemoteSearchResult> results, string type)
     {
         if (type == "movie" && (!name.Year.HasValue || name.Season.HasValue)) return [];
         var year = type == "tv" && name.Season.HasValue ? null : name.Year;

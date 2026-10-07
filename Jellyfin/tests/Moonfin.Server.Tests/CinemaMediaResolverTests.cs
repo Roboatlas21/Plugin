@@ -18,12 +18,12 @@ public sealed class CinemaMediaResolverTests
         ProviderIds = new() { ["Tmdb"] = id.ToString() },
     };
 
-    private static CinemaMovieResolver Resolver(Video intro, Func<string, string, int?, IEnumerable<RemoteSearchResult>> search)
+    private static CinemaMediaResolver Resolver(Video intro, Func<string, string, int?, IEnumerable<RemoteSearchResult>> search)
     {
         var library = new FakeLibraryManager { ItemForUserHandler = (_, _) => intro };
         var provider = DispatchProxy.Create<IProviderManager, SearchProvider>();
         ((SearchProvider)(object)provider).Search = search;
-        return new CinemaMovieResolver(library, provider);
+        return new CinemaMediaResolver(library, provider);
     }
 
     [Theory]
@@ -64,8 +64,8 @@ public sealed class CinemaMediaResolverTests
             Assert.Equal(user, uid);
             return id == intro.Id ? intro : id == series.Id ? series : null;
         }};
-        var resolver = new CinemaMovieResolver(library, null!);
-        Assert.Equal(new CinemaMovieResolver.Resolution(42, "owner", "tv"),
+        var resolver = new CinemaMediaResolver(library, null!);
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "owner", "tv"),
             await resolver.ResolveMediaAsync(intro.Id, user, "movie", default));
         Assert.Null((await resolver.ResolveAsync(intro.Id, user, default)).TmdbId);
         library.ItemForUserHandler = (id, _) => id == intro.Id ? intro : null;
@@ -86,7 +86,7 @@ public sealed class CinemaMediaResolverTests
             Assert.Null(year);
             return [Result(42, title, 2016)];
         });
-        Assert.Equal(new CinemaMovieResolver.Resolution(42, "filename", "tv", season),
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "filename", "tv", season),
             await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
     }
 

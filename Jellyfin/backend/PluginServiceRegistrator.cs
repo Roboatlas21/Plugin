@@ -37,7 +37,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<CustomRowCacheService>();
         serviceCollection.AddSingleton<CustomRowFetchService>();
         serviceCollection.AddSingleton<CollectionOrderService>();
-        serviceCollection.AddSingleton<CinemaMovieResolver>();
+        serviceCollection.AddSingleton<CinemaMediaResolver>();
         serviceCollection.AddSingleton<GamesService>();
         serviceCollection.AddSingleton<GameSavesService>();
         // MoonfinPlugin.ResolveDataFolderPath() must be called INSIDE each factory lambda, not

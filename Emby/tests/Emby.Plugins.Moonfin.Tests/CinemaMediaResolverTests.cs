@@ -20,7 +20,7 @@ public sealed class CinemaMediaResolverTests
 
     [Theory]
     [InlineData("Dune.Part.Two.2024.Official.Trailer.mp4", "Dune Part Two", 2024, null)]
-    [InlineData("Show Season 5 (2026) Trailer.mp4", "Show", null, 5)]
+    [InlineData("Show Season 5 (2026) Trailer.mp4", "Show", 2026, 5)]
     [InlineData("Show S05 Official Trailer.mp4", "Show", null, 5)]
     [InlineData("1917 Trailer.mp4", "1917", null, null)]
     public void ParseNameKeepsOnlyTrustworthyIdentityHints(

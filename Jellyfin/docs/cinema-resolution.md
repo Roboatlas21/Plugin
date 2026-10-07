@@ -1,7 +1,8 @@
 # Typed Cinema Mode resolution
 
-`GET /Moonfin/Cinema/ResolveMedia?itemId=<uuid>&expectedMediaType=movie|tv`
-requires the authenticated Jellyfin user's access to the intro and any trailer
+Jellyfin and Emby expose the same typed resolver contract:
+`GET /Moonfin/Cinema/ResolveMedia?itemId=<uuid>&expectedMediaType=movie|tv`.
+It requires the authenticated Jellyfin user's access to the intro and any trailer
 owner. The response contains `tmdbId`, `mediaType` (`movie` or `tv`),
 `source`, and an optional positive `season`. An unresolved result has null
 identity fields. Lookups have an eight-second budget and no completed-result cache.

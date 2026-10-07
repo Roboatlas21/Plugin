@@ -2,8 +2,17 @@
 
 Jellyfin and Emby expose the same typed resolver contract:
 `GET /Moonfin/Cinema/ResolveMedia?itemId=<uuid>&expectedMediaType=movie|tv`.
-It requires the authenticated Jellyfin user's access to the intro and any trailer
-owner. The response contains `tmdbId`, `mediaType` (`movie` or `tv`),
+
+Moonfin normally resolves trustworthy, unattached typed TMDB metadata locally and
+does not call this endpoint for that fast path. The server resolver is used when
+server-only information is needed—most importantly to validate an attached
+trailer's owner and the current user's access—or when identity still requires the
+strict filename/display-name fallback. The endpoint remains self-contained and can
+also return direct typed metadata because attached trailers may need that metadata
+validated against their owner, and callers may invoke the endpoint directly.
+
+The endpoint requires the authenticated server user's access to the intro and any
+trailer owner. The response contains `tmdbId`, `mediaType` (`movie` or `tv`),
 `source`, and an optional positive `season`. An unresolved result has null
 identity fields. Lookups have an eight-second budget and no completed-result cache.
 

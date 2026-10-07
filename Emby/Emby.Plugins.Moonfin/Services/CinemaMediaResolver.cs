@@ -16,7 +16,10 @@ using MediaBrowser.Model.Providers;
 
 namespace Emby.Plugins.Moonfin.Services
 {
-    /// <summary>Resolves one Cinema Mode intro without scanning or caching the library.</summary>
+    /// <summary>
+    /// Validates server-only trailer ownership/access and resolves identities the client
+    /// could not establish locally, without scanning or caching the library.
+    /// </summary>
     public sealed class CinemaMediaResolver
     {
         private readonly ILibraryManager _library;
@@ -48,6 +51,10 @@ namespace Emby.Plugins.Moonfin.Services
                     return new Resolution(null, null);
             }
 
+            // Moonfin normally consumes trustworthy unattached typed metadata locally.
+            // If the request reaches Moonbase, still parse direct metadata so an attached
+            // trailer can be checked against its accessible owner and so this endpoint
+            // remains safe when called directly. Feature context never supplies the type.
             var explicitType = ProviderValue(item.ProviderIds, "TmdbMediaType");
             if (explicitType != null && explicitType is not ("movie" or "tv")) return new Resolution(null, null);
             var itemType = item is Movie ? "movie" : null;

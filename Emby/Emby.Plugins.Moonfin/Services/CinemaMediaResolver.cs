@@ -44,7 +44,7 @@ namespace Emby.Plugins.Moonfin.Services
             if (item == null || item is Episode || !item.IsVisibleStandalone(user)) return new Resolution(null);
 
             BaseItem? owner = null;
-            if (item.ExtraType == ExtraType.Trailer && item.OwnerId != Guid.Empty)
+            if (item.OwnerId != Guid.Empty)
             {
                 owner = _library.GetItemById(item.OwnerId);
                 if (owner == null || !owner.IsVisibleStandalone(user) || (owner is not Movie && owner is not Series))
@@ -114,7 +114,7 @@ namespace Emby.Plugins.Moonfin.Services
                         cancellationToken).ConfigureAwait(false);
                 }
 
-                var matches = Matches(name!, results, expectedMediaType).Take(2).ToArray();
+                var matches = Matches(name!, results).Take(2).ToArray();
                 if (matches.Length > 1 || matches.Any(id => id <= 0))
                     return new Resolution(null);
                 if (matches.Length == 0) continue;
@@ -193,13 +193,8 @@ namespace Emby.Plugins.Moonfin.Services
             return new MediaName(title, year);
         }
 
-        private static IEnumerable<int> Matches(
-            MediaName name,
-            IEnumerable<RemoteSearchResult> results,
-            string mediaType)
+        private static IEnumerable<int> Matches(MediaName name, IEnumerable<RemoteSearchResult> results)
         {
-            if (mediaType == "movie" && !name.Year.HasValue)
-                return Enumerable.Empty<int>();
 
             var title = NormalizeTitle(name.Title);
             return results

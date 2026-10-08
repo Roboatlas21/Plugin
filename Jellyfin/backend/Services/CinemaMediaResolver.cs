@@ -30,7 +30,7 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         if (item == null || item is Episode) return new(null);
 
         BaseItem? owner = null;
-        if (item.ExtraType == ExtraType.Trailer && item.OwnerId != Guid.Empty)
+        if (item.OwnerId != Guid.Empty)
         {
             owner = library.GetItemById<BaseItem>(item.OwnerId, userId);
             if (owner is not Movie && owner is not Series) return new(null);
@@ -83,7 +83,7 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
                     IncludeDisabledProviders = false,
                 }, cancellationToken).WaitAsync(cancellationToken).ConfigureAwait(false);
             }
-            var matches = Matches(name!, results, expectedMediaType).Take(2).ToArray();
+            var matches = Matches(name!, results).Take(2).ToArray();
             if (matches.Length > 1 || matches.Any(id => id <= 0)) return new(null);
             if (matches.Length == 0) continue; // e.g. a hashed cache filename
             if (direct.HasValue && direct.Value != matches[0]) return new(null);
@@ -99,7 +99,7 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
 
     public static int? PositiveTmdb(IDictionary<string, string>? ids)
     {
-        var value = ids?.FirstOrDefault(p => p.Key.Equals("Tmdb", StringComparison.OrdinalIgnoreCase)).Value;
+        var value = ProviderValue(ids, "Tmdb");
         return int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id > 0 ? id : null;
     }
 
@@ -136,9 +136,8 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         return new(title, year);
     }
 
-    private static IEnumerable<int> Matches(MediaName name, IEnumerable<RemoteSearchResult> results, string type)
+    private static IEnumerable<int> Matches(MediaName name, IEnumerable<RemoteSearchResult> results)
     {
-        if (type == "movie" && !name.Year.HasValue) return [];
         var title = NormalizeTitle(name.Title);
         return results.Where(r => NormalizeTitle(r.Name ?? "") == title &&
                 (!name.Year.HasValue || r.ProductionYear == name.Year))

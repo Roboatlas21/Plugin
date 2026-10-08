@@ -19,21 +19,19 @@ public sealed class CinemaMediaResolverTests
     };
 
     [Theory]
-    [InlineData("Dune.Part.Two.2024.Official.Trailer.mp4", "Dune Part Two", 2024, null)]
-    [InlineData("Show Season 5 (2026) Trailer.mp4", "Show", 2026, 5)]
-    [InlineData("Show S05 Official Trailer.mp4", "Show", null, 5)]
-    [InlineData("1917 Trailer.mp4", "1917", null, null)]
-    public void ParseNameKeepsOnlyTrustworthyIdentityHints(
+    [InlineData("Dune.Part.Two.2024.Official.Trailer.mp4", "Dune Part Two", 2024)]
+    [InlineData("Show Season 5 (2026) Trailer.mp4", "Show", null)]
+    [InlineData("Show S05 Official Trailer.mp4", "Show", null)]
+    [InlineData("1917 Trailer.mp4", "1917", null)]
+    public void ParseNameFindsSeriesTitleWithoutSeasonHints(
         string input,
         string title,
-        int? year,
-        int? season)
+        int? year)
     {
         var parsed = CinemaMediaResolver.ParseName(input);
         Assert.NotNull(parsed);
         Assert.Equal(title, parsed.Title);
         Assert.Equal(year, parsed.Year);
-        Assert.Equal(season, parsed.Season);
     }
 
     [Fact]
@@ -50,11 +48,11 @@ public sealed class CinemaMediaResolverTests
     }
 
     [Fact]
-    public void SeriesMatchingUsesExactTitleAndSeasonDoesNotRequireDebutYear()
+    public void SeriesMatchingUsesExactTitleWithOptionalYear()
     {
-        var season = new CinemaMediaResolver.MediaName("Show", null, 5);
-        Assert.Equal(42, CinemaMediaResolver.Match(season, [Result(42, "Show", 2016)], "tv"));
-        Assert.Null(CinemaMediaResolver.Match(season, [Result(42, "Other Show", 2016)], "tv"));
+        var series = new CinemaMediaResolver.MediaName("Show", null);
+        Assert.Equal(42, CinemaMediaResolver.Match(series, [Result(42, "Show", 2016)], "tv"));
+        Assert.Null(CinemaMediaResolver.Match(series, [Result(42, "Other Show", 2016)], "tv"));
     }
 
     [Fact]

@@ -36,7 +36,6 @@ public sealed class CinemaMediaResolverTests
         var result = await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), context, default);
         Assert.Equal(42, result.TmdbId);
         Assert.Equal(type, result.MediaType);
-        Assert.Null(result.Season);
         var legacy = await resolver.ResolveAsync(Guid.NewGuid(), Guid.NewGuid(), default);
         Assert.Equal(type == "movie" ? 42 : (int?)null, legacy.TmdbId);
     }
@@ -73,10 +72,10 @@ public sealed class CinemaMediaResolverTests
     }
 
     [Theory]
-    [InlineData("Show Season 5 (2026) Trailer.mp4", "Show", 5)]
-    [InlineData("Show S05 Official Trailer.mp4", "Show", 5)]
-    [InlineData("Show Trailer.mp4", "Show", null)]
-    public async Task SeriesSearchUsesExactTitleAndDoesNotMistakeSeasonYearForDebut(string filename, string title, int? season)
+    [InlineData("Show Season 5 (2026) Trailer.mp4", "Show")]
+    [InlineData("Show S05 Official Trailer.mp4", "Show")]
+    [InlineData("Show Trailer.mp4", "Show")]
+    public async Task SeriesSearchUsesExactTitleWithoutSeasonHints(string filename, string title)
     {
         var intro = new Video { Path = filename };
         var resolver = Resolver(intro, (type, name, year) =>
@@ -86,7 +85,7 @@ public sealed class CinemaMediaResolverTests
             Assert.Null(year);
             return [Result(42, title, 2016)];
         });
-        Assert.Equal(new CinemaMediaResolver.Resolution(42, "filename", "tv", season),
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "filename", "tv"),
             await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
     }
 
@@ -130,11 +129,12 @@ public sealed class CinemaMediaResolverTests
     }
 
     [Fact]
-    public async Task ConsistentDisplayNameDoesNotEraseASeasonHint()
+    public async Task SeasonDecorationsDoNotChangeSeriesIdentity()
     {
         var intro = new Video { Path = "Show Season 5 Trailer.mp4", Name = "Show" };
         var resolver = Resolver(intro, (_, title, _) => [Result(42, title)]);
-        Assert.Equal(5, (await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default)).Season);
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "filename", "tv"),
+            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
     }
 
     [Fact]

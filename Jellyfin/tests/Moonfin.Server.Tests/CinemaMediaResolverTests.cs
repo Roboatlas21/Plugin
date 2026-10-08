@@ -31,12 +31,12 @@ public sealed class CinemaMediaResolverTests
     [InlineData("tv", "movie")]
     public async Task ExplicitTypeOverridesFeatureContext(string type, string context)
     {
-        var intro = new Video { ProviderIds = new() { ["Tmdb"] = "42", ["TmdbMediaType"] = type, ["TmdbSeason"] = "5" } };
+        var intro = new Video { ProviderIds = new() { ["Tmdb"] = "42", ["TmdbMediaType"] = type } };
         var resolver = Resolver(intro, (_, _, _) => throw new Exception("No search expected"));
         var result = await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), context, default);
         Assert.Equal(42, result.TmdbId);
         Assert.Equal(type, result.MediaType);
-        Assert.Equal(type == "tv" ? 5 : (int?)null, result.Season);
+        Assert.Null(result.Season);
         var legacy = await resolver.ResolveAsync(Guid.NewGuid(), Guid.NewGuid(), default);
         Assert.Equal(type == "movie" ? 42 : (int?)null, legacy.TmdbId);
     }

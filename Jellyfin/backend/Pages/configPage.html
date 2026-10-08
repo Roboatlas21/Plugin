@@ -2345,19 +2345,10 @@
                                 </select>
                             </div>
                             <div class="inputContainer">
-                                <label class="inputLabel inputLabelUnfocused" for="DefaultCinemaModeSkipAutoHide">Cinema Mode Skip Button Auto Hide</label>
-                                <select id="DefaultCinemaModeSkipAutoHide" is="emby-select">
-                                    <option value="">Not set (user decides)</option>
-                                    <option value="s5">5 seconds</option>
-                                    <option value="s10">10 seconds</option>
-                                    <option value="off">Never</option>
-                                </select>
-                            </div>
-                            <div class="inputContainer">
-                                <label class="inputLabel inputLabelUnfocused" for="DefaultCinemaModeSkipMinDurationSeconds">Minimum intro length for Skip button</label>
+                                <label class="inputLabel inputLabelUnfocused" for="DefaultCinemaModeSkipMinDurationSeconds">Minimum clip length to show buttons</label>
                                 <select id="DefaultCinemaModeSkipMinDurationSeconds" is="emby-select">
                                     <option value="">Not set (user decides)</option>
-                                    <option value="0">Always show</option>
+                                    <option value="0">No limit</option>
                                     <option value="5">5 seconds</option>
                                     <option value="10">10 seconds</option>
                                     <option value="15">15 seconds</option>
@@ -2371,7 +2362,17 @@
                                     <option value="55">55 seconds</option>
                                     <option value="60">60 seconds</option>
                                 </select>
-                                <div class="fieldDescription">Hide Cinema Mode actions for shorter intros. Default: 15 seconds.</div>
+                                <div class="fieldDescription">Show Skip and Request buttons only for trailers or pre-rolls at least this long. Auto-hide is a separate setting. Default: 15 seconds.</div>
+                            </div>
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="DefaultCinemaModeSkipAutoHide">Auto-hide Cinema buttons</label>
+                                <select id="DefaultCinemaModeSkipAutoHide" is="emby-select">
+                                    <option value="">Not set (user decides)</option>
+                                    <option value="s5">5 seconds</option>
+                                    <option value="s10">10 seconds</option>
+                                    <option value="off">Off</option>
+                                </select>
+                                <div class="fieldDescription">Once visible, hide Skip and Request buttons after this many seconds of playback. Off disables automatic hiding. Default: 10 seconds.</div>
                             </div>
                             <div class="inputContainer">
                                 <label class="inputLabel inputLabelUnfocused" for="DefaultAutoplayNextEpisode">Autoplay Next Episode</label>

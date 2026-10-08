@@ -36,8 +36,6 @@ public sealed class CinemaMediaResolverTests
         var result = await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), context, default);
         Assert.Equal(42, result.TmdbId);
         Assert.Equal(type, result.MediaType);
-        var legacy = await resolver.ResolveAsync(Guid.NewGuid(), Guid.NewGuid(), default);
-        Assert.Equal(type == "movie" ? 42 : (int?)null, legacy.TmdbId);
     }
 
     [Fact]
@@ -53,7 +51,7 @@ public sealed class CinemaMediaResolverTests
         });
         Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), null, default)).TmdbId);
         Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
-        Assert.Equal(new CinemaMediaResolver.Resolution(42, "filename", "tv"),
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
             await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
         intro.ProviderIds["Tmdb"] = "43";
         Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default)).TmdbId);
@@ -64,7 +62,7 @@ public sealed class CinemaMediaResolverTests
     }
 
     [Fact]
-    public async Task AccessibleSeriesOwnerIsAuthoritativeButNeverLeaksToLegacyMovieClients()
+    public async Task AccessibleSeriesOwnerIsAuthoritative()
     {
         var user = Guid.NewGuid();
         var series = new Series { Id = Guid.NewGuid(), ProviderIds = new() { ["Tmdb"] = "42" } };
@@ -75,15 +73,16 @@ public sealed class CinemaMediaResolverTests
             return id == intro.Id ? intro : id == series.Id ? series : null;
         }};
         var resolver = new CinemaMediaResolver(library, null!);
-        Assert.Equal(new CinemaMediaResolver.Resolution(42, "owner", "tv"),
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
             await resolver.ResolveMediaAsync(intro.Id, user, "movie", default));
-        Assert.Null((await resolver.ResolveAsync(intro.Id, user, default)).TmdbId);
+
         library.ItemForUserHandler = (id, _) => id == intro.Id ? intro : null;
         Assert.Null((await resolver.ResolveMediaAsync(intro.Id, user, "tv", default)).TmdbId);
     }
 
     [Theory]
     [InlineData("Show Season 5 (2026) Trailer.mp4", "Show")]
+    [InlineData("Show (2026) Season 5 Trailer.mp4", "Show")]
     [InlineData("Show S05 Official Trailer.mp4", "Show")]
     [InlineData("Show Trailer.mp4", "Show")]
     public async Task SeriesSearchUsesExactTitleWithoutSeasonHints(string filename, string title)
@@ -96,7 +95,7 @@ public sealed class CinemaMediaResolverTests
             Assert.Null(year);
             return [Result(42, title, 2016)];
         });
-        Assert.Equal(new CinemaMediaResolver.Resolution(42, "filename", "tv"),
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
             await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
     }
 
@@ -144,7 +143,7 @@ public sealed class CinemaMediaResolverTests
     {
         var intro = new Video { Path = "Show Season 5 Trailer.mp4", Name = "Show" };
         var resolver = Resolver(intro, (_, title, _) => [Result(42, title)]);
-        Assert.Equal(new CinemaMediaResolver.Resolution(42, "filename", "tv"),
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
             await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
     }
 

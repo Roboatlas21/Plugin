@@ -36,24 +36,37 @@ public sealed class CinemaMediaResolverCompatibilityTests
     };
 
     [Fact]
-    public void ExactTitleAndYearRequiredAndProvidersDeduplicated()
+    public async Task ExactTitleAndYearRequiredAndProvidersDeduplicated()
     {
-        var name = new CinemaMediaResolver.MediaName("Dune Part Two", 2024);
-        Assert.Equal(693134, CinemaMediaResolver.Match(name, [Result(693134), Result(693134)]));
-        Assert.Null(CinemaMediaResolver.Match(name, [Result(1, year: 2021)]));
-        Assert.Null(CinemaMediaResolver.Match(name, [Result(1, title: "Dune")]));
-        Assert.Null(CinemaMediaResolver.Match(name, [Result(1), Result(2)]));
-        Assert.Null(CinemaMediaResolver.Match(name, [Result(0)]));
-        Assert.Null(CinemaMediaResolver.Match(name, []));
+        var item = new Video { Id = Guid.NewGuid(), Path = "/intros/Dune.Part.Two.2024.Official.Trailer.mp4" };
+        var library = new FakeLibraryManager { ItemForUserHandler = (_, _) => item };
+        var provider = DispatchProxy.Create<IProviderManager, SearchProvider>();
+        var resolver = new CinemaMediaResolver(library, provider);
+        var candidates = new (RemoteSearchResult[] Results, int? Expected)[]
+        {
+            ([Result(693134), Result(693134)], 693134),
+            ([Result(1, year: 2021)], null),
+            ([Result(1, title: "Dune")], null),
+            ([Result(1), Result(2)], null),
+            ([Result(0)], null),
+            ([], null),
+        };
+
+        foreach (var (results, expected) in candidates)
+        {
+            ((SearchProvider)(object)provider).Search = _ => results;
+            var resolved = await resolver.ResolveMediaAsync(item.Id, Guid.NewGuid(), "movie", CancellationToken.None);
+            Assert.Equal(expected, resolved.TmdbId);
+        }
     }
 
     [Fact]
-    public void YearlessMoviesAreNeverResolvedEvenWhenTheTitleIsUnique()
+    public async Task YearlessMoviesNeverSearch()
     {
-        var name = new CinemaMediaResolver.MediaName("Batman", null);
-        Assert.Null(CinemaMediaResolver.Match(name, [Result(1, "Batman", 1966), Result(2, "Batman", 1989)]));
-        Assert.Null(CinemaMediaResolver.Match(name, [Result(1, "Batman", 1966)]));
-        Assert.Null(CinemaMediaResolver.Match(name, [Result(1, "The Batman", 2022)]));
+        var item = new Video { Id = Guid.NewGuid(), Path = "Batman Trailer.mp4" };
+        var library = new FakeLibraryManager { ItemForUserHandler = (_, _) => item };
+        var resolver = new CinemaMediaResolver(library, null!);
+        Assert.Null((await resolver.ResolveMediaAsync(item.Id, Guid.NewGuid(), "movie", CancellationToken.None)).TmdbId);
     }
 
     [Fact]
@@ -69,13 +82,13 @@ public sealed class CinemaMediaResolverCompatibilityTests
         };
         // No provider should be consulted by either authoritative path.
         var resolver = new CinemaMediaResolver(library, null!);
-        Assert.Equal(new CinemaMediaResolver.Resolution(693134, "owner"),
-            await resolver.ResolveAsync(intro.Id, user, CancellationToken.None));
+        Assert.Equal(new CinemaMediaResolver.Resolution(693134, "movie"),
+            await resolver.ResolveMediaAsync(intro.Id, user, "movie", CancellationToken.None));
         intro.ProviderIds["tmdb"] = "42";
-        Assert.Null((await resolver.ResolveAsync(intro.Id, user, CancellationToken.None)).TmdbId); // conflicting owner
+        Assert.Null((await resolver.ResolveMediaAsync(intro.Id, user, "movie", CancellationToken.None)).TmdbId); // conflicting owner
         intro.ProviderIds.Clear();
         items.Remove(movie.Id); // Owner absent or filtered by user access.
-        Assert.Null((await resolver.ResolveAsync(intro.Id, user, CancellationToken.None)).TmdbId);
+        Assert.Null((await resolver.ResolveMediaAsync(intro.Id, user, "movie", CancellationToken.None)).TmdbId);
     }
 
     [Fact]
@@ -84,11 +97,11 @@ public sealed class CinemaMediaResolverCompatibilityTests
         var item = new Video { Id = Guid.NewGuid(), ProviderIds = new() { ["Tmdb"] = "42", ["TmdbMediaType"] = "movie" } };
         var library = new FakeLibraryManager { ItemForUserHandler = (_, _) => item };
         var resolver = new CinemaMediaResolver(library, null!);
-        Assert.Equal(42, (await resolver.ResolveAsync(item.Id, Guid.NewGuid(), CancellationToken.None)).TmdbId);
+        Assert.Equal(42, (await resolver.ResolveMediaAsync(item.Id, Guid.NewGuid(), "movie", CancellationToken.None)).TmdbId);
         library.ItemForUserHandler = (_, _) => new Episode { ProviderIds = new() { ["Tmdb"] = "42" } };
-        Assert.Null((await resolver.ResolveAsync(item.Id, Guid.NewGuid(), CancellationToken.None)).TmdbId);
+        Assert.Null((await resolver.ResolveMediaAsync(item.Id, Guid.NewGuid(), "movie", CancellationToken.None)).TmdbId);
         library.ItemForUserHandler = (_, _) => null;
-        Assert.Null((await resolver.ResolveAsync(item.Id, Guid.NewGuid(), CancellationToken.None)).TmdbId);
+        Assert.Null((await resolver.ResolveMediaAsync(item.Id, Guid.NewGuid(), "movie", CancellationToken.None)).TmdbId);
         Assert.NotNull(typeof(CinemaController).GetCustomAttribute<AuthorizeAttribute>());
     }
 
@@ -106,8 +119,8 @@ public sealed class CinemaMediaResolverCompatibilityTests
             return [Result(693134), Result(693134)];
         };
         var resolver = new CinemaMediaResolver(library, provider);
-        Assert.Equal(new CinemaMediaResolver.Resolution(693134, "filename"),
-            await resolver.ResolveAsync(intro.Id, Guid.NewGuid(), CancellationToken.None));
+        Assert.Equal(new CinemaMediaResolver.Resolution(693134, "movie"),
+            await resolver.ResolveMediaAsync(intro.Id, Guid.NewGuid(), "movie", CancellationToken.None));
     }
 
     [Fact]
@@ -120,8 +133,6 @@ public sealed class CinemaMediaResolverCompatibilityTests
                 HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext(),
             },
         };
-        Assert.IsType<Microsoft.AspNetCore.Mvc.UnauthorizedResult>(
-            (await controller.ResolveMovie(Guid.NewGuid(), CancellationToken.None)).Result);
         Assert.IsType<Microsoft.AspNetCore.Mvc.UnauthorizedResult>(
             (await controller.ResolveMedia(Guid.NewGuid(), "tv", CancellationToken.None)).Result);
     }

@@ -92,6 +92,30 @@ public sealed class CinemaMediaResolverCompatibilityTests
     }
 
     [Fact]
+    public async Task GenericVideoOwnerMustBeAccessible()
+    {
+        var user = Guid.NewGuid();
+        var movie = new Movie { Id = Guid.NewGuid(), ProviderIds = new() { ["Tmdb"] = "42" } };
+        var video = new Video
+        {
+            Id = Guid.NewGuid(),
+            OwnerId = movie.Id,
+            ProviderIds = new() { ["Tmdb"] = "42", ["TmdbMediaType"] = "movie" },
+        };
+        Assert.NotEqual(ExtraType.Trailer, video.ExtraType);
+        var library = new FakeLibraryManager
+        {
+            ItemForUserHandler = (id, _) => id == video.Id ? video : null,
+        };
+        var resolver = new CinemaMediaResolver(library, null!);
+        Assert.Null((await resolver.ResolveMediaAsync(video.Id, user, "movie", CancellationToken.None)).TmdbId);
+
+        library.ItemForUserHandler = (id, _) => id == video.Id ? video : id == movie.Id ? movie : null;
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "movie"),
+            await resolver.ResolveMediaAsync(video.Id, user, "movie", CancellationToken.None));
+    }
+
+    [Fact]
     public async Task PrivateVideosCanResolveButEpisodesAndInaccessibleItemsCannot()
     {
         var item = new Video { Id = Guid.NewGuid(), ProviderIds = new() { ["Tmdb"] = "42", ["TmdbMediaType"] = "movie" } };

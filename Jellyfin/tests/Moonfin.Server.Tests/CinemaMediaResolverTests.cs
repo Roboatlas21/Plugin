@@ -41,12 +41,23 @@ public sealed class CinemaMediaResolverTests
     }
 
     [Fact]
-    public async Task BareIdsAndConflictingTypesCannotBecomeRequestsOrFilenameSearches()
+    public async Task UntypedIdsNeedMatchingSeriesFilenameAndConflictingTypesRemainInvalid()
     {
-        var intro = new Video { Path = "Dune (2024).mp4", ProviderIds = new() { ["Tmdb"] = "42" } };
-        var resolver = Resolver(intro, (_, _, _) => throw new Exception("No search expected"));
-        foreach (var context in new[] { "movie", "tv", null })
-            Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), context, default)).TmdbId);
+        var intro = new Video { Path = "Show Trailer.mp4", ProviderIds = new() { ["Tmdb"] = "42" } };
+        var resolver = Resolver(intro, (type, name, year) =>
+        {
+            Assert.Equal("tv", type);
+            Assert.Equal("Show", name);
+            Assert.Null(year);
+            return [Result(42, name)];
+        });
+        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), null, default)).TmdbId);
+        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "filename", "tv"),
+            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
+        intro.ProviderIds["Tmdb"] = "43";
+        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default)).TmdbId);
+
         intro = new Movie { ProviderIds = new() { ["Tmdb"] = "42", ["TmdbMediaType"] = "tv" } };
         resolver = Resolver(intro, (_, _, _) => throw new Exception("No search expected"));
         Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);

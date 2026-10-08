@@ -81,7 +81,7 @@ public sealed class CinemaMediaResolverCompatibilityTests
     [Fact]
     public async Task PrivateVideosCanResolveButEpisodesAndInaccessibleItemsCannot()
     {
-        var item = new Video { Id = Guid.NewGuid(), ProviderIds = new() { ["Tmdb"] = "42", ["trailers4jellyfin.trailer"] = "/trailer.mp4" } };
+        var item = new Video { Id = Guid.NewGuid(), ProviderIds = new() { ["Tmdb"] = "42", ["TmdbMediaType"] = "movie" } };
         var library = new FakeLibraryManager { ItemForUserHandler = (_, _) => item };
         var resolver = new CinemaMediaResolver(library, null!);
         Assert.Equal(42, (await resolver.ResolveAsync(item.Id, Guid.NewGuid(), CancellationToken.None)).TmdbId);

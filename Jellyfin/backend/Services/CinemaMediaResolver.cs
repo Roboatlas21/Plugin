@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json.Serialization;
 using System.Text;
 using System.Text.RegularExpressions;
 using MediaBrowser.Controller.Entities;
@@ -16,7 +17,9 @@ namespace Moonfin.Server.Services;
 /// </summary>
 public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManager providers)
 {
-    public sealed record Resolution(int? TmdbId, string? MediaType = null);
+    public sealed record Resolution(
+        [property: JsonPropertyName("tmdbId")] int? TmdbId,
+        [property: JsonPropertyName("mediaType")] string? MediaType = null);
     public sealed record MediaName(string Title, int? Year);
 
     public async Task<Resolution> ResolveMediaAsync(Guid itemId, Guid userId, string? expectedMediaType,

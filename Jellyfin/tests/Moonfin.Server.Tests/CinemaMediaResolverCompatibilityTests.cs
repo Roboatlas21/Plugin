@@ -24,6 +24,9 @@ public sealed class CinemaMediaResolverCompatibilityTests
 
     [Theory]
     [InlineData("Dune.Part.Two.2024.Official.Trailer.mp4", "Dune Part Two", 2024)]
+    [InlineData("Dune Official Trailer (2024).mp4", "Dune", 2024)]
+    [InlineData("Dune Trailer 2 (2024).mp4", "Dune", 2024)]
+    [InlineData("Show Season 5 Trailer (2026).mp4", "Show", null)]
     [InlineData("C:\\Intros\\The Batman 2022 Trailer.mp4", "The Batman", 2022)]
     [InlineData("/intros/Superman (2025).mp4", "Superman", 2025)]
     [InlineData("1917 Trailer.mp4", "1917", null)]

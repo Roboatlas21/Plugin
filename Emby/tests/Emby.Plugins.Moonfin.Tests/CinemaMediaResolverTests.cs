@@ -10,6 +10,8 @@ public sealed class CinemaMediaResolverTests
 {
     [Theory]
     [InlineData("Dune.Part.Two.2024.Official.Trailer.mp4", "Dune Part Two", 2024)]
+    [InlineData("Dune Official Trailer (2024).mp4", "Dune", 2024)]
+    [InlineData("Show Season 5 Trailer (2026).mp4", "Show", null)]
     [InlineData("Show Season 5 (2026) Trailer.mp4", "Show", null)]
     [InlineData("Show (2026) Season 5 Trailer.mp4", "Show", null)]
     [InlineData("Show S05 Official Trailer.mp4", "Show", null)]

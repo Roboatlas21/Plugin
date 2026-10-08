@@ -11,7 +11,6 @@ using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
-using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
 
 namespace Emby.Plugins.Moonfin.Services
@@ -195,7 +194,6 @@ namespace Emby.Plugins.Moonfin.Services
 
         private static IEnumerable<int> Matches(MediaName name, IEnumerable<RemoteSearchResult> results)
         {
-
             var title = NormalizeTitle(name.Title);
             return results
                 .Where(r => NormalizeTitle(r.Name ?? "") == title &&

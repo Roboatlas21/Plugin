@@ -153,11 +153,8 @@ namespace Emby.Plugins.Moonfin.Services
                 @"\s*[\[(]?(?:720p|1080p|2160p|4k|hd|uhd)[\])]?\s*$",
                 "",
                 RegexOptions.IgnoreCase);
-            title = Regex.Replace(
-                title,
-                @"(?:^|[\s\-–:])(?:official\s+|theatrical\s+|final\s+)?(?:teaser(?:\s+trailer)?|trailer)(?:\s*#?\d+)?\s*$",
-                "",
-                RegexOptions.IgnoreCase).Trim(' ', '-', '–', ':');
+            const string trailerSuffixPattern = @"(?:^|[\s\-–:])(?:official\s+|theatrical\s+|final\s+)?(?:teaser(?:\s+trailer)?|trailer)(?:\s*#?\d+)?\s*$";
+            title = Regex.Replace(title, trailerSuffixPattern, "", RegexOptions.IgnoreCase).Trim(' ', '-', '–', ':');
 
             int? year = null;
             var match = Regex.Match(title, @"^(?<title>.+?)[\s\-(\[]+(?<year>\d{4})[)\]]?\s*$");
@@ -169,6 +166,8 @@ namespace Emby.Plugins.Moonfin.Services
                 year = parsed;
                 title = match.Groups["title"].Value.Trim(' ', '-', '–', ':');
             }
+            // The year may follow "Trailer", so remove that suffix after extracting it.
+            title = Regex.Replace(title, trailerSuffixPattern, "", RegexOptions.IgnoreCase).Trim(' ', '-', '–', ':');
 
             // Treat a trailer's season suffix as decoration, not request metadata.
             var seriesTitle = Regex.Replace(

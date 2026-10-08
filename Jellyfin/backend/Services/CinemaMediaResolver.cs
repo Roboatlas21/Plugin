@@ -114,7 +114,8 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         title = title.Replace('.', ' ').Replace('_', ' ').Trim();
         // Only remove trailing decorations; never remove words inside a movie title.
         title = Regex.Replace(title, @"\s*[\[(]?(?:720p|1080p|2160p|4k|hd|uhd)[\])]?\s*$", "", RegexOptions.IgnoreCase);
-        title = Regex.Replace(title, @"(?:^|[\s\-–:])(?:official\s+|theatrical\s+|final\s+)?(?:teaser(?:\s+trailer)?|trailer)(?:\s*#?\d+)?\s*$", "", RegexOptions.IgnoreCase).Trim(' ', '-', '–', ':');
+        const string trailerSuffixPattern = @"(?:^|[\s\-–:])(?:official\s+|theatrical\s+|final\s+)?(?:teaser(?:\s+trailer)?|trailer)(?:\s*#?\d+)?\s*$";
+        title = Regex.Replace(title, trailerSuffixPattern, "", RegexOptions.IgnoreCase).Trim(' ', '-', '–', ':');
         int? year = null;
         var match = Regex.Match(title, @"^(?<title>.+?)[\s\-(\[]+(?<year>\d{4})[)\]]?\s*$");
         if (match.Success && int.TryParse(match.Groups["year"].Value, out var parsed) &&
@@ -123,6 +124,8 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
             year = parsed;
             title = match.Groups["title"].Value.Trim(' ', '-', '–', ':');
         }
+        // The year may follow "Trailer", so remove that suffix after extracting it.
+        title = Regex.Replace(title, trailerSuffixPattern, "", RegexOptions.IgnoreCase).Trim(' ', '-', '–', ':');
         // Treat a trailer's season suffix as decoration, not request metadata.
         var seriesTitle = Regex.Replace(title, @"[\s\-:]+(?:season\s+|s)\d{1,3}$", "", RegexOptions.IgnoreCase);
         if (seriesTitle != title)

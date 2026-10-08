@@ -17,8 +17,8 @@ namespace Moonfin.Server.Services;
 /// </summary>
 public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManager providers)
 {
-    public sealed record Resolution(int? TmdbId, string? Source, string? MediaType = null, int? Season = null);
-    public sealed record MediaName(string Title, int? Year, int? Season = null);
+    public sealed record Resolution(int? TmdbId, string? Source, string? MediaType = null);
+    public sealed record MediaName(string Title, int? Year);
 
     public async Task<Resolution> ResolveAsync(Guid itemId, Guid userId, CancellationToken cancellationToken)
     {
@@ -75,7 +75,7 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         var names = new[] { ParseName(item.Path), ParseName(item.Name) }.Where(n => n != null).Distinct();
         foreach (var name in names)
         {
-            if (expectedMediaType == "movie" && (!name!.Year.HasValue || name.Season.HasValue)) continue;
+            if (expectedMediaType == "movie" && !name!.Year.HasValue) continue;
             IEnumerable<RemoteSearchResult> results;
             if (expectedMediaType == "movie")
             {
@@ -89,19 +89,16 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
             {
                 results = await providers.GetRemoteSearchResults<Series, SeriesInfo>(new RemoteSearchQuery<SeriesInfo>
                 {
-                    // A season's release year is not the series' first-air year.
-                    SearchInfo = new SeriesInfo { Name = name!.Title, Year = name.Season.HasValue ? null : name.Year },
+                    SearchInfo = new SeriesInfo { Name = name!.Title, Year = name.Year },
                     IncludeDisabledProviders = false,
                 }, cancellationToken).WaitAsync(cancellationToken).ConfigureAwait(false);
             }
             var matches = Matches(name!, results, expectedMediaType).Take(2).ToArray();
             if (matches.Length > 1 || matches.Any(id => id <= 0)) return new(null, null);
             if (matches.Length == 0) continue; // e.g. NeXroll's hashed cache filename
-            var match = new Resolution(matches[0], "filename", expectedMediaType, name!.Season);
-            if (resolved != null && (resolved.TmdbId != match.TmdbId ||
-                (resolved.Season.HasValue && match.Season.HasValue && resolved.Season != match.Season)))
-                return new(null, null);
-            resolved = match with { Season = resolved?.Season ?? match.Season };
+            var match = new Resolution(matches[0], "filename", expectedMediaType);
+            if (resolved != null && resolved.TmdbId != match.TmdbId) return new(null, null);
+            resolved = match;
         }
         return resolved ?? new(null, null);
     }
@@ -133,18 +130,18 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
             year = parsed;
             title = match.Groups["title"].Value.Trim(' ', '-', '–', ':');
         }
-        int? season = null;
-        var seasonMatch = Regex.Match(title, @"^(?<title>.+?)[\s\-:]+(?:season\s+|s)(?<season>\d{1,3})$", RegexOptions.IgnoreCase);
-        if (seasonMatch.Success && int.TryParse(seasonMatch.Groups["season"].Value, out var number) && number > 0)
+        // Treat a trailer's season suffix as decoration, not request metadata.
+        var seriesTitle = Regex.Replace(title, @"[\s\-:]+(?:season\s+|s)\d{1,3}$", "", RegexOptions.IgnoreCase);
+        if (seriesTitle != title)
         {
-            season = number;
-            title = seasonMatch.Groups["title"].Value.Trim(' ', '-', ':');
+            title = seriesTitle.Trim(' ', '-', ':');
+            year = null;
         }
         // A numeric title such as 1917 remains a title, not a year. Cache hashes
         // cannot identify a work; try the readable item name instead.
         if (title.Length == 0 || title.Length > 200 || NormalizeTitle(title).Length == 0 ||
             Regex.IsMatch(title, @"\A[0-9a-f]{32,64}\z", RegexOptions.IgnoreCase)) return null;
-        return new(title, year, season);
+        return new(title, year);
     }
 
     public static int? Match(MediaName name, IEnumerable<RemoteSearchResult> results)
@@ -156,8 +153,8 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
 
     private static IEnumerable<int> Matches(MediaName name, IEnumerable<RemoteSearchResult> results, string type)
     {
-        if (type == "movie" && (!name.Year.HasValue || name.Season.HasValue)) return [];
-        var year = type == "tv" && name.Season.HasValue ? null : name.Year;
+        if (type == "movie" && !name.Year.HasValue) return [];
+        var year = name.Year;
         var title = NormalizeTitle(name.Title);
         return results.Where(r => NormalizeTitle(r.Name ?? "") == title &&
                 (!year.HasValue || r.ProductionYear == year))

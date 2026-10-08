@@ -25,8 +25,8 @@ namespace Emby.Plugins.Moonfin.Services
         private readonly ILibraryManager _library;
         private readonly IProviderManager _providers;
 
-        public sealed record Resolution(int? TmdbId, string? Source, string? MediaType = null, int? Season = null);
-        public sealed record MediaName(string Title, int? Year, int? Season = null);
+        public sealed record Resolution(int? TmdbId, string? Source, string? MediaType = null);
+        public sealed record MediaName(string Title, int? Year);
 
         public CinemaMediaResolver(ILibraryManager library, IProviderManager providers)
         {
@@ -90,7 +90,7 @@ namespace Emby.Plugins.Moonfin.Services
 
             foreach (var name in names)
             {
-                if (expectedMediaType == "movie" && (!name!.Year.HasValue || name.Season.HasValue)) continue;
+                if (expectedMediaType == "movie" && !name!.Year.HasValue) continue;
 
                 IEnumerable<RemoteSearchResult> results;
                 if (expectedMediaType == "movie")
@@ -111,7 +111,7 @@ namespace Emby.Plugins.Moonfin.Services
                             SearchInfo = new SeriesInfo
                             {
                                 Name = name!.Title,
-                                Year = name.Season.HasValue ? null : name.Year,
+                                Year = name.Year,
                             },
                             IncludeDisabledProviders = false,
                         },
@@ -128,13 +128,11 @@ namespace Emby.Plugins.Moonfin.Services
                     continue;
                 }
 
-                var match = new Resolution(matchId.Value, "filename", expectedMediaType, name!.Season);
-                if (resolved != null &&
-                    (resolved.TmdbId != match.TmdbId ||
-                     (resolved.Season.HasValue && match.Season.HasValue && resolved.Season != match.Season)))
+                var match = new Resolution(matchId.Value, "filename", expectedMediaType);
+                if (resolved != null && resolved.TmdbId != match.TmdbId)
                     return new Resolution(null, null);
 
-                resolved = match with { Season = resolved?.Season ?? match.Season };
+                resolved = match;
             }
 
             return resolved ?? new Resolution(null, null);
@@ -180,17 +178,16 @@ namespace Emby.Plugins.Moonfin.Services
                 title = match.Groups["title"].Value.Trim(' ', '-', '–', ':');
             }
 
-            int? season = null;
-            var seasonMatch = Regex.Match(
+            // Treat a trailer's season suffix as decoration, not request metadata.
+            var seriesTitle = Regex.Replace(
                 title,
-                @"^(?<title>.+?)[\s\-:]+(?:season\s+|s)(?<season>\d{1,3})$",
+                @"[\s\-:]+(?:season\s+|s)\d{1,3}$",
+                "",
                 RegexOptions.IgnoreCase);
-            if (seasonMatch.Success &&
-                int.TryParse(seasonMatch.Groups["season"].Value, out var number) &&
-                number > 0)
+            if (seriesTitle != title)
             {
-                season = number;
-                title = seasonMatch.Groups["title"].Value.Trim(' ', '-', ':');
+                title = seriesTitle.Trim(' ', '-', ':');
+                year = null;
             }
 
             if (title.Length == 0 ||
@@ -199,7 +196,7 @@ namespace Emby.Plugins.Moonfin.Services
                 Regex.IsMatch(title, @"\A[0-9a-f]{32,64}\z", RegexOptions.IgnoreCase))
                 return null;
 
-            return new MediaName(title, year, season);
+            return new MediaName(title, year);
         }
 
         public static int? Match(MediaName name, IEnumerable<RemoteSearchResult> results, string mediaType)
@@ -213,10 +210,10 @@ namespace Emby.Plugins.Moonfin.Services
             IEnumerable<RemoteSearchResult> results,
             string mediaType)
         {
-            if (mediaType == "movie" && (!name.Year.HasValue || name.Season.HasValue))
+            if (mediaType == "movie" && !name.Year.HasValue)
                 return Enumerable.Empty<int>();
 
-            var year = mediaType == "tv" && name.Season.HasValue ? null : name.Year;
+            var year = name.Year;
             var title = NormalizeTitle(name.Title);
             return results
                 .Where(r => NormalizeTitle(r.Name ?? "") == title &&

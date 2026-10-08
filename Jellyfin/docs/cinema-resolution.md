@@ -13,8 +13,7 @@ validated against their owner, and callers may invoke the endpoint directly.
 
 The endpoint requires the authenticated server user's access to the intro and any
 trailer owner. The response contains `tmdbId`, `mediaType` (`movie` or `tv`),
-`source`, and an optional positive `season`. An unresolved result has null
-identity fields. Lookups have an eight-second budget and no completed-result cache.
+and `source`. An unresolved result has null identity fields. Lookups have an eight-second budget and no completed-result cache.
 
 TMDB IDs are not globally unique across movies and TV. An explicit
 `ProviderIds.TmdbMediaType`, a Movie item, or an accessible Movie/Series trailer
@@ -26,9 +25,9 @@ identity data and untyped generic-video TMDB IDs are rejected.
 `expectedMediaType` restricts filename searches; it never types a bare ID or
 overrides a trustworthy typed identity. Movie searches require exact normalized
 title plus matching year. Series searches require an exact, unambiguous title;
-year is optional. A trailing Season N/SNN is retained as a season hint, and its
-release year is not used as the show's debut year. The client must validate that
-season against Seerr before selecting it.
+year is optional. A trailer filename's Season N/SNN suffix is ignored when
+finding the series; its accompanying year is not treated as the show's debut year.
+The Seerr request dialog handles season selection independently.
 
 Filename-only setups must use movie trailers before movies and series trailers
 before episodes. Mixed pools need explicit type metadata. Search never switches

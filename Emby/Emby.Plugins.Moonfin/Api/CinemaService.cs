@@ -40,7 +40,6 @@ namespace Emby.Plugins.Moonfin.Api
             tmdbId = (int?)null,
             source = (string?)null,
             mediaType = (string?)null,
-            season = (int?)null,
         });
 
         public async Task<object> Get(ResolveCinemaMediaRequest request)
@@ -66,7 +65,6 @@ namespace Emby.Plugins.Moonfin.Api
                     tmdbId = result.TmdbId,
                     source = result.Source,
                     mediaType = result.MediaType,
-                    season = result.Season,
                 });
             }
             catch (OperationCanceledException)

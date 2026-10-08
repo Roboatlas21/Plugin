@@ -3,11 +3,11 @@
 Jellyfin and Emby expose the same typed resolver contract:
 `GET /Moonfin/Cinema/ResolveMedia?itemId=<uuid>&expectedMediaType=movie|tv`.
 
-Moonfin normally resolves trustworthy, unattached typed TMDB metadata locally and
-does not call this endpoint for that fast path. The server resolver is used when
-server-only information is needed—most importantly to validate an attached
-trailer's owner and the current user's access—or when identity still requires the
-strict filename/display-name fallback. The endpoint remains self-contained and can
+Moonfin first resolves unattached typed TMDB metadata locally. An unattached
+video with an untyped TMDB ID also resolves locally as a movie if it is playing
+before a movie. Neither fast path requires Moonbase. The server resolver validates
+attached-trailer ownership and user access, and handles strict filename/display-name
+fallback when identity is still unknown. The endpoint remains self-contained and can
 also return direct typed metadata because attached trailers may need that metadata
 validated against their owner, and callers may invoke the endpoint directly.
 
@@ -17,13 +17,12 @@ and `source`. An unresolved result has null identity fields. Lookups have an eig
 
 TMDB IDs are not globally unique across movies and TV. An explicit
 `ProviderIds.TmdbMediaType`, a Movie item, or an accessible Movie/Series trailer
-owner establishes type.
-The legacy `trailers4jellyfin.trailer` marker denotes the enhanced plugin's
-movie-only downloads unless an explicit media type is supplied. Conflicting
-identity data and untyped generic-video TMDB IDs are rejected.
+owner establishes type. An untyped ID in a TV trailer must be confirmed against
+the same TMDB ID in a strict series filename match. Conflicting types and IDs
+are rejected; no trailer-plugin-specific provider marker is required.
 
-`expectedMediaType` restricts filename searches; it never types a bare ID or
-overrides a trustworthy typed identity. Movie searches require exact normalized
+`expectedMediaType` restricts filename searches; it does not type an unverified
+ID or override a trustworthy typed identity. Movie searches require exact normalized
 title plus matching year. Series searches require an exact, unambiguous title;
 year is optional. A trailer filename's Season N/SNN suffix is ignored when
 finding the series; its accompanying year is not treated as the show's debut year.

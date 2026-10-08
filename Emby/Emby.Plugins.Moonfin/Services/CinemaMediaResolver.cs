@@ -59,9 +59,7 @@ namespace Emby.Plugins.Moonfin.Services
             if (explicitType != null && explicitType is not ("movie" or "tv")) return new Resolution(null, null);
             var itemType = item is Movie ? "movie" : null;
             var ownerType = owner is Movie ? "movie" : owner is Series ? "tv" : null;
-            var legacyType = explicitType == null && ProviderValue(item.ProviderIds, "trailers4jellyfin.trailer") != null
-                ? "movie" : null;
-            var types = new[] { explicitType, itemType, ownerType, legacyType }
+            var types = new[] { explicitType, itemType, ownerType }
                 .Where(t => t != null).Distinct().ToArray();
             if (types.Length > 1) return new Resolution(null, null);
 
@@ -71,7 +69,8 @@ namespace Emby.Plugins.Moonfin.Services
             if (direct.HasValue && owned.HasValue && direct != owned) return new Resolution(null, null);
 
             var hasDirectId = ProviderValue(item.ProviderIds, "Tmdb") != null;
-            if (hasDirectId && (!direct.HasValue || type == null)) return new Resolution(null, null);
+            // An untyped ID is only usable after the filename confirms the same ID.
+            if (hasDirectId && !direct.HasValue) return new Resolution(null, null);
             if ((direct ?? owned) is int id && type != null)
             {
                 return new Resolution(
@@ -127,6 +126,9 @@ namespace Emby.Plugins.Moonfin.Services
                     if (exact.Length > 0) return new Resolution(null, null);
                     continue;
                 }
+
+                if (direct.HasValue && direct.Value != matchId.Value)
+                    return new Resolution(null, null);
 
                 var match = new Resolution(matchId.Value, "filename", expectedMediaType);
                 if (resolved != null && resolved.TmdbId != match.TmdbId)

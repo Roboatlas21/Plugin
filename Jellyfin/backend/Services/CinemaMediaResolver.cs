@@ -51,18 +51,15 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         if (explicitType != null && explicitType is not ("movie" or "tv")) return new(null, null);
         var itemType = item is Movie ? "movie" : null;
         var ownerType = owner is Movie ? "movie" : owner is Series ? "tv" : null;
-        // The legacy enhanced plugin only downloads movies. A new producer can
-        // supply TmdbMediaType explicitly when registering other trailer kinds.
-        var legacyType = explicitType == null && ProviderValue(item.ProviderIds, "trailers4jellyfin.trailer") != null
-            ? "movie" : null;
-        var types = new[] { explicitType, itemType, ownerType, legacyType }.Where(t => t != null).Distinct().ToArray();
+        var types = new[] { explicitType, itemType, ownerType }.Where(t => t != null).Distinct().ToArray();
         if (types.Length > 1) return new(null, null);
         var type = types.FirstOrDefault();
         var direct = PositiveTmdb(item.ProviderIds);
         var owned = owner == null ? null : PositiveTmdb(owner.ProviderIds);
         if (direct.HasValue && owned.HasValue && direct != owned) return new(null, null);
         var hasDirectId = ProviderValue(item.ProviderIds, "Tmdb") != null;
-        if (hasDirectId && (!direct.HasValue || type == null)) return new(null, null);
+        // An untyped ID is only usable after the filename confirms the same ID.
+        if (hasDirectId && !direct.HasValue) return new(null, null);
         if ((direct ?? owned) is int id && type != null)
         {
             return new(id, direct.HasValue ? "direct" : "owner", type);
@@ -95,7 +92,8 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
             }
             var matches = Matches(name!, results, expectedMediaType).Take(2).ToArray();
             if (matches.Length > 1 || matches.Any(id => id <= 0)) return new(null, null);
-            if (matches.Length == 0) continue; // e.g. NeXroll's hashed cache filename
+            if (matches.Length == 0) continue; // e.g. a hashed cache filename
+            if (direct.HasValue && direct.Value != matches[0]) return new(null, null);
             var match = new Resolution(matches[0], "filename", expectedMediaType);
             if (resolved != null && resolved.TmdbId != match.TmdbId) return new(null, null);
             resolved = match;

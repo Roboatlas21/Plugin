@@ -17,15 +17,8 @@ namespace Moonfin.Server.Services;
 /// </summary>
 public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManager providers)
 {
-    public sealed record Resolution(int? TmdbId, string? Source, string? MediaType = null);
+    public sealed record Resolution(int? TmdbId, string? MediaType = null);
     public sealed record MediaName(string Title, int? Year);
-
-    public async Task<Resolution> ResolveAsync(Guid itemId, Guid userId, CancellationToken cancellationToken)
-    {
-        // Old clients interpret every ID as a movie. Never return a series here.
-        var result = await ResolveMediaAsync(itemId, userId, "movie", cancellationToken).ConfigureAwait(false);
-        return result.MediaType == "movie" ? new(result.TmdbId, result.Source) : new(null, null);
-    }
 
     public async Task<Resolution> ResolveMediaAsync(Guid itemId, Guid userId, string? expectedMediaType,
         CancellationToken cancellationToken)
@@ -34,13 +27,13 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         // and can read registered private Videos that don't occur in library queries.
         // The Guid overload also avoids binding to the User type moved in Jellyfin 10.11.
         var item = library.GetItemById<Video>(itemId, userId);
-        if (item == null || item is Episode) return new(null, null);
+        if (item == null || item is Episode) return new(null);
 
         BaseItem? owner = null;
         if (item.ExtraType == ExtraType.Trailer && item.OwnerId != Guid.Empty)
         {
             owner = library.GetItemById<BaseItem>(item.OwnerId, userId);
-            if (owner is not Movie && owner is not Series) return new(null, null);
+            if (owner is not Movie && owner is not Series) return new(null);
         }
 
         // Moonfin normally consumes trustworthy unattached typed metadata locally.
@@ -48,26 +41,26 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         // trailer can be checked against its accessible owner and so this endpoint
         // remains safe when called directly. Feature context never supplies the type.
         var explicitType = ProviderValue(item.ProviderIds, "TmdbMediaType");
-        if (explicitType != null && explicitType is not ("movie" or "tv")) return new(null, null);
+        if (explicitType != null && explicitType is not ("movie" or "tv")) return new(null);
         var itemType = item is Movie ? "movie" : null;
         var ownerType = owner is Movie ? "movie" : owner is Series ? "tv" : null;
         var types = new[] { explicitType, itemType, ownerType }.Where(t => t != null).Distinct().ToArray();
-        if (types.Length > 1) return new(null, null);
+        if (types.Length > 1) return new(null);
         var type = types.FirstOrDefault();
         var direct = PositiveTmdb(item.ProviderIds);
         var owned = owner == null ? null : PositiveTmdb(owner.ProviderIds);
-        if (direct.HasValue && owned.HasValue && direct != owned) return new(null, null);
+        if (direct.HasValue && owned.HasValue && direct != owned) return new(null);
         var hasDirectId = ProviderValue(item.ProviderIds, "Tmdb") != null;
         // An untyped ID is only usable after the filename confirms the same ID.
-        if (hasDirectId && !direct.HasValue) return new(null, null);
+        if (hasDirectId && !direct.HasValue) return new(null);
         if ((direct ?? owned) is int id && type != null)
         {
-            return new(id, direct.HasValue ? "direct" : "owner", type);
+            return new(id, type);
         }
 
         // Context selects a search category only; it never types a bare TMDB ID.
         if (expectedMediaType is not ("movie" or "tv") || (type != null && type != expectedMediaType))
-            return new(null, null);
+            return new(null);
         Resolution? resolved = null;
         var names = new[] { ParseName(item.Path), ParseName(item.Name) }.Where(n => n != null).Distinct();
         foreach (var name in names)
@@ -91,14 +84,14 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
                 }, cancellationToken).WaitAsync(cancellationToken).ConfigureAwait(false);
             }
             var matches = Matches(name!, results, expectedMediaType).Take(2).ToArray();
-            if (matches.Length > 1 || matches.Any(id => id <= 0)) return new(null, null);
+            if (matches.Length > 1 || matches.Any(id => id <= 0)) return new(null);
             if (matches.Length == 0) continue; // e.g. a hashed cache filename
-            if (direct.HasValue && direct.Value != matches[0]) return new(null, null);
-            var match = new Resolution(matches[0], "filename", expectedMediaType);
-            if (resolved != null && resolved.TmdbId != match.TmdbId) return new(null, null);
+            if (direct.HasValue && direct.Value != matches[0]) return new(null);
+            var match = new Resolution(matches[0], expectedMediaType);
+            if (resolved != null && resolved.TmdbId != match.TmdbId) return new(null);
             resolved = match;
         }
-        return resolved ?? new(null, null);
+        return resolved ?? new(null);
     }
 
     private static string? ProviderValue(IDictionary<string, string>? ids, string key) =>
@@ -132,7 +125,8 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         var seriesTitle = Regex.Replace(title, @"[\s\-:]+(?:season\s+|s)\d{1,3}$", "", RegexOptions.IgnoreCase);
         if (seriesTitle != title)
         {
-            title = seriesTitle.Trim(' ', '-', ':');
+            title = Regex.Replace(seriesTitle, @"[\s\-(\[]+\d{4}[)\]]?\s*$", "")
+                .Trim(' ', '-', ':');
             year = null;
         }
         // A numeric title such as 1917 remains a title, not a year. Cache hashes
@@ -142,20 +136,12 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         return new(title, year);
     }
 
-    public static int? Match(MediaName name, IEnumerable<RemoteSearchResult> results)
-    {
-        var matches = Matches(name, results, "movie").Take(2).ToArray();
-        // Duplicate provider results for the same movie are fine; distinct IDs are ambiguous.
-        return matches.Length == 1 && matches[0] > 0 ? matches[0] : null;
-    }
-
     private static IEnumerable<int> Matches(MediaName name, IEnumerable<RemoteSearchResult> results, string type)
     {
         if (type == "movie" && !name.Year.HasValue) return [];
-        var year = name.Year;
         var title = NormalizeTitle(name.Title);
         return results.Where(r => NormalizeTitle(r.Name ?? "") == title &&
-                (!year.HasValue || r.ProductionYear == year))
+                (!name.Year.HasValue || r.ProductionYear == name.Year))
             // An exact candidate without an ID leaves identity uncertain too.
             .Select(r => PositiveTmdb(r.ProviderIds) ?? 0).Distinct();
     }

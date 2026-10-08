@@ -25,7 +25,7 @@ namespace Emby.Plugins.Moonfin.Services
         private readonly ILibraryManager _library;
         private readonly IProviderManager _providers;
 
-        public sealed record Resolution(int? TmdbId, string? Source, string? MediaType = null);
+        public sealed record Resolution(int? TmdbId, string? MediaType = null);
         public sealed record MediaName(string Title, int? Year);
 
         public CinemaMediaResolver(ILibraryManager library, IProviderManager providers)
@@ -41,14 +41,14 @@ namespace Emby.Plugins.Moonfin.Services
             CancellationToken cancellationToken)
         {
             var item = _library.GetItemById(itemId) as Video;
-            if (item == null || item is Episode || !item.IsVisibleStandalone(user)) return new Resolution(null, null);
+            if (item == null || item is Episode || !item.IsVisibleStandalone(user)) return new Resolution(null);
 
             BaseItem? owner = null;
             if (item.ExtraType == ExtraType.Trailer && item.OwnerId != Guid.Empty)
             {
                 owner = _library.GetItemById(item.OwnerId);
                 if (owner == null || !owner.IsVisibleStandalone(user) || (owner is not Movie && owner is not Series))
-                    return new Resolution(null, null);
+                    return new Resolution(null);
             }
 
             // Moonfin normally consumes trustworthy unattached typed metadata locally.
@@ -56,32 +56,29 @@ namespace Emby.Plugins.Moonfin.Services
             // trailer can be checked against its accessible owner and so this endpoint
             // remains safe when called directly. Feature context never supplies the type.
             var explicitType = ProviderValue(item.ProviderIds, "TmdbMediaType");
-            if (explicitType != null && explicitType is not ("movie" or "tv")) return new Resolution(null, null);
+            if (explicitType != null && explicitType is not ("movie" or "tv")) return new Resolution(null);
             var itemType = item is Movie ? "movie" : null;
             var ownerType = owner is Movie ? "movie" : owner is Series ? "tv" : null;
             var types = new[] { explicitType, itemType, ownerType }
                 .Where(t => t != null).Distinct().ToArray();
-            if (types.Length > 1) return new Resolution(null, null);
+            if (types.Length > 1) return new Resolution(null);
 
             var type = types.FirstOrDefault();
             var direct = PositiveTmdb(item.ProviderIds);
             var owned = owner == null ? null : PositiveTmdb(owner.ProviderIds);
-            if (direct.HasValue && owned.HasValue && direct != owned) return new Resolution(null, null);
+            if (direct.HasValue && owned.HasValue && direct != owned) return new Resolution(null);
 
             var hasDirectId = ProviderValue(item.ProviderIds, "Tmdb") != null;
             // An untyped ID is only usable after the filename confirms the same ID.
-            if (hasDirectId && !direct.HasValue) return new Resolution(null, null);
+            if (hasDirectId && !direct.HasValue) return new Resolution(null);
             if ((direct ?? owned) is int id && type != null)
             {
-                return new Resolution(
-                    id,
-                    direct.HasValue ? "direct" : "owner",
-                    type);
+                return new Resolution(id, type);
             }
 
             // Feature context restricts filename search only. It never types a bare TMDB id.
             if (expectedMediaType is not ("movie" or "tv") || (type != null && type != expectedMediaType))
-                return new Resolution(null, null);
+                return new Resolution(null);
 
             Resolution? resolved = null;
             var names = new[] { ParseName(item.Path), ParseName(item.Name) }
@@ -117,27 +114,21 @@ namespace Emby.Plugins.Moonfin.Services
                         cancellationToken).ConfigureAwait(false);
                 }
 
-                var matchId = Match(name!, results, expectedMediaType);
-                if (!matchId.HasValue)
-                {
-                    // Zero exact matches may fall back from a hashed/path name to the readable
-                    // display name; ambiguity or a matching result without an ID may not.
-                    var exact = ExactMatches(name!, results, expectedMediaType).Take(2).ToArray();
-                    if (exact.Length > 0) return new Resolution(null, null);
-                    continue;
-                }
+                var matches = Matches(name!, results, expectedMediaType).Take(2).ToArray();
+                if (matches.Length > 1 || matches.Any(id => id <= 0))
+                    return new Resolution(null);
+                if (matches.Length == 0) continue;
+                if (direct.HasValue && direct.Value != matches[0])
+                    return new Resolution(null);
 
-                if (direct.HasValue && direct.Value != matchId.Value)
-                    return new Resolution(null, null);
-
-                var match = new Resolution(matchId.Value, "filename", expectedMediaType);
+                var match = new Resolution(matches[0], expectedMediaType);
                 if (resolved != null && resolved.TmdbId != match.TmdbId)
-                    return new Resolution(null, null);
+                    return new Resolution(null);
 
                 resolved = match;
             }
 
-            return resolved ?? new Resolution(null, null);
+            return resolved ?? new Resolution(null);
         }
 
         private static string? ProviderValue(IDictionary<string, string>? ids, string key) =>
@@ -188,7 +179,8 @@ namespace Emby.Plugins.Moonfin.Services
                 RegexOptions.IgnoreCase);
             if (seriesTitle != title)
             {
-                title = seriesTitle.Trim(' ', '-', ':');
+                title = Regex.Replace(seriesTitle, @"[\s\-(\[]+\d{4}[)\]]?\s*$", "")
+                    .Trim(' ', '-', ':');
                 year = null;
             }
 
@@ -201,13 +193,7 @@ namespace Emby.Plugins.Moonfin.Services
             return new MediaName(title, year);
         }
 
-        public static int? Match(MediaName name, IEnumerable<RemoteSearchResult> results, string mediaType)
-        {
-            var matches = ExactMatches(name, results, mediaType).Take(2).ToArray();
-            return matches.Length == 1 && matches[0] > 0 ? matches[0] : (int?)null;
-        }
-
-        private static IEnumerable<int> ExactMatches(
+        private static IEnumerable<int> Matches(
             MediaName name,
             IEnumerable<RemoteSearchResult> results,
             string mediaType)
@@ -215,11 +201,10 @@ namespace Emby.Plugins.Moonfin.Services
             if (mediaType == "movie" && !name.Year.HasValue)
                 return Enumerable.Empty<int>();
 
-            var year = name.Year;
             var title = NormalizeTitle(name.Title);
             return results
                 .Where(r => NormalizeTitle(r.Name ?? "") == title &&
-                            (!year.HasValue || r.ProductionYear == year))
+                            (!name.Year.HasValue || r.ProductionYear == name.Year))
                 .Select(r => PositiveTmdb(r.ProviderIds) ?? 0)
                 .Distinct();
         }

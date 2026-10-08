@@ -33,28 +33,4 @@ public sealed class CinemaController(CinemaMediaResolver resolver, ILogger<Cinem
             return Ok(new CinemaMediaResolver.Resolution(null, null));
         }
     }
-
-    [HttpGet("ResolveMovie")]
-    public async Task<ActionResult<CinemaMediaResolver.Resolution>> ResolveMovie(
-        [FromQuery] Guid itemId, CancellationToken cancellationToken)
-    {
-        var userId = this.GetUserIdFromClaims();
-        if (!userId.HasValue || userId == Guid.Empty) return Unauthorized();
-        if (itemId == Guid.Empty) return BadRequest();
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(8));
-        try
-        {
-            return Ok(await resolver.ResolveAsync(itemId, userId.Value, timeout.Token).ConfigureAwait(false));
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            return Ok(new CinemaMediaResolver.Resolution(null, null));
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogDebug(ex, "Cinema movie resolution failed for {ItemId}", itemId);
-            return Ok(new CinemaMediaResolver.Resolution(null, null));
-        }
-    }
 }

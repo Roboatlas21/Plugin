@@ -38,7 +38,6 @@ namespace Emby.Plugins.Moonfin.Api
         private object Unresolved() => Json(new
         {
             tmdbId = (int?)null,
-            source = (string?)null,
             mediaType = (string?)null,
         });
 
@@ -63,7 +62,6 @@ namespace Emby.Plugins.Moonfin.Api
                 return Json(new
                 {
                     tmdbId = result.TmdbId,
-                    source = result.Source,
                     mediaType = result.MediaType,
                 });
             }

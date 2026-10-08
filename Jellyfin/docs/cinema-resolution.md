@@ -12,8 +12,9 @@ also return direct typed metadata because attached trailers may need that metada
 validated against their owner, and callers may invoke the endpoint directly.
 
 The endpoint requires the authenticated server user's access to the intro and any
-trailer owner. The response contains `tmdbId`, `mediaType` (`movie` or `tv`),
-and `source`. An unresolved result has null identity fields. Lookups have an eight-second budget and no completed-result cache.
+trailer owner. The response contains `tmdbId` and `mediaType` (`movie` or `tv`).
+An unresolved result has null identity fields. Lookups have an eight-second
+budget and no completed-result cache.
 
 TMDB IDs are not globally unique across movies and TV. An explicit
 `ProviderIds.TmdbMediaType`, a Movie item, or an accessible Movie/Series trailer
@@ -33,6 +34,4 @@ before episodes. Mixed pools need explicit type metadata. Search never switches
 categories after a miss. Readable display names can identify cached files with
 hashed/unmatched names; ambiguous or contradictory matches return no identity.
 
-The legacy `ResolveMovie` endpoint remains movie-only for older clients and
-will never expose a series ID as a movie. Existing clients need the updated
-Moonfin typed resolver to request series.
+Cinema Mode uses only `ResolveMedia` to resolve movies and series.

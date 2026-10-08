@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Json;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
@@ -14,6 +15,13 @@ namespace Moonfin.Server.Tests;
 
 public sealed class CinemaMediaResolverCompatibilityTests
 {
+    [Fact]
+    public void ResolutionJsonMatchesMoonfinClientContract()
+    {
+        var json = JsonSerializer.Serialize(new CinemaMediaResolver.Resolution(42, "tv"));
+        Assert.Equal("{\"tmdbId\":42,\"mediaType\":\"tv\"}", json);
+    }
+
     [Theory]
     [InlineData("Dune.Part.Two.2024.Official.Trailer.mp4", "Dune Part Two", 2024)]
     [InlineData("C:\\Intros\\The Batman 2022 Trailer.mp4", "The Batman", 2022)]

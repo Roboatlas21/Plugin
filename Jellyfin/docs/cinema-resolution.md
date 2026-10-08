@@ -18,7 +18,7 @@ identity fields. Lookups have an eight-second budget and no completed-result cac
 
 TMDB IDs are not globally unique across movies and TV. An explicit
 `ProviderIds.TmdbMediaType`, a Movie item, or an accessible Movie/Series trailer
-owner establishes type. Generic videos may supply `TmdbSeason` for a series.
+owner establishes type.
 The legacy `trailers4jellyfin.trailer` marker denotes the enhanced plugin's
 movie-only downloads unless an explicit media type is supplied. Conflicting
 identity data and untyped generic-video TMDB IDs are rejected.

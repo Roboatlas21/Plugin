@@ -77,8 +77,7 @@ namespace Emby.Plugins.Moonfin.Services
                 return new Resolution(
                     id,
                     direct.HasValue ? "direct" : "owner",
-                    type,
-                    type == "tv" ? PositiveSeason(item.ProviderIds) : null);
+                    type);
             }
 
             // Feature context restricts filename search only. It never types a bare TMDB id.
@@ -143,9 +142,6 @@ namespace Emby.Plugins.Moonfin.Services
 
         private static string? ProviderValue(IDictionary<string, string>? ids, string key) =>
             ids?.FirstOrDefault(p => p.Key.Equals(key, StringComparison.OrdinalIgnoreCase)).Value;
-
-        private static int? PositiveSeason(IDictionary<string, string> ids) =>
-            int.TryParse(ProviderValue(ids, "TmdbSeason"), out var season) && season > 0 ? season : (int?)null;
 
         public static int? PositiveTmdb(IDictionary<string, string>? ids)
         {

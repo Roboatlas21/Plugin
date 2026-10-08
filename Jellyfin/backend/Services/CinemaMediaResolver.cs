@@ -65,8 +65,7 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         if (hasDirectId && (!direct.HasValue || type == null)) return new(null, null);
         if ((direct ?? owned) is int id && type != null)
         {
-            return new(id, direct.HasValue ? "direct" : "owner", type,
-                type == "tv" ? PositiveSeason(item.ProviderIds) : null);
+            return new(id, direct.HasValue ? "direct" : "owner", type);
         }
 
         // Context selects a search category only; it never types a bare TMDB ID.
@@ -109,9 +108,6 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
 
     private static string? ProviderValue(IDictionary<string, string>? ids, string key) =>
         ids?.FirstOrDefault(p => p.Key.Equals(key, StringComparison.OrdinalIgnoreCase)).Value;
-
-    private static int? PositiveSeason(IDictionary<string, string> ids) =>
-        int.TryParse(ProviderValue(ids, "TmdbSeason"), out var season) && season > 0 ? season : null;
 
     public static int? PositiveTmdb(IDictionary<string, string>? ids)
     {

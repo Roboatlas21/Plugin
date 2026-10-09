@@ -53,8 +53,10 @@ search category. NeXroll's filename IDs establish type independently; other mixe
 pools need explicit type metadata. Search never switches categories after a miss. Readable display names can identify cached files with
 hashed/unmatched names; display names are parsed as text, not as filesystem paths.
 If exact title matching fails for a standalone trailer, the resolver can try
-alternatives separated by a pipe or spaced dash. Every candidate must still
-match TMDB exactly, movies still require a release year, and ambiguous matches
+alternatives separated by a pipe or spaced dash, or a title without a
+long mixed letter-and-number suffix. The complete title is tried first.
+Every candidate must still match TMDB exactly, movies still require a release
+year, and ambiguous matches
 remain unresolved. Owner metadata and NeXroll IDs bypass this fallback.
 
 Cinema Mode uses only `ResolveMedia` to resolve movies and series.

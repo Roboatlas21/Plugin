@@ -213,6 +213,14 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
             if (after.Length > 0) yield return new MediaName(after, source.Year);
             if (before.Length > 0) yield return new MediaName(before, source.Year);
         }
+
+        // Some downloaders append a long alphanumeric ID without a Trailer label.
+        // Do not mistake ordinary title words ending in a single digit for an ID.
+        var suffix = Regex.Match(title, @"[\s._-]+(?<id>[A-Za-z0-9_-]{8,})$");
+        var token = suffix.Groups["id"].Value;
+        if (suffix.Success && token.Any(char.IsLetter) &&
+            (token.Count(char.IsDigit) > 1 || Regex.IsMatch(token, @"\d[A-Za-z]")))
+            yield return new MediaName(title.Substring(0, suffix.Index), source.Year);
     }
 
     private static IEnumerable<int> Matches(MediaName name, IEnumerable<RemoteSearchResult> results)

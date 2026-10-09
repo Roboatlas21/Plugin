@@ -224,6 +224,61 @@ public sealed class CinemaMediaResolverTests
     }
 
     [Fact]
+    public async Task NeXrollMovieFilenameUsesTmdbIdWithoutMovieYearOrSearch()
+    {
+        var intro = new Video { Path = "/nexup/movies/Dune_438631_trailer.mp4" };
+        var resolver = Resolver(intro, (_, _, _) => throw new Exception("No search expected"));
+        Assert.Equal(new CinemaMediaResolver.Resolution(438631, "movie"),
+            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
+    }
+
+    [Theory]
+    [InlineData("/nexup/tv/Silo_tvdb403245_trailer.mp4", null)]
+    [InlineData("/cache/abcdef1234567890.mp4", "Silo_tvdb403245_trailer")]
+    public async Task NeXrollTvdbFilenameSearchesForSeriesNotItsTvdbId(string path, string? name)
+    {
+        var intro = new Video { Path = path, Name = name ?? "" };
+        var calls = 0;
+        var resolver = Resolver(intro, (type, title, year) =>
+        {
+            calls++;
+            Assert.Equal("tv", type);
+            Assert.Equal("Silo", title);
+            Assert.Null(year);
+            return [Result(42, "Silo", 2023)];
+        });
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
+            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default));
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public async Task NeXrollFilenameConflictsStayUnresolved()
+    {
+        var intro = new Video
+        {
+            Path = "Dune_438631_trailer.mp4",
+            ProviderIds = new() { ["Tmdb"] = "42" },
+        };
+        var resolver = Resolver(intro, (_, _, _) => throw new Exception("No search expected"));
+        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
+
+        intro.ProviderIds.Clear();
+        intro.ProviderIds["TmdbMediaType"] = "tv";
+        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default)).TmdbId);
+
+        intro.ProviderIds.Clear();
+        intro.Path = "Silo_tvdb403245_trailer.mp4";
+        intro.ProviderIds["TmdbMediaType"] = "movie";
+        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
+
+        intro.ProviderIds.Clear();
+        intro.Path = "Dune_438631_trailer.mp4";
+        intro.Name = "Other_12345_trailer";
+        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
+    }
+
+    [Fact]
     public async Task EquivalentPathAndDisplayNameSearchOnlyOnce()
     {
         var intro = new Video { Path = "Silo Official Trailer.mp4", Name = "SILO Trailer" };

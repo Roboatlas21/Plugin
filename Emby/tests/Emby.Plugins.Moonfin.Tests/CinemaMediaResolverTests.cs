@@ -63,6 +63,30 @@ public sealed class CinemaMediaResolverTests
         Assert.Equal(expectedYear, parsed.Year);
     }
 
+    [Theory]
+    [InlineData("Dune_438631_trailer.mp4", "Dune", "movie", 438631)]
+    [InlineData(@"C:\NeXroll\movies\Dune_Part_Two_693134_trailer.MP4", "Dune Part Two", "movie", 693134)]
+    [InlineData("Silo_tvdb403245_trailer.mp4", "Silo", "tv", null)]
+    [InlineData("The_Last_of_Us_tvdb116602_trailer.webm", "The Last of Us", "tv", null)]
+    public void RecognizesNeXrollDownloadNames(string filename, string title, string type, int? tmdbId)
+    {
+        var parsed = CinemaMediaResolver.ParseNeXrollName(filename);
+        Assert.NotNull(parsed);
+        Assert.Equal(title, parsed.Value.Title);
+        Assert.Equal(type, parsed.Value.MediaType);
+        Assert.Equal(tmdbId, parsed.Value.TmdbId);
+    }
+
+    [Theory]
+    [InlineData("Silo_trailer.mp4")]
+    [InlineData("Dune_438631_trailer.mp4.part")]
+    [InlineData("Silo_tvdb0_trailer.mp4")]
+    [InlineData("Dune_999999999999999999999_trailer.mp4")]
+    public void IgnoresUnrecognizedNeXrollNames(string filename)
+    {
+        Assert.Null(CinemaMediaResolver.ParseNeXrollName(filename));
+    }
+
     [Fact]
     public void EndpointRequiresAuthentication()
     {

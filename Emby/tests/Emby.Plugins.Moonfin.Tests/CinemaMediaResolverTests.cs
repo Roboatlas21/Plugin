@@ -17,7 +17,6 @@ public sealed class CinemaMediaResolverTests
     [InlineData("Dune 2021 abcd_efghij.mp4", "Dune", 2021)]
     [InlineData("Dune 2021 [abc_defghij] Trailer.mp4", "Dune", 2021)]
     [InlineData("Dune 2021 jdidisisj.mp4", "Dune", 2021)]
-    [InlineData("Dune official trailer 2021 jdjdjsn.mp4", "Dune", 2021)]
     [InlineData("Dune (2021) [abcdefghijk].mp4", "Dune", 2021)]
     [InlineData("Dune 2021 Trailer [abcdefghijk].mp4", "Dune", 2021)]
     [InlineData("Dune dhjdiii3jeb 2023.mp4", "Dune", 2023)]

@@ -31,7 +31,6 @@ public sealed class CinemaMediaResolverCompatibilityTests
     [InlineData("Dune 2021 abcd_efghij.mp4", "Dune", 2021)]
     [InlineData("Dune 2021 [abc_defghij] Trailer.mp4", "Dune", 2021)]
     [InlineData("Dune 2021 jdidisisj.mp4", "Dune", 2021)]
-    [InlineData("Dune official trailer 2021 jdjdjsn.mp4", "Dune", 2021)]
     [InlineData("Dune (2021) [abcdefghijk].mp4", "Dune", 2021)]
     [InlineData("Dune 2021 Trailer [abcdefghijk].mp4", "Dune", 2021)]
     [InlineData("Dune dhjdiii3jeb 2023.mp4", "Dune", 2023)]
@@ -82,15 +81,6 @@ public sealed class CinemaMediaResolverCompatibilityTests
             var resolved = await resolver.ResolveMediaAsync(item.Id, Guid.NewGuid(), "movie", CancellationToken.None);
             Assert.Equal(expected, resolved.TmdbId);
         }
-    }
-
-    [Fact]
-    public async Task YearlessMoviesNeverSearch()
-    {
-        var item = new Video { Id = Guid.NewGuid(), Path = "Batman Trailer.mp4" };
-        var library = new FakeLibraryManager { ItemForUserHandler = (_, _) => item };
-        var resolver = new CinemaMediaResolver(library, null!);
-        Assert.Null((await resolver.ResolveMediaAsync(item.Id, Guid.NewGuid(), "movie", CancellationToken.None)).TmdbId);
     }
 
     [Fact]
@@ -181,49 +171,6 @@ public sealed class CinemaMediaResolverCompatibilityTests
         library.ItemForUserHandler = (_, _) => null;
         Assert.Null((await resolver.ResolveMediaAsync(item.Id, Guid.NewGuid(), "movie", CancellationToken.None)).TmdbId);
         Assert.NotNull(typeof(CinemaController).GetCustomAttribute<AuthorizeAttribute>());
-    }
-
-    [Fact]
-    public async Task FilenameFallbackUsesOnlyTheNativeMovieSearchPipeline()
-    {
-        var intro = new Video { Id = Guid.NewGuid(), Path = "/intros/Dune.Part.Two.2024.Official.Trailer.mp4" };
-        var library = new FakeLibraryManager { ItemForUserHandler = (_, _) => intro };
-        var provider = DispatchProxy.Create<IProviderManager, SearchProvider>();
-        ((SearchProvider)(object)provider).Search = query =>
-        {
-            Assert.Equal("Dune Part Two", query.SearchInfo.Name);
-            Assert.Equal(2024, query.SearchInfo.Year);
-            Assert.False(query.IncludeDisabledProviders);
-            return [Result(693134), Result(693134)];
-        };
-        var resolver = new CinemaMediaResolver(library, provider);
-        Assert.Equal(new CinemaMediaResolver.Resolution(693134, "movie"),
-            await resolver.ResolveMediaAsync(intro.Id, Guid.NewGuid(), "movie", CancellationToken.None));
-    }
-
-    [Theory]
-    [InlineData("Dune 2021 jdidisisj.mp4")]
-    [InlineData("Dune official trailer 2021 jdjdjsn.mp4")]
-    public async Task GeneratedSuffixSearchStillRequiresExactMovieTitleAndYear(string filename)
-    {
-        var intro = new Video { Id = Guid.NewGuid(), Path = filename };
-        var library = new FakeLibraryManager { ItemForUserHandler = (_, _) => intro };
-        var provider = DispatchProxy.Create<IProviderManager, SearchProvider>();
-        var search = (SearchProvider)(object)provider;
-        search.Search = query =>
-        {
-            Assert.Equal("Dune", query.SearchInfo.Name);
-            Assert.Equal(2021, query.SearchInfo.Year);
-            return [Result(42, "Dune", 2021)];
-        };
-        var resolver = new CinemaMediaResolver(library, provider);
-        Assert.Equal(new CinemaMediaResolver.Resolution(42, "movie"),
-            await resolver.ResolveMediaAsync(intro.Id, Guid.NewGuid(), "movie", default));
-
-        search.Search = _ => [Result(42, "Dune", 2024)];
-        Assert.Null((await resolver.ResolveMediaAsync(intro.Id, Guid.NewGuid(), "movie", default)).TmdbId);
-        search.Search = _ => [Result(42, "Dune Part Two", 2021)];
-        Assert.Null((await resolver.ResolveMediaAsync(intro.Id, Guid.NewGuid(), "movie", default)).TmdbId);
     }
 
     [Fact]

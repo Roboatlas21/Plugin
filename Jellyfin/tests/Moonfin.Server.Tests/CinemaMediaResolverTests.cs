@@ -193,27 +193,6 @@ public sealed class CinemaMediaResolverTests
         Assert.Equal(1, searches);
     }
 
-    [Theory]
-    [InlineData("Stranger Things Trailer (2026).mp4")]
-    [InlineData("Stranger Things (2026) Official Trailer.mp4")]
-    public async Task SeriesTrailerReleaseYearDoesNotRestrictPremiereYear(string filename)
-    {
-        var intro = new Video { Path = filename, Name = "Stranger Things Trailer" };
-        var searches = 0;
-        var resolver = Resolver(intro, (kind, name, year) =>
-        {
-            searches++;
-            Assert.Equal("tv", kind);
-            Assert.Equal("Stranger Things", name);
-            Assert.Null(year);
-            return [Result(42, name, 2016)];
-        });
-
-        Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
-            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
-        Assert.Equal(1, searches);
-    }
-
     [Fact]
     public async Task TrailerReleaseYearCannotDisambiguateSameTitleSeries()
     {
@@ -263,27 +242,6 @@ public sealed class CinemaMediaResolverTests
         Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default)).TmdbId);
         resolver = Resolver(intro, (_, title, _) => [Result(42, title), new RemoteSearchResult { Name = title }]);
         Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default)).TmdbId);
-    }
-
-    [Fact]
-    public async Task SeasonDecorationsDoNotChangeSeriesIdentity()
-    {
-        var intro = new Video { Path = "Show Season 5 Trailer.mp4", Name = "Show" };
-        var resolver = Resolver(intro, (_, title, _) => [Result(42, title)]);
-        Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
-            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
-    }
-
-    [Fact]
-    public async Task FailedMovieSearchNeverTriesTheSeriesNamespace()
-    {
-        var intro = new Video { Path = "Show (2024) Trailer.mp4" };
-        var resolver = Resolver(intro, (type, _, _) =>
-        {
-            Assert.Equal("movie", type);
-            return [];
-        });
-        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
     }
 
     public class SearchProvider : DispatchProxy

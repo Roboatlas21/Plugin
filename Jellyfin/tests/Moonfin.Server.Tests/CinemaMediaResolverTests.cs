@@ -319,14 +319,10 @@ public sealed class CinemaMediaResolverTests
     }
 
     [Fact]
-    public async Task YearlessMovieRejectsAmbiguousOrMissingTmdbIds()
+    public async Task YearlessMoviePrefersOnlyClearlyNewerExactMatch()
     {
         var intro = new Video { Path = "Dune Trailer.mp4" };
-        var results = new RemoteSearchResult[]
-        {
-            Result(42, "Dune", 1984),
-            Result(43, "Dune", 2021),
-        };
+        RemoteSearchResult[] results = [Result(42, "Dune", 1984), Result(43, "Dune", 2021)];
         var resolver = Resolver(intro, (type, title, year) =>
         {
             Assert.Equal("movie", type);
@@ -335,9 +331,33 @@ public sealed class CinemaMediaResolverTests
             return results;
         });
 
+        Assert.Equal(43, (await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
+        results = [Result(42, "Dune", 2012), Result(43, "Dune", 2021)];
         Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
-        results = [Result(42, "Dune", 2021), new RemoteSearchResult { Name = "Dune" }];
+        results[0].ProductionYear = 2011; // Exactly 10 years is sufficient.
+        Assert.Equal(43, (await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
+        results[0].ProductionYear = null;
         Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
+        results = [Result(42, "Dune", 2011), new RemoteSearchResult { Name = "Dune" }];
+        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
+        results = [Result(42, "Dune", 2011), Result(43, "Dune", 2021), Result(43, "Dune", 2020)];
+        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
+    }
+
+    [Fact]
+    public async Task YearlessSeriesPrefersDecadeNewerExactTitle()
+    {
+        var intro = new Video { Path = "Show Trailer.mp4" };
+        var resolver = Resolver(intro, (type, title, year) =>
+        {
+            Assert.Equal("tv", type);
+            Assert.Equal("Show", title);
+            Assert.Null(year);
+            return [Result(42, "Show", 1989), Result(43, "Show", 2024)];
+        });
+
+        Assert.Equal(new CinemaMediaResolver.Resolution(43, "tv"),
+            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
     }
 
     [Fact]

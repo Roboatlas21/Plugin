@@ -115,7 +115,7 @@ public sealed class CinemaMediaResolverTests
     }
 
     [Fact]
-    public void YearlessMovieMatchingStillRejectsAmbiguousTmdbIds()
+    public void YearlessMoviePrefersDecadeNewerTitleButKeepsKnownYearsStrict()
     {
         var matchMethod = typeof(CinemaMediaResolver).GetMethod(
             "Matches", BindingFlags.NonPublic | BindingFlags.Static);
@@ -124,16 +124,18 @@ public sealed class CinemaMediaResolverTests
         {
             new() { Name = "Dune", ProductionYear = 1984, ProviderIds = new() { ["Tmdb"] = "42" } },
             new() { Name = "Dune", ProductionYear = 2021, ProviderIds = new() { ["Tmdb"] = "43" } },
-            new() { Name = "Other Movie", ProductionYear = 2021, ProviderIds = new() { ["Tmdb"] = "90" } },
         };
+        int[] Matches(int? year) => ((IEnumerable<int>)matchMethod.Invoke(null,
+            new object[] { new CinemaMediaResolver.MediaName("Dune", year), results })!).ToArray();
 
-        var yearless = (IEnumerable<int>)matchMethod.Invoke(null,
-            new object[] { new CinemaMediaResolver.MediaName("Dune", null), results })!;
-        Assert.Equal(new[] { 42, 43 }, yearless);
-
-        var withYear = (IEnumerable<int>)matchMethod.Invoke(null,
-            new object[] { new CinemaMediaResolver.MediaName("Dune", 2021), results })!;
-        Assert.Equal(new[] { 43 }, withYear);
+        Assert.Equal(new[] { 43 }, Matches(null));
+        Assert.Equal(new[] { 42 }, Matches(1984)); // Known year always wins.
+        results[0].ProductionYear = 2012;
+        Assert.Equal(new[] { 42, 43 }, Matches(null)); // Nine years is ambiguous.
+        results[0].ProductionYear = 2011;
+        Assert.Equal(new[] { 43 }, Matches(null));
+        results[0].ProductionYear = null;
+        Assert.Equal(new[] { 42, 43 }, Matches(null));
     }
 
     [Fact]

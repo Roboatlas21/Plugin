@@ -157,6 +157,7 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
                     results = await providers.GetRemoteSearchResults<Movie, MovieInfo>(new RemoteSearchQuery<MovieInfo>
                     {
                         SearchInfo = new MovieInfo { Name = name!.Title, Year = name.Year },
+                        SearchProviderName = "TheMovieDb",
                         IncludeDisabledProviders = false,
                     }, cancellationToken).WaitAsync(cancellationToken).ConfigureAwait(false);
                 }
@@ -165,6 +166,7 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
                     results = await providers.GetRemoteSearchResults<Series, SeriesInfo>(new RemoteSearchQuery<SeriesInfo>
                     {
                         SearchInfo = new SeriesInfo { Name = name!.Title },
+                        SearchProviderName = "TheMovieDb",
                         IncludeDisabledProviders = false,
                     }, cancellationToken).WaitAsync(cancellationToken).ConfigureAwait(false);
                 }

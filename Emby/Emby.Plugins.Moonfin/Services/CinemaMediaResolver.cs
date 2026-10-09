@@ -174,6 +174,7 @@ namespace Emby.Plugins.Moonfin.Services
                             new RemoteSearchQuery<MovieInfo>
                             {
                                 SearchInfo = new MovieInfo { Name = name!.Title, Year = name.Year },
+                                SearchProviderName = "TheMovieDb",
                                 IncludeDisabledProviders = false,
                             },
                             cancellationToken).ConfigureAwait(false);
@@ -184,6 +185,7 @@ namespace Emby.Plugins.Moonfin.Services
                             new RemoteSearchQuery<SeriesInfo>
                             {
                                 SearchInfo = new SeriesInfo { Name = name!.Title },
+                                SearchProviderName = "TheMovieDb",
                                 IncludeDisabledProviders = false,
                             },
                             cancellationToken).ConfigureAwait(false);

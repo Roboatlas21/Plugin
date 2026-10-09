@@ -152,11 +152,13 @@ public sealed partial class CinemaMediaResolver
                         IncludeDisabledProviders = false,
                     }, cancellationToken), cancellationToken).ConfigureAwait(false);
                 }
-                var matches = Matches(name!, results).Take(2).ToArray();
-                if (matches.Length > 1 || matches.Any(id => id <= 0)) return new(null);
-                if (matches.Length == 0) continue; // e.g. a hashed cache filename
-                if (direct.HasValue && direct.Value != matches[0]) return new(null);
-                var match = new Resolution(matches[0], searchType);
+                // Use TMDB's ranking, filtering the known year when the host doesn't.
+                var first = results.FirstOrDefault(r => !name!.Year.HasValue ||
+                    (r.ProductionYear ?? r.PremiereDate?.Year) == name.Year);
+                var matchId = PositiveTmdb(first?.ProviderIds);
+                if (!matchId.HasValue) continue;
+                if (direct.HasValue && direct != matchId) return new(null);
+                var match = new Resolution(matchId.Value, searchType);
                 if (resolved != null && resolved.TmdbId != match.TmdbId) return new(null);
                 resolved = match;
             }
@@ -272,25 +274,6 @@ public sealed partial class CinemaMediaResolver
         if (suffix.Success && token.Any(char.IsLetter) &&
             (token.Count(char.IsDigit) > 1 || Regex.IsMatch(token, @"\d[A-Za-z]") || mixedCaseId))
             yield return new MediaName(title.Substring(0, suffix.Index), source.Year);
-    }
-
-    private static IEnumerable<int> Matches(MediaName name, IEnumerable<RemoteSearchResult> results)
-    {
-        var title = NormalizeTitle(name.Title);
-        var exact = results.Where(r => NormalizeTitle(r.Name ?? "") == title &&
-                (!name.Year.HasValue || (r.ProductionYear ?? r.PremiereDate?.Year) == name.Year)).ToArray();
-        // An exact candidate without an ID leaves identity uncertain too.
-        var ids = exact.Select(r => PositiveTmdb(r.ProviderIds) ?? 0).Distinct().ToArray();
-        if (name.Year.HasValue || ids.Length < 2 || ids.Contains(0)) return ids;
-
-        // Prefer a remake only when all competing IDs have reliable, distinct years.
-        var dated = exact.GroupBy(r => PositiveTmdb(r.ProviderIds)!.Value)
-            .Select(g => (Id: g.Key, Years: g.Select(r => r.ProductionYear ?? r.PremiereDate?.Year).Distinct().ToArray()))
-            .ToArray();
-        if (dated.Any(g => g.Years.Length != 1 || !g.Years[0].HasValue)) return ids;
-        var newest = dated.OrderByDescending(g => g.Years[0]!.Value).ToArray();
-        return newest[0].Years[0]!.Value - newest[1].Years[0]!.Value >= 10
-            ? new[] { newest[0].Id } : ids;
     }
 
     // Recognize embedded provider IDs by their namespace, not the downloader.

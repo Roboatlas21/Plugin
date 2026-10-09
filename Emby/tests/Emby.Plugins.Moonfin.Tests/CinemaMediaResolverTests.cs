@@ -9,65 +9,50 @@ namespace Emby.Plugins.Moonfin.Tests;
 public sealed class CinemaMediaResolverTests
 {
     [Theory]
-    [InlineData("Dune.Part.Two.2024.Official.Trailer.mp4", "Dune Part Two", 2024)]
-    [InlineData("Dune2021.mp4", "Dune", 2021)]
-    [InlineData("Dune2021 Trailer.mp4", "Dune", 2021)]
-    [InlineData("Dune2021 Official Trailer 1080p.mp4", "Dune", 2021)]
-    [InlineData("The Batman2022 Trailer.mp4", "The Batman", 2022)]
-    [InlineData("Amélie2001 Trailer.mp4", "Amélie", 2001)]
-    [InlineData("Blade Runner2049 Trailer.mp4", "Blade Runner2049", null)]
-    [InlineData("Dune 2021 Trailer Coming Soon.mp4", "Dune", 2021)]
-    [InlineData("Dune 2021 Trailer Now Streaming.mp4", "Dune", 2021)]
-    [InlineData("Dune 2021 Trailer Watch at Home.mp4", "Dune", 2021)]
-    [InlineData("The Batman 2022 Official Trailer Full HD.mp4", "The Batman", 2022)]
-    [InlineData("Oppenheimer 2023 4K HDR Trailer.mp4", "Oppenheimer", 2023)]
-    [InlineData("Dune 2021 4K HDR Trailer Watch at Home.mp4", "Dune", 2021)]
-    [InlineData("Show Season 5 Trailer Now Streaming.mp4", "Show", null)]
-    [InlineData("The New World (2005) Trailer.mp4", "The New World", 2005)]
-    [InlineData("The New 2024 Trailer.mp4", "The New", 2024)]
-    [InlineData("A New 2021 Trailer.mp4", "A New", 2021)]
-    [InlineData("The New 2024 Trailer Now Streaming.mp4", "The New", 2024)]
-    [InlineData("Dune watch at home 2021 trailer djdjdj.mp4", "Dune", 2021)]
-    [InlineData("The Batman Watch Now 2022 Teaser Trailer W3FFSjR.mp4", "The Batman", 2022)]
-    [InlineData("Oppenheimer (2023) On Digital Teaser Trailer 1080p [QB176lyq-GH].webm", "Oppenheimer", 2023)]
-    [InlineData("1917 Watch at Home 2019 Teaser Trailer XlkNHBEvuV.mp4", "1917", 2019)]
-    [InlineData("Dune 2021 Trailer 2 sYaHxIjL1BL.mp4", "Dune", 2021)]
-    [InlineData("Spider-Man:.No.Way.Home.2021.Trailer.[6xvIn6wNh4K].mkv", "Spider-Man: No Way Home", 2021)]
-    [InlineData("Home Alone Watch at Home 1990 Trailer djdjdj.mp4", "Home Alone", 1990)]
-    [InlineData("Dune 2021 1080p [abc_defghij].mp4", "Dune", 2021)]
-    [InlineData("Dune 2021 1080p abcdefghijk.mp4", "Dune", 2021)]
-    [InlineData("Dune 2021 Official Trailer 1080p abcdefghijk.mp4", "Dune", 2021)]
-    [InlineData("Show Season 5 Trailer 1080p abcdefghijk.mp4", "Show", null)]
-    [InlineData("Dune 2021 Official Trailer 1080p [abcdefghijk].mp4", "Dune", 2021)]
-    [InlineData("Show Season 5 Trailer 1080p [abcdefghijk].mp4", "Show", null)]
-    [InlineData("Dune 2021 [abcdefghijk] 1080p.mp4", "Dune", 2021)]
-    [InlineData("Dune 2021 [abc_defghij].mp4", "Dune", 2021)]
-    [InlineData("Dune 2021 Trailer jdjdjsn.mp4", "Dune", 2021)]
-    [InlineData("Dune official trailer 2021 jdjdjsn.mp4", "Dune", 2021)]
-    [InlineData("Dune_2021_Trailer_jdjdjsn.mp4", "Dune", 2021)]
-    [InlineData("Dune 2021 abcd_efghij.mp4", "Dune", 2021)]
-    [InlineData("Dune 2021 [abc_defghij] Trailer.mp4", "Dune", 2021)]
-    [InlineData("Dune 2021 jdidisisj.mp4", "Dune", 2021)]
-    [InlineData("Dune (2021) [abcdefghijk].mp4", "Dune", 2021)]
-    [InlineData("Dune 2021 Trailer [abcdefghijk].mp4", "Dune", 2021)]
-    [InlineData("Dune dhjdiii3jeb 2023.mp4", "Dune", 2023)]
-    [InlineData("Dune Part Two 2024 jdjdjsn.mp4", "Dune Part Two", 2024)]
-    [InlineData("Pride and Prejudice 2005.mp4", "Pride and Prejudice", 2005)]
-    [InlineData("Dune Official Trailer (2024).mp4", "Dune", 2024)]
-    [InlineData("Show Season 5 Trailer (2026).mp4", "Show", null)]
-    [InlineData("Show Season 5 (2026) Trailer.mp4", "Show", null)]
-    [InlineData("Show (2026) Season 5 Trailer.mp4", "Show", null)]
-    [InlineData("Show S05 Official Trailer.mp4", "Show", null)]
-    [InlineData("1917 Trailer.mp4", "1917", null)]
-    public void ParseNameFindsSeriesTitleWithoutSeasonHints(
-        string input,
-        string title,
-        int? year)
+    [InlineData("Dune.2021.1080p.BluRay.x264.mkv", "Dune", 2021, "Dune", 2021)]
+    [InlineData("Dune2021.mp4", "Dune2021", null, "Dune", 2021)]
+    [InlineData("Dune2021 Trailer.mp4", "Dune2021", null, "Dune", 2021)]
+    [InlineData("Dune2021 Official Trailer 1080p.mp4", "Dune2021 Official", null, "Dune", 2021)]
+    [InlineData("The Batman2022 Trailer.mp4", "The Batman2022", null, "The Batman", 2022)]
+    [InlineData("Amélie2001 Trailer.mp4", "Amélie2001", null, "Amélie", 2001)]
+    [InlineData("1917 Trailer.mp4", "1917", null, "1917", null)]
+    [InlineData("Blade Runner2049 Trailer.mp4", "Blade Runner2049", null, "Blade Runner2049", null)]
+    [InlineData("19172019 Trailer.mp4", "19172019", null, "19172019", null)]
+    [InlineData("The New 2024 Trailer.mp4", "The New", 2024, "The New", 2024)]
+    [InlineData("The Coming Soon 2024 Trailer.mp4", "The Coming Soon", 2024, "The Coming Soon", 2024)]
+    [InlineData("Dune 2021 Trailer Now Streaming.mp4", "Dune", 2021, "Dune", 2021)]
+    [InlineData("Dune 2021 Trailer HDR10.mp4", "Dune", 2021, "Dune", 2021)]
+    [InlineData("Dune watch at home 2021 trailer djdjdj.mp4", "Dune watch at home", 2021, "Dune", 2021)]
+    [InlineData("The Batman Watch Now 2022 Teaser Trailer W3FFSjR.mp4", "The Batman Watch Now", 2022, "The Batman", 2022)]
+    [InlineData("Dune official trailer 2021 jdjdjsn.mp4", "Dune official", 2021, "Dune", 2021)]
+    [InlineData("Dune dhjdiii3jeb 2023.mp4", "Dune dhjdiii3jeb", 2023, "Dune", 2023)]
+    [InlineData("Dune Official Trailer (2024).mp4", "Dune Official", 2024, "Dune", 2024)]
+    [InlineData("Dune Trailer 2 (2024).mp4", "Dune Trailer 2", 2024, "Dune", 2024)]
+    [InlineData("Silo Season 5 Trailer.mp4", "Silo Season 5", null, "Silo", null)]
+    [InlineData("Silo S05 Official Trailer (2026).mp4", "Silo S05 Official", 2026, "Silo", null)]
+    [InlineData("Show Season 5 Trailer Now Streaming.mp4", "Show Season 5 Trailer Now Streaming", null, "Show", null)]
+    [InlineData("Show S05 Official Trailer.mp4", "Show S05 Official", null, "Show", null)]
+    [InlineData("Dune Part Two.2024.2160p.BluRay.mkv", "Dune.Part.Two", 2024, "Dune Part Two", 2024)]
+    [InlineData("Oppenheimer (2023) On Digital Teaser Trailer 1080p [QB176lyq-GH].webm", "Oppenheimer", 2023, "Oppenheimer", 2023)]
+    public void CleansTrailerSuffixesAfterHostNameParsing(
+        string filename, string hostTitle, int? hostYear, string expectedTitle, int? expectedYear)
     {
-        var parsed = CinemaMediaResolver.ParseName(input);
+        // Host name/year parsing is delegated to Emby; verify only Moonbase's cleanup.
+        var called = false;
+        var parsed = CinemaMediaResolver.ParseName(filename, name =>
+        {
+            called = true;
+            Assert.NotEmpty(name);
+            return new MediaBrowser.Controller.Providers.ItemLookupInfo
+            {
+                Name = hostTitle,
+                Year = hostYear,
+            };
+        });
+        Assert.True(called);
         Assert.NotNull(parsed);
-        Assert.Equal(title, parsed.Title);
-        Assert.Equal(year, parsed.Year);
+        Assert.Equal(expectedTitle, parsed.Title);
+        Assert.Equal(expectedYear, parsed.Year);
     }
 
     [Fact]

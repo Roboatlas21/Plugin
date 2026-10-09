@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Providers;
@@ -77,7 +78,8 @@ public sealed class CinemaMediaResolverCompatibilityTests
     [InlineData("2001 A Space Odyssey Trailer 2160p.mp4", "2001 A Space Odyssey", null)]
     public void ExtractsOnlyTrailingDecorations(string name, string title, int? year)
     {
-        var parsed = CinemaMediaResolver.ParseName(name);
+        var library = (ILibraryManager)new FakeLibraryManager();
+        var parsed = CinemaMediaResolver.ParseName(name, library.ParseName);
         Assert.NotNull(parsed);
         Assert.Equal(title, parsed.Title);
         Assert.Equal(year, parsed.Year);

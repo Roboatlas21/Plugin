@@ -89,7 +89,9 @@ namespace Emby.Plugins.Moonfin.Services
                     ? new[] { ParseName(item.Path), ParseName(item.Name) }
                     : new[] { new MediaName(owner.Name, owner is Movie ? owner.ProductionYear : null) })
                 .Where(n => n != null)
-                .Select(n => expectedMediaType == "tv" ? new MediaName(n!.Title, null) : n!)
+                .Select(n => expectedMediaType == "tv"
+                    ? new MediaName(n!.Title, null)
+                    : new MediaName(n!.Title, n!.Year ?? (owner == null ? item.ProductionYear : null)))
                 .Distinct();
 
             foreach (var name in names)
@@ -152,19 +154,24 @@ namespace Emby.Plugins.Moonfin.Services
 
             var title = pathOrName.Replace('\\', '/').Split('/').Last();
             title = Regex.Replace(title, @"\.(mp4|mkv|avi|mov|webm|m4v|ts)$", "", RegexOptions.IgnoreCase);
-            title = title.Replace('.', ' ').Replace('_', ' ').Trim();
+            title = title.Replace('.', ' ').Trim();
             title = Regex.Replace(
                 title,
                 @"\s*[\[(]?(?:720p|1080p|2160p|4k|hd|uhd)[\])]?\s*$",
                 "",
                 RegexOptions.IgnoreCase);
-            const string trailerSuffixPattern = @"(?:^|[\s\-–:])(?:official\s+|theatrical\s+|final\s+)?(?:teaser(?:\s+trailer)?|trailer)(?:\s*#?\d+)?\s*$";
+            const string trailerSuffixPattern = @"(?:^|[\s\-–:])(?:official\s+|theatrical\s+|final\s+)?(?:teaser(?:\s+trailer)?|trailer)(?:\s*#?\d{1,2})?\s*$";
+            // Keep underscores intact until embedded video IDs have been stripped.
+            title = Regex.Replace(title, @"(?<label>\b(?:trailer|teaser))[\s_]+[A-Za-z0-9_-]{7,}$",
+                "${label}", RegexOptions.IgnoreCase);
             // Remove video IDs and generated suffixes without losing a known release year.
             title = Regex.Replace(title, @"\s*\[[A-Za-z0-9_-]{11}\]\s*$", "");
             title = Regex.Replace(title, trailerSuffixPattern, "", RegexOptions.IgnoreCase).Trim(' ', '-', '–', ':');
             title = Regex.Replace(title, @"\s*\[[A-Za-z0-9_-]{11}\]\s*$", "");
-            title = Regex.Replace(title, @"(?<year>\b(?:19|20)\d{2}\b[)\]]?)\s+[A-Za-z0-9_-]{7,}$",
+            title = Regex.Replace(title, @"(?<year>(?:19|20)\d{2}[)\]]?)[\s_]+[A-Za-z0-9_-]{7,}$",
                 "${year}", RegexOptions.IgnoreCase);
+            title = title.Replace('_', ' ');
+            title = Regex.Replace(title, trailerSuffixPattern, "", RegexOptions.IgnoreCase).Trim(' ', '-', '–', ':');
 
             int? year = null;
             var match = Regex.Match(title, @"^(?<title>.+?)[\s\-(\[]+(?<year>\d{4})[)\]]?\s*$");

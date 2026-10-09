@@ -35,10 +35,11 @@ marker is required.
 `expectedMediaType` selects the filename-search category only when the intro's
 own type cannot be established. It never types a bare TMDB ID or overrides
 explicit, item, or owner type. Movie searches still require exact normalized
-title plus matching year. Filename parsing ignores conventional trailer labels,
-trailing promotional phrases, bracketed YouTube IDs, quality labels, and
-generated-looking suffixes around an explicit year; remote matches still require
-the exact title and year. Series
+title plus matching year. Filename parsing delegates standard name/year and
+technical-label handling to the host's built-in library parser, then removes
+trailer labels, promotional trailer suffixes, generated-looking identifiers,
+and TV season hints. It also supports compact years such as Dune2021. Remote
+matches still require exact title and year. Series
 searches require an exact, unambiguous title
 and ignore the trailer filename's release year, which need not be the show's
 debut year. Season N/SNN suffixes are also ignored when matching series.

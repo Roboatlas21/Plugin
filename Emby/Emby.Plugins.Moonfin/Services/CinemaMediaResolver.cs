@@ -195,7 +195,7 @@ namespace Emby.Plugins.Moonfin.Services
             return new MediaName(title, year);
         }
 
-                private static IEnumerable<int> Matches(MediaName name, IEnumerable<RemoteSearchResult> results)
+        private static IEnumerable<int> Matches(MediaName name, IEnumerable<RemoteSearchResult> results)
         {
             var title = NormalizeTitle(name.Title);
             return results

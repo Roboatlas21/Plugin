@@ -164,7 +164,7 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         return new MediaName(title, year);
     }
 
-        private static IEnumerable<int> Matches(MediaName name, IEnumerable<RemoteSearchResult> results)
+    private static IEnumerable<int> Matches(MediaName name, IEnumerable<RemoteSearchResult> results)
     {
         var title = NormalizeTitle(name.Title);
         return results.Where(r => NormalizeTitle(r.Name ?? "") == title &&

@@ -64,27 +64,59 @@ public sealed class CinemaMediaResolverTests
     }
 
     [Theory]
-    [InlineData("Dune_438631_trailer.mp4", "Dune", "movie", 438631)]
-    [InlineData(@"C:\NeXroll\movies\Dune_Part_Two_693134_trailer.MP4", "Dune Part Two", "movie", 693134)]
-    [InlineData("Silo_tvdb403245_trailer.mp4", "Silo", "tv", null)]
-    [InlineData("The_Last_of_Us_tvdb116602_trailer.webm", "The Last of Us", "tv", null)]
-    public void RecognizesNeXrollDownloadNames(string filename, string title, string type, int? tmdbId)
+    [InlineData("Dune_438631_trailer.mp4", "Dune", "movie", 438631, null)]
+    [InlineData(@"C:\Trailers\Dune_Part_Two_693134_trailer.MP4", "Dune Part Two", "movie", 693134, null)]
+    [InlineData("Dune_tmdb438631_trailer.mp4", "Dune", "movie", 438631, null)]
+    [InlineData("Silo_tvdb403245_trailer.mp4", "Silo", "tv", null, 403245)]
+    [InlineData("The_Last_of_Us_tvdb116602_trailer.webm", "The Last of Us", "tv", null, 116602)]
+    public void EmbeddedTrailerIdsAreProviderTyped(
+        string filename, string title, string type, int? tmdbId, int? tvdbId)
     {
-        var parsed = CinemaMediaResolver.ParseNeXrollName(filename);
+        var parsed = CinemaMediaResolver.ParseTrailerFilenameIdentity(filename);
         Assert.NotNull(parsed);
         Assert.Equal(title, parsed.Value.Title);
         Assert.Equal(type, parsed.Value.MediaType);
         Assert.Equal(tmdbId, parsed.Value.TmdbId);
+        Assert.Equal(tvdbId, parsed.Value.TvdbId);
     }
 
     [Theory]
     [InlineData("Silo_trailer.mp4")]
+    [InlineData("Dune_2021_trailer.mp4")]
     [InlineData("Dune_438631_trailer.mp4.part")]
     [InlineData("Silo_tvdb0_trailer.mp4")]
     [InlineData("Dune_999999999999999999999_trailer.mp4")]
-    public void IgnoresUnrecognizedNeXrollNames(string filename)
+    public void UnreliableFilenameNumbersAreNotAssumedToBeIds(string filename)
     {
-        Assert.Null(CinemaMediaResolver.ParseNeXrollName(filename));
+        Assert.Null(CinemaMediaResolver.ParseTrailerFilenameIdentity(filename));
+    }
+
+    [Fact]
+    public void TvdbLookupAcceptsUniqueTmdbMappingWithoutEchoedTvdbId()
+    {
+        // Some providers return only the mapped TMDB ID for an ID-scoped lookup.
+        var mapped = new MediaBrowser.Model.Providers.RemoteSearchResult
+        {
+            ProviderIds = new() { ["Tmdb"] = "42" },
+        };
+        Assert.Equal(42, CinemaMediaResolver.UniqueTvdbTmdbId(403245, [mapped, mapped]));
+        mapped.ProviderIds["Tvdb"] = "999";
+        Assert.Null(CinemaMediaResolver.UniqueTvdbTmdbId(403245, [mapped]));
+    }
+
+    [Fact]
+    public void TvdbLookupRejectsAmbiguousOrMissingTmdbIds()
+    {
+        var first = new MediaBrowser.Model.Providers.RemoteSearchResult
+        {
+            ProviderIds = new() { ["Tmdb"] = "42", ["Tvdb"] = "403245" },
+        };
+        var other = new MediaBrowser.Model.Providers.RemoteSearchResult
+        {
+            ProviderIds = new() { ["Tmdb"] = "43", ["Tvdb"] = "403245" },
+        };
+        Assert.Null(CinemaMediaResolver.UniqueTvdbTmdbId(403245, [first, other]));
+        Assert.Null(CinemaMediaResolver.UniqueTvdbTmdbId(403245, []));
     }
 
     [Fact]

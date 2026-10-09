@@ -94,6 +94,16 @@ public sealed class CinemaMediaResolverCompatibilityTests
     }
 
     [Fact]
+    public void ProviderIdsInDisplayNamesDoNotMisparseSlashes()
+    {
+        var parsed = CinemaMediaResolver.ParseTrailerFilenameIdentity(
+            "Ranma1/2_tvdb123456_trailer", isPath: false);
+        Assert.NotNull(parsed);
+        Assert.Equal("Ranma1/2", parsed.Value.Title);
+        Assert.Equal(123456, parsed.Value.TvdbId);
+    }
+
+    [Fact]
     public void DisplayNamesWithSlashesAreNotTreatedAsPaths()
     {
         var library = (ILibraryManager)new FakeLibraryManager();

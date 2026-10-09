@@ -117,7 +117,7 @@ public sealed partial class CinemaMediaResolver
         else
             candidates = new[] { ParseName(item.Path, parseStandard), ParseName(item.Name, parseStandard, isPath: false) };
         var names = candidates.OfType<MediaName>().ToArray();
-        // Try cleaned filenames first, then normal names, then less certain alternatives.
+        // Try generated-suffix cleanup first, then the complete title.
         var ordered = owner == null && filenameIdentity == null
             ? names.SelectMany(OrderedNames)
             : names;
@@ -195,7 +195,21 @@ public sealed partial class CinemaMediaResolver
     {
         if (string.IsNullOrWhiteSpace(pathOrName)) return null;
         var filename = isPath ? pathOrName.Replace('\\', '/').Split('/').Last() : pathOrName;
-        filename = Regex.Replace(filename, @"\.(mp4|mkv|avi|mov|webm|m4v|ts)$", "", RegexOptions.IgnoreCase);
+        filename = Regex.Replace(filename, @"\.(mp4|mkv|avi|mov|webm|m4v|ts)$", "", RegexOptions.IgnoreCase)
+            .Normalize(NormalizationForm.FormKC).Replace('⧸', '/').Replace('⁄', '/').Replace('∕', '/');
+        // A repeated uploader/credit identifies a channel prefix, not part of the title.
+        var branded = Regex.Match(filename,
+            @"^(?<uploader>.+?)\s+-\s+(?<title>.+?)\s*\|\s*(?:(?:official|final|theatrical)\s+)?(?:teaser\s+trailer|trailer|teaser)\s*\|\s*(?<credit>[^|]+)$",
+            RegexOptions.IgnoreCase);
+        if (branded.Success)
+        {
+            var credit = Regex.Replace(branded.Groups["credit"].Value,
+                @"(?:\s+-\s+|\s*\[)[A-Za-z0-9_-]{11}\]?$", "").Trim();
+            var uploader = branded.Groups["uploader"].Value;
+            if (credit.Length > 0 && (uploader.Equals(credit, StringComparison.OrdinalIgnoreCase) ||
+                uploader.StartsWith(credit + " ", StringComparison.OrdinalIgnoreCase)))
+                filename = branded.Groups["title"].Value;
+        }
         var parsed = parseStandard(filename);
         var title = parsed.Name ?? "";
         var year = parsed.Year;
@@ -233,7 +247,7 @@ public sealed partial class CinemaMediaResolver
             year = null;
         }
 
-        title = title.Replace('.', ' ').Replace('_', ' ').Trim(' ', '-', '–', ':');
+        title = title.Replace('.', ' ').Replace('_', ' ').Trim(' ', '-', '–', ':', '|');
         if (year is < 1900 || year > DateTime.UtcNow.Year + 3) year = null;
         if (title.Length == 0 || title.Length > 200 || NormalizeTitle(title).Length == 0
             || Regex.IsMatch(title, @"\A[0-9a-f]{32,64}\z", RegexOptions.IgnoreCase)) return null;
@@ -253,14 +267,6 @@ public sealed partial class CinemaMediaResolver
             yield return new MediaName(title.Substring(0, suffix.Index), source.Year);
 
         yield return source;
-        // Only try channel/description fragments when the full title found nothing.
-        foreach (Match separator in Regex.Matches(title, @"\s*\|\s*|\s+[-–—]\s+"))
-        {
-            var before = title.Substring(0, separator.Index).Trim(' ', '|');
-            var after = title.Substring(separator.Index + separator.Length).Trim(' ', '|');
-            if (before.Length > 0) yield return new MediaName(before, source.Year);
-            if (after.Length > 0) yield return new MediaName(after, source.Year);
-        }
     }
 
     // Recognize embedded provider IDs by their namespace, not the downloader.

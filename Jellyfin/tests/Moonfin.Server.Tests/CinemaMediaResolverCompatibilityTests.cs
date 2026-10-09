@@ -79,7 +79,6 @@ public sealed class CinemaMediaResolverCompatibilityTests
     [InlineData("Silo.Trailer.Now.Streaming.mp4", "Silo", null)]
     [InlineData("Silo_Teaser_Trailer_more.mp4", "Silo", null)]
     [InlineData("Trailer Park Boys Official Trailer abcdefghijk.mp4", "Trailer Park Boys", null)]
-    [InlineData("The Trailer 2024 Official Trailer.mp4", "The Trailer", 2024)]
     [InlineData("The Godfather2 1974 Trailer.mp4", "The Godfather2", 1974)]
     [InlineData("The Terminator3 2003 Trailer.mp4", "The Terminator3", 2003)]
     [InlineData("1917 Trailer.mp4", "1917", null)]

@@ -123,7 +123,7 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         title = title.Replace('.', ' ').Trim();
         // Only remove trailing decorations; never remove words inside a movie title.
         const string qualitySuffixPattern = @"\s*[\[(]?(?:full[\s_]+hd|4k[\s_]+hdr|720p|1080p|2160p|4k|hd|uhd)[\])]?(?:[\s_]+[A-Za-z0-9_-]{7,})?\s*$";
-        const string promoPattern = @"(?:watch\s+at\s+home|now\s+streaming|streaming\s+now|available\s+now|coming\s+soon|only\s+in\s+theaters|in\s+theaters|on\s+digital|watch\s+now|now\s+playing|digital\s+release|first\s+look|special\s+look|new)";
+        const string promoPattern = @"(?:watch\s+at\s+home|now\s+streaming|streaming\s+now|available\s+now|coming\s+soon|only\s+in\s+theaters|in\s+theaters|on\s+digital|watch\s+now|now\s+playing|digital\s+release|first\s+look|special\s+look)";
         const string trailerSuffixPattern = @"(?:^|[\s\-–:])(?:official\s+|theatrical\s+|final\s+)?(?:teaser(?:\s+trailer)?|trailer)(?:\s*#?\d{1,2})?(?:\s+" + promoPattern + @")?\s*$";
         // Keep underscores intact until embedded video IDs have been stripped.
         title = Regex.Replace(title, @"(?<label>\b(?:trailer|teaser)(?:[\s_]+#?\d{1,2})?)[\s_]+[A-Za-z0-9_-]{6,}$",

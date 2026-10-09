@@ -176,6 +176,25 @@ public sealed class CinemaMediaResolverTests
     }
 
     [Fact]
+    public void SeasonAndEpisodeExtrasPointToTheirSeries()
+    {
+        var seriesId = Guid.NewGuid();
+        var method = typeof(CinemaMediaResolver).GetMethod(
+            "OwnerSeriesId", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        foreach (MediaBrowser.Controller.Entities.BaseItem owner in new MediaBrowser.Controller.Entities.BaseItem[]
+        {
+            new MediaBrowser.Controller.Entities.TV.Season { SeriesId = seriesId },
+            new MediaBrowser.Controller.Entities.TV.Episode { SeriesId = seriesId },
+        })
+            Assert.Equal(seriesId, method.Invoke(null, new object[] { owner }));
+
+        Assert.Equal(Guid.Empty, method.Invoke(
+            null, new object[] { new MediaBrowser.Controller.Entities.Movies.Movie() }));
+    }
+
+    [Fact]
     public void EndpointRequiresAuthentication()
     {
         Assert.NotNull(typeof(ResolveCinemaMediaRequest).GetCustomAttribute<AuthenticatedAttribute>());

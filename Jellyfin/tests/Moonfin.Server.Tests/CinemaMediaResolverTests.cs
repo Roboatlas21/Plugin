@@ -115,6 +115,82 @@ public sealed class CinemaMediaResolverTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SeasonAndEpisodeOwnedTrailersUseAccessibleSeriesIdentity(bool episodeOwner)
+    {
+        var user = Guid.NewGuid();
+        var series = new Series
+        {
+            Id = Guid.NewGuid(), Name = "Silo", ProviderIds = new() { ["Tmdb"] = "42" },
+        };
+        BaseItem owner = episodeOwner
+            ? new Episode { Id = Guid.NewGuid(), SeriesId = series.Id, Name = "Pilot",
+                ProviderIds = new() { ["Tmdb"] = "999" } }
+            : new Season { Id = Guid.NewGuid(), SeriesId = series.Id, Name = "Season 1",
+                ProviderIds = new() { ["Tmdb"] = "999" } };
+        var trailer = new Video
+        {
+            Id = Guid.NewGuid(), OwnerId = owner.Id, Path = "Wrong Show Trailer.mp4",
+        };
+        var items = new Dictionary<Guid, BaseItem>
+        {
+            [trailer.Id] = trailer, [owner.Id] = owner, [series.Id] = series,
+        };
+        var library = new FakeLibraryManager
+        {
+            ItemForUserHandler = (id, uid) =>
+            {
+                Assert.Equal(user, uid);
+                return items.GetValueOrDefault(id);
+            },
+        };
+        var resolver = new CinemaMediaResolver(library, null!);
+
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
+            await resolver.ResolveMediaAsync(trailer.Id, user, "movie", default));
+
+        items.Remove(series.Id);
+        Assert.Null((await resolver.ResolveMediaAsync(trailer.Id, user, "tv", default)).TmdbId);
+
+        items[series.Id] = series;
+        items.Remove(owner.Id);
+        Assert.Null((await resolver.ResolveMediaAsync(trailer.Id, user, "tv", default)).TmdbId);
+    }
+
+    [Fact]
+    public async Task EpisodeOwnedTrailerUsesSeriesNameForRemoteSearch()
+    {
+        var user = Guid.NewGuid();
+        var series = new Series { Id = Guid.NewGuid(), Name = "Silo" };
+        var episode = new Episode { Id = Guid.NewGuid(), Name = "Pilot", SeriesId = series.Id };
+        var trailer = new Video
+        {
+            Id = Guid.NewGuid(), OwnerId = episode.Id, Path = "Other Movie Trailer.mp4",
+        };
+        var library = new FakeLibraryManager
+        {
+            ItemForUserHandler = (id, uid) =>
+            {
+                Assert.Equal(user, uid);
+                return id == trailer.Id ? trailer : id == episode.Id ? episode : id == series.Id ? series : null;
+            },
+        };
+        var provider = DispatchProxy.Create<IProviderManager, SearchProvider>();
+        ((SearchProvider)(object)provider).Search = (type, title, year) =>
+        {
+            Assert.Equal("tv", type);
+            Assert.Equal("Silo", title);
+            Assert.Null(year);
+            return [Result(42, "Silo", 2023)];
+        };
+        var resolver = new CinemaMediaResolver(library, provider);
+
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
+            await resolver.ResolveMediaAsync(trailer.Id, user, "movie", default));
+    }
+
+    [Theory]
     [InlineData("Show Season 5 (2026) Trailer.mp4", "Show")]
     [InlineData("Show (2026) Season 5 Trailer.mp4", "Show")]
     [InlineData("Show S05 Official Trailer.mp4", "Show")]

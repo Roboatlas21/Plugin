@@ -31,14 +31,16 @@ is returned, the resolver falls back to strict, unambiguous series-title matchin
 
 Other filenames use the host's native parser with a small trailer-label cleanup.
 Movie name searches require an exact normalized title and, when available, a
-matching year. Without a year, the exact match must identify one distinct TMDB
-movie among the provider results. TV searches require an exact series title
-and ignore season numbers or trailer-release years.
+matching year. TV searches require an exact series title and ignore season
+numbers or trailer-release years. If an exact title yields multiple TMDB IDs
+without a known release year, the newest is accepted only when it is at least
+10 years newer than the runner-up and every competing ID has one known year.
+Otherwise the match stays unresolved.
 Readable display names can recover hashed file paths. Display names are treated
 as titles, not filesystem paths, so a slash in `Ranma1/2` is preserved.
 Only after a full-title miss are delimiter-separated or generated-ID-suffix
 candidates tried, including long mixed-case letter-only identifiers. Ordinary
-title-cased words are not treated as IDs. Ambiguous matches remain unresolved.
+title-cased words are not treated as IDs. Unresolved ambiguities remain hidden.
 
 `expectedMediaType` only selects a name-search category when authoritative
 item/owner and embedded-ID metadata cannot establish it. Searches do not switch

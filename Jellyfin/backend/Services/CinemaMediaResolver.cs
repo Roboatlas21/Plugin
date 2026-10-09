@@ -293,10 +293,20 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
     private static IEnumerable<int> Matches(MediaName name, IEnumerable<RemoteSearchResult> results)
     {
         var title = NormalizeTitle(name.Title);
-        return results.Where(r => NormalizeTitle(r.Name ?? "") == title &&
-                (!name.Year.HasValue || r.ProductionYear == name.Year))
-            // An exact candidate without an ID leaves identity uncertain too.
-            .Select(r => PositiveTmdb(r.ProviderIds) ?? 0).Distinct();
+        var exact = results.Where(r => NormalizeTitle(r.Name ?? "") == title &&
+                (!name.Year.HasValue || r.ProductionYear == name.Year)).ToArray();
+        // An exact candidate without an ID leaves identity uncertain too.
+        var ids = exact.Select(r => PositiveTmdb(r.ProviderIds) ?? 0).Distinct().ToArray();
+        if (name.Year.HasValue || ids.Length < 2 || ids.Contains(0)) return ids;
+
+        // Prefer a remake only when all competing IDs have reliable, distinct years.
+        var dated = exact.GroupBy(r => PositiveTmdb(r.ProviderIds)!.Value)
+            .Select(g => (Id: g.Key, Years: g.Select(r => r.ProductionYear).Distinct().ToArray()))
+            .ToArray();
+        if (dated.Any(g => g.Years.Length != 1 || !g.Years[0].HasValue)) return ids;
+        var newest = dated.OrderByDescending(g => g.Years[0]!.Value).ToArray();
+        return newest[0].Years[0]!.Value - newest[1].Years[0]!.Value >= 10
+            ? new[] { newest[0].Id } : ids;
     }
 
     // Recognize embedded provider IDs by their namespace, not the downloader.

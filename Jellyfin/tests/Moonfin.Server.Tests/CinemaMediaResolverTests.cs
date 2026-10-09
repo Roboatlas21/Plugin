@@ -104,12 +104,12 @@ public sealed class CinemaMediaResolverTests
     public async Task UntypedSeriesTrailerIdRequiresOwnerMatchOrSearchConfirmation()
     {
         var user = Guid.NewGuid();
-        var series = new Series { Id = Guid.NewGuid() };
+        var series = new Series { Id = Guid.NewGuid(), Name = "Show", ProductionYear = 2016 };
         var intro = new Video
         {
             Id = Guid.NewGuid(),
             OwnerId = series.Id,
-            Path = "Show Trailer.mp4",
+            Path = "Wrong Show Trailer.mp4",
             ProviderIds = new() { ["Tmdb"] = "42" },
         };
         var library = new FakeLibraryManager
@@ -144,6 +144,53 @@ public sealed class CinemaMediaResolverTests
         Assert.Equal(new CinemaMediaResolver.Resolution(43, "tv"),
             await resolver.ResolveMediaAsync(intro.Id, user, "tv", default));
         Assert.Equal(2, searches);
+    }
+
+
+    [Fact]
+    public async Task OwnedMovieSearchUsesOwnerTitleAndYearNotTrailerFilename()
+    {
+        var user = Guid.NewGuid();
+        var movie = new Movie
+        {
+            Id = Guid.NewGuid(), Name = "The Batman", ProductionYear = 2022,
+        };
+        var intro = new Video
+        {
+            Id = Guid.NewGuid(),
+            OwnerId = movie.Id,
+            Path = "/trailers/Other.Movie.2025.Trailer.mp4",
+            Name = "Other Movie Trailer",
+        };
+        var library = new FakeLibraryManager
+        {
+            ItemForUserHandler = (id, uid) =>
+            {
+                Assert.Equal(user, uid);
+                return id == intro.Id ? intro : id == movie.Id ? movie : null;
+            },
+        };
+        var provider = DispatchProxy.Create<IProviderManager, SearchProvider>();
+        var searches = 0;
+        ((SearchProvider)(object)provider).Search = (kind, title, year) =>
+        {
+            searches++;
+            Assert.Equal("movie", kind);
+            Assert.Equal("The Batman", title);
+            Assert.Equal(2022, year);
+            return [Result(42, "The Batman", 2022)];
+        };
+        var resolver = new CinemaMediaResolver(library, provider);
+
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "movie"),
+            await resolver.ResolveMediaAsync(intro.Id, user, "movie", default));
+        Assert.Equal(1, searches);
+
+        // A known owner with no year must not fall back to a misleading year
+        // in the trailer's filename; movie matching remains year-strict.
+        movie.ProductionYear = null;
+        Assert.Null((await resolver.ResolveMediaAsync(intro.Id, user, "movie", default)).TmdbId);
+        Assert.Equal(1, searches);
     }
 
     [Theory]

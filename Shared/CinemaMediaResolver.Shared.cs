@@ -197,19 +197,10 @@ public sealed partial class CinemaMediaResolver
         var filename = isPath ? pathOrName.Replace('\\', '/').Split('/').Last() : pathOrName;
         filename = Regex.Replace(filename, @"\.(mp4|mkv|avi|mov|webm|m4v|ts)$", "", RegexOptions.IgnoreCase)
             .Normalize(NormalizationForm.FormKC).Replace('⧸', '/').Replace('⁄', '/').Replace('∕', '/');
-        // A repeated uploader/credit identifies a channel prefix, not part of the title.
-        var branded = Regex.Match(filename,
-            @"^(?<uploader>.+?)\s+-\s+(?<title>.+?)\s*\|\s*(?:(?:official|final|theatrical)\s+)?(?:teaser\s+trailer|trailer|teaser)\s*\|\s*(?<credit>[^|]+)$",
-            RegexOptions.IgnoreCase);
-        if (branded.Success)
-        {
-            var credit = Regex.Replace(branded.Groups["credit"].Value,
-                @"(?:\s+-\s+|\s*\[)[A-Za-z0-9_-]{11}\]?$", "").Trim();
-            var uploader = branded.Groups["uploader"].Value;
-            if (credit.Length > 0 && (uploader.Equals(credit, StringComparison.OrdinalIgnoreCase) ||
-                uploader.StartsWith(credit + " ", StringComparison.OrdinalIgnoreCase)))
-                filename = branded.Groups["title"].Value;
-        }
+        // Channel-prefixed downloads use "Uploader - Title [video ID]".
+        var prefixed = Regex.Match(filename,
+            @"^.+?\s+-\s+(?<title>.+?)\s+\[[A-Za-z0-9_-]{10,12}\]$");
+        if (prefixed.Success) filename = prefixed.Groups["title"].Value;
         var parsed = parseStandard(filename);
         var title = parsed.Name ?? "";
         var year = parsed.Year;

@@ -9,9 +9,11 @@ The last option assumes that untyped movie and TV trailers are kept in separate
 intro pools. No changes to Jellyfin's Intros response are needed.
 
 When Moonfin cannot establish an identity, the authenticated resolver validates
-access to the video and its owner. If a Movie or Series owns the trailer, owner
-metadata and title are authoritative. Movie title searches use the release
-year when available; yearless searches require one distinct exact TMDB match.
+access to the video and its owner. Movie and Series owners supply the
+authoritative identity. If a Season or Episode owns a trailer, Moonbase instead
+uses the accessible parent Series and its metadata; missing or inaccessible
+series remain unresolved. Movie title searches use the release year when
+available; yearless searches require one distinct exact TMDB match.
 TV title searches do not require a year.
 
 The resolver also recognizes provider IDs embedded in standalone trailer names:

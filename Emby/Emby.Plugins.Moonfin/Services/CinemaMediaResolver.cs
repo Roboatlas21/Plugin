@@ -46,7 +46,11 @@ namespace Emby.Plugins.Moonfin.Services
             if (item.OwnerId != Guid.Empty)
             {
                 owner = _library.GetItemById(item.OwnerId);
-                if (owner == null || !owner.IsVisibleStandalone(user) || (owner is not Movie && owner is not Series))
+                if (owner == null || !owner.IsVisibleStandalone(user)) return new Resolution(null);
+                var seriesId = OwnerSeriesId(owner);
+                if (seriesId != Guid.Empty)
+                    owner = _library.GetItemById(seriesId) as Series;
+                if ((owner is not Movie && owner is not Series) || !owner.IsVisibleStandalone(user))
                     return new Resolution(null);
             }
 
@@ -202,6 +206,14 @@ namespace Emby.Plugins.Moonfin.Services
             }
             return new Resolution(null);
         }
+
+        // An extra attached to a season or episode advertises its series.
+        private static Guid OwnerSeriesId(BaseItem owner) => owner switch
+        {
+            Season season => season.SeriesId,
+            Episode episode => episode.SeriesId,
+            _ => Guid.Empty,
+        };
 
         private static string? ProviderValue(IDictionary<string, string>? ids, string key) =>
             ids?.FirstOrDefault(p => p.Key.Equals(key, StringComparison.OrdinalIgnoreCase)).Value;

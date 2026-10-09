@@ -35,6 +35,10 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         if (item.OwnerId != Guid.Empty)
         {
             owner = library.GetItemById<BaseItem>(item.OwnerId, userId);
+            if (owner == null) return new(null);
+            var seriesId = OwnerSeriesId(owner);
+            if (seriesId != Guid.Empty)
+                owner = library.GetItemById<Series>(seriesId, userId);
             if (owner is not Movie && owner is not Series) return new(null);
         }
 
@@ -176,6 +180,14 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         }
         return new(null);
     }
+
+    // An extra attached to a season or episode advertises its series.
+    private static Guid OwnerSeriesId(BaseItem owner) => owner switch
+    {
+        Season season => season.SeriesId,
+        Episode episode => episode.SeriesId,
+        _ => Guid.Empty,
+    };
 
     private static string? ProviderValue(IDictionary<string, string>? ids, string key) =>
         ids?.FirstOrDefault(p => p.Key.Equals(key, StringComparison.OrdinalIgnoreCase)).Value;

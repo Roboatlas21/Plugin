@@ -156,7 +156,7 @@ namespace Emby.Plugins.Moonfin.Services
             var title = pathOrName.Replace('\\', '/').Split('/').Last();
             title = Regex.Replace(title, @"\.(mp4|mkv|avi|mov|webm|m4v|ts)$", "", RegexOptions.IgnoreCase);
             title = title.Replace('.', ' ').Trim();
-            const string qualitySuffixPattern = @"\s*[\[(]?(?:720p|1080p|2160p|4k|hd|uhd)[\])]?\s*$";
+            const string qualitySuffixPattern = @"\s*[\[(]?(?:720p|1080p|2160p|4k|hd|uhd)[\])]?(?:[\s_]+[A-Za-z0-9_-]{7,})?\s*$";
             title = Regex.Replace(title, qualitySuffixPattern, "", RegexOptions.IgnoreCase);
             const string trailerSuffixPattern = @"(?:^|[\s\-–:])(?:official\s+|theatrical\s+|final\s+)?(?:teaser(?:\s+trailer)?|trailer)(?:\s*#?\d{1,2})?\s*$";
             // Keep underscores intact until embedded video IDs have been stripped.

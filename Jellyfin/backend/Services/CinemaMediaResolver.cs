@@ -227,7 +227,7 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         var year = parsed.Year;
 
         // Once a filename says Trailer/Teaser, everything after that label is decoration.
-        // Use its last occurrence to preserve titles such as Trailer Park Boys.
+        // Use the last trailer label to avoid truncating earlier title words.
         var trailerLabels = Regex.Matches(title,
             @"[\s._:-]+(?:(?:official|final|theatrical)[\s._:-]+)?(?:teaser[\s._:-]+trailer|trailer|teaser)(?![\p{L}\p{N}])",
             RegexOptions.IgnoreCase);
@@ -240,7 +240,7 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         title = Regex.Replace(title,
             @"[\s._:-]+(?:watch[\s._:-]+at[\s._:-]+home|watch[\s._:-]+now|on[\s._:-]+digital)$",
             "", RegexOptions.IgnoreCase);
-        // The host expects a delimiter before a release year; also accept Dune2021.
+        // Handle release years joined directly to titles, which the host may not parse.
         if (!year.HasValue)
         {
             var compact = Regex.Match(title, @"^(?<title>.*\p{L})(?<year>19\d{2}|20\d{2})$");

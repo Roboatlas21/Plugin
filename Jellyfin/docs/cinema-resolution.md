@@ -29,17 +29,19 @@ encountered by the resolver needs either a matching Series-owner ID or a strict
 series lookup. Conflicting types and IDs are rejected. The owner relationship
 is only examined on the server; no trailer-plugin-specific marker is required.
 
-`expectedMediaType` restricts filename searches; it does not type an unverified
-ID or override a trustworthy typed identity. Movie searches require exact normalized
+`expectedMediaType` selects the filename-search category only when the intro's
+own type cannot be established. It never types a bare TMDB ID or overrides
+explicit, item, or owner type. Movie searches still require exact normalized
 title plus matching year. Filename parsing ignores conventional trailer labels,
-bracketed YouTube IDs, and generated-looking suffixes around an explicit year;
-remote matches still require the exact title and year. Series searches require an exact, unambiguous title
+bracketed YouTube IDs, quality labels, and generated-looking suffixes around an
+explicit year; remote matches still require the exact title and year. Series
+searches require an exact, unambiguous title
 and ignore the trailer filename's release year, which need not be the show's
 debut year. Season N/SNN suffixes are also ignored when matching series.
 The Seerr request dialog handles season selection independently.
 
-Filename-only setups must use movie trailers before movies and series trailers
-before episodes. Mixed pools need explicit type metadata. Search never switches
+Untyped filename-only setups must use movie trailers before movies and series
+trailers before episodes. Mixed pools need explicit type metadata. Search never switches
 categories after a miss. Readable display names can identify cached files with
 hashed/unmatched names; ambiguous or contradictory matches return no identity.
 

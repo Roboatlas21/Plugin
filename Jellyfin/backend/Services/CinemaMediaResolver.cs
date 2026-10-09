@@ -62,8 +62,9 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
             return new(id, type);
         }
 
-        // Context selects a search category only; it never types a bare TMDB ID.
-        if (expectedMediaType is not ("movie" or "tv") || (type != null && type != expectedMediaType))
+        // Known item or owner type takes precedence; context only helps untyped filenames.
+        var searchType = type ?? expectedMediaType;
+        if (searchType is not ("movie" or "tv"))
             return new(null);
         Resolution? resolved = null;
         // When attached, identify the accessible owner, never a potentially unrelated trailer filename.
@@ -73,15 +74,15 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
                 ? new[] { ParseName(item.Path), ParseName(item.Name) }
                 : new[] { new MediaName(owner.Name, owner is Movie ? owner.ProductionYear : null) })
             .Where(n => n != null)
-            .Select(n => expectedMediaType == "tv"
+            .Select(n => searchType == "tv"
                 ? new MediaName(n!.Title, null)
                 : new MediaName(n!.Title, n!.Year ?? (owner == null ? item.ProductionYear : null)))
             .Distinct();
         foreach (var name in names)
         {
-            if (expectedMediaType == "movie" && !name!.Year.HasValue) continue;
+            if (searchType == "movie" && !name!.Year.HasValue) continue;
             IEnumerable<RemoteSearchResult> results;
-            if (expectedMediaType == "movie")
+            if (searchType == "movie")
             {
                 results = await providers.GetRemoteSearchResults<Movie, MovieInfo>(new RemoteSearchQuery<MovieInfo>
                 {
@@ -101,7 +102,7 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
             if (matches.Length > 1 || matches.Any(id => id <= 0)) return new(null);
             if (matches.Length == 0) continue; // e.g. a hashed cache filename
             if (direct.HasValue && direct.Value != matches[0]) return new(null);
-            var match = new Resolution(matches[0], expectedMediaType);
+            var match = new Resolution(matches[0], searchType);
             if (resolved != null && resolved.TmdbId != match.TmdbId) return new(null);
             resolved = match;
         }
@@ -125,7 +126,8 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         title = Regex.Replace(title, @"\.(mp4|mkv|avi|mov|webm|m4v|ts)$", "", RegexOptions.IgnoreCase);
         title = title.Replace('.', ' ').Trim();
         // Only remove trailing decorations; never remove words inside a movie title.
-        title = Regex.Replace(title, @"\s*[\[(]?(?:720p|1080p|2160p|4k|hd|uhd)[\])]?\s*$", "", RegexOptions.IgnoreCase);
+        const string qualitySuffixPattern = @"\s*[\[(]?(?:720p|1080p|2160p|4k|hd|uhd)[\])]?\s*$";
+        title = Regex.Replace(title, qualitySuffixPattern, "", RegexOptions.IgnoreCase);
         const string trailerSuffixPattern = @"(?:^|[\s\-–:])(?:official\s+|theatrical\s+|final\s+)?(?:teaser(?:\s+trailer)?|trailer)(?:\s*#?\d{1,2})?\s*$";
         // Keep underscores intact until embedded video IDs have been stripped.
         title = Regex.Replace(title, @"(?<label>\b(?:trailer|teaser))[\s_]+[A-Za-z0-9_-]{7,}$",
@@ -137,6 +139,8 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         title = Regex.Replace(title, @"(?<year>(?:19|20)\d{2}[)\]]?)[\s_]+[A-Za-z0-9_-]{7,}$",
             "${year}", RegexOptions.IgnoreCase);
         title = title.Replace('_', ' ');
+        // A trailing video ID may have hidden a preceding quality label.
+        title = Regex.Replace(title, qualitySuffixPattern, "", RegexOptions.IgnoreCase);
         title = Regex.Replace(title, trailerSuffixPattern, "", RegexOptions.IgnoreCase).Trim(' ', '-', '–', ':');
         int? year = null;
         var match = Regex.Match(title, @"^(?<title>.+?)[\s\-(\[]+(?<year>\d{4})[)\]]?\s*$");

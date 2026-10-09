@@ -224,6 +224,25 @@ public sealed class CinemaMediaResolverTests
     }
 
     [Fact]
+    public async Task EquivalentPathAndDisplayNameSearchOnlyOnce()
+    {
+        var intro = new Video { Path = "Silo Official Trailer.mp4", Name = "SILO Trailer" };
+        var searches = 0;
+        var resolver = Resolver(intro, (type, title, year) =>
+        {
+            searches++;
+            Assert.Equal("tv", type);
+            Assert.Equal("Silo", title);
+            Assert.Null(year);
+            return [Result(42, title)];
+        });
+
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
+            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
+        Assert.Equal(1, searches);
+    }
+
+    [Fact]
     public async Task TrailerReleaseYearCannotDisambiguateSameTitleSeries()
     {
         var intro = new Video { Path = "Show Trailer (2026).mp4" };

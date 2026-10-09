@@ -156,8 +156,9 @@ namespace Emby.Plugins.Moonfin.Services
             var title = pathOrName.Replace('\\', '/').Split('/').Last();
             title = Regex.Replace(title, @"\.(mp4|mkv|avi|mov|webm|m4v|ts)$", "", RegexOptions.IgnoreCase);
             title = title.Replace('.', ' ').Trim();
-            const string qualitySuffixPattern = @"\s*[\[(]?(?:720p|1080p|2160p|4k|hd|uhd)[\])]?(?:[\s_]+[A-Za-z0-9_-]{7,})?\s*$";
-            const string trailerSuffixPattern = @"(?:^|[\s\-–:])(?:official\s+|theatrical\s+|final\s+)?(?:teaser(?:\s+trailer)?|trailer)(?:\s*#?\d{1,2})?\s*$";
+            const string qualitySuffixPattern = @"\s*[\[(]?(?:full[\s_]+hd|4k[\s_]+hdr|720p|1080p|2160p|4k|hd|uhd)[\])]?(?:[\s_]+[A-Za-z0-9_-]{7,})?\s*$";
+            const string promoPattern = @"(?:watch\s+at\s+home|now\s+streaming|streaming\s+now|available\s+now|coming\s+soon|only\s+in\s+theaters|in\s+theaters|on\s+digital|watch\s+now|now\s+playing|digital\s+release|first\s+look|special\s+look|new)";
+            const string trailerSuffixPattern = @"(?:^|[\s\-–:])(?:official\s+|theatrical\s+|final\s+)?(?:teaser(?:\s+trailer)?|trailer)(?:\s*#?\d{1,2})?(?:\s+" + promoPattern + @")?\s*$";
             // Keep underscores intact until embedded video IDs have been stripped.
             title = Regex.Replace(title, @"(?<label>\b(?:trailer|teaser)(?:[\s_]+#?\d{1,2})?)[\s_]+[A-Za-z0-9_-]{6,}$",
                 "${label}", RegexOptions.IgnoreCase);
@@ -174,7 +175,6 @@ namespace Emby.Plugins.Moonfin.Services
             title = Regex.Replace(title, trailerSuffixPattern, "", RegexOptions.IgnoreCase).Trim(' ', '-', '–', ':');
 
             // Remove known promotional copy only when adjacent to a release year.
-            const string promoPattern = @"(?:watch\s+at\s+home|now\s+streaming|streaming\s+now|available\s+now|coming\s+soon|only\s+in\s+theaters|in\s+theaters|on\s+digital|watch\s+now|now\s+playing|digital\s+release|first\s+look|special\s+look|new)";
             title = Regex.Replace(title, @"\s+" + promoPattern + @"(?=\s+(?:19|20)\d{2}\b)", "", RegexOptions.IgnoreCase);
             title = Regex.Replace(title, @"(?<year>(?:19|20)\d{2}[)\]]?)\s+" + promoPattern + @"\s*$", "${year}", RegexOptions.IgnoreCase);
             int? year = null;

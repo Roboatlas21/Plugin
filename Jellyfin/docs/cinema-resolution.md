@@ -19,8 +19,9 @@ call this endpoint directly with typed metadata.
 
 The endpoint requires the authenticated server user's access to the intro and any
 trailer owner. The response contains `tmdbId` and `mediaType` (`movie` or `tv`).
-An unresolved result has null identity fields. Lookups have an eight-second
-budget and no completed-result cache.
+An unresolved result has no usable identity: its fields may be null or omitted
+(Emby omits null-valued JSON properties). Moonfin handles both forms. Lookups
+have an eight-second budget and no completed-result cache.
 
 TMDB IDs are not globally unique across movies and TV. For server-side
 resolution, an explicit `ProviderIds.TmdbMediaType`, a Movie item, or an
@@ -33,8 +34,9 @@ is only examined on the server; no trailer-plugin-specific marker is required.
 own type cannot be established. It never types a bare TMDB ID or overrides
 explicit, item, or owner type. Movie searches still require exact normalized
 title plus matching year. Filename parsing ignores conventional trailer labels,
-bracketed YouTube IDs, quality labels, and generated-looking suffixes around an
-explicit year; remote matches still require the exact title and year. Series
+trailing promotional phrases, bracketed YouTube IDs, quality labels, and
+generated-looking suffixes around an explicit year; remote matches still require
+the exact title and year. Series
 searches require an exact, unambiguous title
 and ignore the trailer filename's release year, which need not be the show's
 debut year. Season N/SNN suffixes are also ignored when matching series.

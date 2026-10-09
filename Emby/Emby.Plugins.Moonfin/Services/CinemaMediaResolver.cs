@@ -68,11 +68,7 @@ namespace Emby.Plugins.Moonfin.Services
 
             var hasDirectId = ProviderValue(item.ProviderIds, "Tmdb") != null;
             if (hasDirectId && !direct.HasValue) return new Resolution(null);
-            // A Series owner establishes type, not the correctness of an untyped trailer ID.
-            // If the owner has no TMDB ID, verify that ID with a strict series lookup.
-            var unverifiedTvId = type == "tv" && direct.HasValue &&
-                explicitType == null && !owned.HasValue;
-            if ((direct ?? owned) is int id && type != null && !unverifiedTvId)
+            if ((direct ?? owned) is int id && type != null)
             {
                 return new Resolution(id, type);
             }

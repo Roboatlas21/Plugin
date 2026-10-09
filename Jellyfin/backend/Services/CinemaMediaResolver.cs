@@ -53,11 +53,7 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         if (direct.HasValue && owned.HasValue && direct != owned) return new(null);
         var hasDirectId = ProviderValue(item.ProviderIds, "Tmdb") != null;
         if (hasDirectId && !direct.HasValue) return new(null);
-        // A Series owner establishes type, not the correctness of an untyped trailer ID.
-        // If the owner has no TMDB ID, verify that ID with a strict series lookup.
-        var unverifiedTvId = type == "tv" && direct.HasValue &&
-            explicitType == null && !owned.HasValue;
-        if ((direct ?? owned) is int id && type != null && !unverifiedTvId)
+        if ((direct ?? owned) is int id && type != null)
         {
             return new(id, type);
         }

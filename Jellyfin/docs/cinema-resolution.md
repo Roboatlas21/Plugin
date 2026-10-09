@@ -25,10 +25,12 @@ have an eight-second budget and no completed-result cache.
 
 TMDB IDs are not globally unique across movies and TV. For server-side
 resolution, an explicit `ProviderIds.TmdbMediaType`, a Movie item, or an
-accessible Movie/Series trailer owner establishes type. An untyped TV ID
-encountered by the resolver needs either a matching Series-owner ID or a strict
-series lookup. Conflicting types and IDs are rejected. The owner relationship
-is only examined on the server; no trailer-plugin-specific marker is required.
+accessible Movie/Series trailer owner establishes type. Once the type is known,
+a positive trailer TMDB ID is trusted for movies and series alike; if the
+owner also has an ID, they must agree. Untyped standalone videos still need
+strict filename matching. Conflicting types and IDs are rejected. The owner
+relationship is only examined on the server; no trailer-plugin-specific
+marker is required.
 
 `expectedMediaType` selects the filename-search category only when the intro's
 own type cannot be established. It never types a bare TMDB ID or overrides

@@ -51,6 +51,10 @@ The Seerr request dialog handles season selection independently.
 Generic untyped filenames still rely on movie/TV trailer pool separation for
 search category. NeXroll's filename IDs establish type independently; other mixed
 pools need explicit type metadata. Search never switches categories after a miss. Readable display names can identify cached files with
-hashed/unmatched names; ambiguous or contradictory matches return no identity.
+hashed/unmatched names; display names are parsed as text, not as filesystem paths.
+If exact title matching fails for a standalone trailer, the resolver can try
+alternatives separated by a pipe or spaced dash. Every candidate must still
+match TMDB exactly, movies still require a release year, and ambiguous matches
+remain unresolved. Owner metadata and NeXroll IDs bypass this fallback.
 
 Cinema Mode uses only `ResolveMedia` to resolve movies and series.

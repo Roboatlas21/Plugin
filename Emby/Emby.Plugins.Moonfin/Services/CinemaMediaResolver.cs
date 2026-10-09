@@ -99,7 +99,6 @@ namespace Emby.Plugins.Moonfin.Services
             if (searchType is not ("movie" or "tv"))
                 return new Resolution(null);
 
-            Resolution? resolved = null;
             // When attached, identify the accessible owner, never a potentially unrelated trailer filename.
             if (owner != null && (string.IsNullOrWhiteSpace(owner.Name) ||
                 owner.Name.Length > 200 || NormalizeTitle(owner.Name).Length == 0)) return new Resolution(null);
@@ -110,56 +109,66 @@ namespace Emby.Plugins.Moonfin.Services
             else if (nexroll is { } n)
                 candidates = new[] { new MediaName(n.Title, null) };
             else
-                candidates = new[] { ParseName(item.Path, parseStandard), ParseName(item.Name, parseStandard) };
+                candidates = new[] { ParseName(item.Path, parseStandard), ParseName(item.Name, parseStandard, isPath: false) };
             var names = candidates
                 .Where(n => n != null)
                 .Select(n => searchType == "tv"
                     ? new MediaName(n!.Title, null)
                     : new MediaName(n!.Title, n!.Year ?? (owner == null ? item.ProductionYear : null)))
                 .GroupBy(n => (NormalizeTitle(n.Title), n.Year))
-                .Select(group => group.First());
+                .Select(group => group.First()).ToArray();
 
-            foreach (var name in names)
+            // Only try delimited alternatives when the complete title yields no exact match.
+            var alternatives = owner == null && nexroll == null
+                ? names.SelectMany(DelimitedNames)
+                    .GroupBy(n => (NormalizeTitle(n.Title), n.Year))
+                    .Select(group => group.First()).ToArray()
+                : Array.Empty<MediaName>();
+            foreach (var batch in new[] { names, alternatives })
             {
-                if (searchType == "movie" && !name!.Year.HasValue) continue;
-
-                IEnumerable<RemoteSearchResult> results;
-                if (searchType == "movie")
+                Resolution? resolved = null;
+                foreach (var name in batch)
                 {
-                    results = await _providers.GetRemoteSearchResults<Movie, MovieInfo>(
-                        new RemoteSearchQuery<MovieInfo>
-                        {
-                            SearchInfo = new MovieInfo { Name = name!.Title, Year = name.Year },
-                            IncludeDisabledProviders = false,
-                        },
-                        cancellationToken).ConfigureAwait(false);
+                    if (searchType == "movie" && !name!.Year.HasValue) continue;
+    
+                    IEnumerable<RemoteSearchResult> results;
+                    if (searchType == "movie")
+                    {
+                        results = await _providers.GetRemoteSearchResults<Movie, MovieInfo>(
+                            new RemoteSearchQuery<MovieInfo>
+                            {
+                                SearchInfo = new MovieInfo { Name = name!.Title, Year = name.Year },
+                                IncludeDisabledProviders = false,
+                            },
+                            cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        results = await _providers.GetRemoteSearchResults<Series, SeriesInfo>(
+                            new RemoteSearchQuery<SeriesInfo>
+                            {
+                                SearchInfo = new SeriesInfo { Name = name!.Title },
+                                IncludeDisabledProviders = false,
+                            },
+                            cancellationToken).ConfigureAwait(false);
+                    }
+    
+                    var matches = Matches(name!, results).Take(2).ToArray();
+                    if (matches.Length > 1 || matches.Any(id => id <= 0))
+                        return new Resolution(null);
+                    if (matches.Length == 0) continue;
+                    if (direct.HasValue && direct.Value != matches[0])
+                        return new Resolution(null);
+    
+                    var match = new Resolution(matches[0], searchType);
+                    if (resolved != null && resolved.TmdbId != match.TmdbId)
+                        return new Resolution(null);
+    
+                    resolved = match;
                 }
-                else
-                {
-                    results = await _providers.GetRemoteSearchResults<Series, SeriesInfo>(
-                        new RemoteSearchQuery<SeriesInfo>
-                        {
-                            SearchInfo = new SeriesInfo { Name = name!.Title },
-                            IncludeDisabledProviders = false,
-                        },
-                        cancellationToken).ConfigureAwait(false);
-                }
-
-                var matches = Matches(name!, results).Take(2).ToArray();
-                if (matches.Length > 1 || matches.Any(id => id <= 0))
-                    return new Resolution(null);
-                if (matches.Length == 0) continue;
-                if (direct.HasValue && direct.Value != matches[0])
-                    return new Resolution(null);
-
-                var match = new Resolution(matches[0], searchType);
-                if (resolved != null && resolved.TmdbId != match.TmdbId)
-                    return new Resolution(null);
-
-                resolved = match;
+                if (resolved != null) return resolved;
             }
-
-            return resolved ?? new Resolution(null);
+            return new Resolution(null);
         }
 
         private static string? ProviderValue(IDictionary<string, string>? ids, string key) =>
@@ -173,10 +182,10 @@ namespace Emby.Plugins.Moonfin.Services
                 : (int?)null;
         }
 
-        public static MediaName? ParseName(string? pathOrName, Func<string, ItemLookupInfo> parseStandard)
+        public static MediaName? ParseName(string? pathOrName, Func<string, ItemLookupInfo> parseStandard, bool isPath = true)
         {
             if (string.IsNullOrWhiteSpace(pathOrName)) return null;
-            var filename = pathOrName.Replace('\\', '/').Split('/').Last();
+            var filename = isPath ? pathOrName.Replace('\\', '/').Split('/').Last() : pathOrName;
             filename = Regex.Replace(filename, @"\.(mp4|mkv|avi|mov|webm|m4v|ts)$", "", RegexOptions.IgnoreCase);
             var parsed = parseStandard(filename);
             var title = parsed.Name ?? "";
@@ -220,6 +229,20 @@ namespace Emby.Plugins.Moonfin.Services
             if (title.Length == 0 || title.Length > 200 || NormalizeTitle(title).Length == 0
                 || Regex.IsMatch(title, @"\A[0-9a-f]{32,64}\z", RegexOptions.IgnoreCase)) return null;
             return new MediaName(title, year);
+        }
+
+        // Delimited titles may include channel names or descriptions.
+        // Verify each part with an exact remote match rather than guessing keywords.
+        private static IEnumerable<MediaName> DelimitedNames(MediaName source)
+        {
+            var title = source.Title.Trim(' ', '|');
+            foreach (Match separator in Regex.Matches(title, @"\s*\|\s*|\s+[-–—]\s+"))
+            {
+                var before = title.Substring(0, separator.Index).Trim(' ', '|');
+                var after = title.Substring(separator.Index + separator.Length).Trim(' ', '|');
+                if (after.Length > 0) yield return new MediaName(after, source.Year);
+                if (before.Length > 0) yield return new MediaName(before, source.Year);
+            }
         }
 
         private static IEnumerable<int> Matches(MediaName name, IEnumerable<RemoteSearchResult> results)

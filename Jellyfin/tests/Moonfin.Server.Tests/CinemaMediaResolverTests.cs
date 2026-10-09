@@ -386,14 +386,15 @@ public sealed class CinemaMediaResolverTests
             {
                 Assert.Equal(typeof(Movie), method.GetGenericArguments()[0]);
                 Assert.False(movie.IncludeDisabledProviders);
+                Assert.Equal("TheMovieDb", movie.SearchProviderName);
                 return Task.FromResult(Search("movie", movie.SearchInfo.Name, movie.SearchInfo.Year));
             }
             var series = Assert.IsType<RemoteSearchQuery<SeriesInfo>>(args[0]);
             Assert.Equal(typeof(Series), method.GetGenericArguments()[0]);
             Assert.False(series.IncludeDisabledProviders);
+            Assert.Equal("TheMovieDb", series.SearchProviderName);
             if (series.SearchInfo.ProviderIds.ContainsKey("Tvdb"))
             {
-                Assert.Equal("TheMovieDb", series.SearchProviderName);
                 Assert.Equal(string.Empty, series.SearchInfo.Name);
                 Assert.NotNull(TvdbSearch);
                 return Task.FromResult(TvdbSearch!(series));

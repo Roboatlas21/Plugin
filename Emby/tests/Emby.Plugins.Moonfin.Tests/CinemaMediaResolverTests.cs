@@ -10,6 +10,13 @@ public sealed class CinemaMediaResolverTests
 {
     [Theory]
     [InlineData("Dune.Part.Two.2024.Official.Trailer.mp4", "Dune Part Two", 2024)]
+    [InlineData("Dune watch at home 2021 trailer djdjdj.mp4", "Dune", 2021)]
+    [InlineData("The Batman Watch Now 2022 Teaser Trailer W3FFSjR.mp4", "The Batman", 2022)]
+    [InlineData("Oppenheimer (2023) On Digital Teaser Trailer 1080p [QB176lyq-GH].webm", "Oppenheimer", 2023)]
+    [InlineData("1917 Watch at Home 2019 Teaser Trailer XlkNHBEvuV.mp4", "1917", 2019)]
+    [InlineData("Dune 2021 Trailer 2 sYaHxIjL1BL.mp4", "Dune", 2021)]
+    [InlineData("Spider-Man:.No.Way.Home.2021.Trailer.[6xvIn6wNh4K].mkv", "Spider-Man: No Way Home", 2021)]
+    [InlineData("Home Alone Watch at Home 1990 Trailer djdjdj.mp4", "Home Alone", 1990)]
     [InlineData("Dune 2021 1080p [abc_defghij].mp4", "Dune", 2021)]
     [InlineData("Dune 2021 1080p abcdefghijk.mp4", "Dune", 2021)]
     [InlineData("Dune 2021 Official Trailer 1080p abcdefghijk.mp4", "Dune", 2021)]

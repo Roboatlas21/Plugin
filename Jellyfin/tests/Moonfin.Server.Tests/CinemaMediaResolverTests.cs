@@ -99,6 +99,86 @@ public sealed class CinemaMediaResolverTests
             await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
     }
 
+
+    [Fact]
+    public async Task UntypedSeriesTrailerIdRequiresOwnerMatchOrSearchConfirmation()
+    {
+        var user = Guid.NewGuid();
+        var series = new Series { Id = Guid.NewGuid() };
+        var intro = new Video
+        {
+            Id = Guid.NewGuid(),
+            OwnerId = series.Id,
+            Path = "Show Trailer.mp4",
+            ProviderIds = new() { ["Tmdb"] = "42" },
+        };
+        var library = new FakeLibraryManager
+        {
+            ItemForUserHandler = (id, uid) =>
+            {
+                Assert.Equal(user, uid);
+                return id == intro.Id ? intro : id == series.Id ? series : null;
+            },
+        };
+        var provider = DispatchProxy.Create<IProviderManager, SearchProvider>();
+        var searches = 0;
+        ((SearchProvider)(object)provider).Search = (kind, name, year) =>
+        {
+            searches++;
+            Assert.Equal("tv", kind);
+            Assert.Equal("Show", name);
+            Assert.Null(year);
+            return [Result(42, "Show", 2016)];
+        };
+        var resolver = new CinemaMediaResolver(library, provider);
+
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
+            await resolver.ResolveMediaAsync(intro.Id, user, "tv", default));
+        Assert.Equal(1, searches);
+
+        intro.ProviderIds["Tmdb"] = "43";
+        Assert.Null((await resolver.ResolveMediaAsync(intro.Id, user, "tv", default)).TmdbId);
+        Assert.Equal(2, searches);
+
+        series.ProviderIds = new() { ["Tmdb"] = "43" };
+        Assert.Equal(new CinemaMediaResolver.Resolution(43, "tv"),
+            await resolver.ResolveMediaAsync(intro.Id, user, "tv", default));
+        Assert.Equal(2, searches);
+    }
+
+    [Theory]
+    [InlineData("Stranger Things Trailer (2026).mp4")]
+    [InlineData("Stranger Things (2026) Official Trailer.mp4")]
+    public async Task SeriesTrailerReleaseYearDoesNotRestrictPremiereYear(string filename)
+    {
+        var intro = new Video { Path = filename, Name = "Stranger Things Trailer" };
+        var searches = 0;
+        var resolver = Resolver(intro, (kind, name, year) =>
+        {
+            searches++;
+            Assert.Equal("tv", kind);
+            Assert.Equal("Stranger Things", name);
+            Assert.Null(year);
+            return [Result(42, name, 2016)];
+        });
+
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
+            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
+        Assert.Equal(1, searches);
+    }
+
+    [Fact]
+    public async Task TrailerReleaseYearCannotDisambiguateSameTitleSeries()
+    {
+        var intro = new Video { Path = "Show Trailer (2026).mp4" };
+        var resolver = Resolver(intro, (_, name, year) =>
+        {
+            Assert.Null(year);
+            return [Result(42, name, 2016), Result(43, name, 2026)];
+        });
+        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default)).TmdbId);
+    }
+
     [Fact]
     public async Task YearlessMovieNeverFallsThroughToSeriesAndUnknownContextNeverSearches()
     {

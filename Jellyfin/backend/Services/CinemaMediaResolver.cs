@@ -143,7 +143,7 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         title = Regex.Replace(title, @"\s+" + promoPattern + @"(?=\s+(?:19|20)\d{2}\b)", "", RegexOptions.IgnoreCase);
         title = Regex.Replace(title, @"(?<year>(?:19|20)\d{2}[)\]]?)\s+" + promoPattern + @"\s*$", "${year}", RegexOptions.IgnoreCase);
         int? year = null;
-        var match = Regex.Match(title, @"^(?<title>.+?)[\s\-(\[]+(?<year>\d{4})[)\]]?\s*$");
+        var match = Regex.Match(title, @"^(?<title>.+?)(?:[\s\-(\[]+|(?<=\p{L}))(?<year>\d{4})[)\]]?\s*$");
         if (match.Success && int.TryParse(match.Groups["year"].Value, out var parsed) &&
             parsed >= 1900 && parsed <= DateTime.UtcNow.Year + 3)
         {

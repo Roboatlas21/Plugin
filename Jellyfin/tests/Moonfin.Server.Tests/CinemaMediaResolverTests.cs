@@ -131,10 +131,10 @@ public sealed class CinemaMediaResolverTests
 
 
     [Fact]
-    public async Task UntypedSeriesTrailerIdRequiresOwnerMatchOrSearchConfirmation()
+    public async Task SeriesOwnerTypesUntypedTrailerIdWithoutRemoteSearch()
     {
         var user = Guid.NewGuid();
-        var series = new Series { Id = Guid.NewGuid(), Name = "Show", ProductionYear = 2016 };
+        var series = new Series { Id = Guid.NewGuid(), Name = "Show" };
         var intro = new Video
         {
             Id = Guid.NewGuid(),
@@ -150,30 +150,25 @@ public sealed class CinemaMediaResolverTests
                 return id == intro.Id ? intro : id == series.Id ? series : null;
             },
         };
-        var provider = DispatchProxy.Create<IProviderManager, SearchProvider>();
-        var searches = 0;
-        ((SearchProvider)(object)provider).Search = (kind, name, year) =>
-        {
-            searches++;
-            Assert.Equal("tv", kind);
-            Assert.Equal("Show", name);
-            Assert.Null(year);
-            return [Result(42, "Show", 2016)];
-        };
-        var resolver = new CinemaMediaResolver(library, provider);
+        // The owner's Series type is sufficient; a remote lookup is never necessary.
+        var resolver = new CinemaMediaResolver(library, null!);
 
         Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
             await resolver.ResolveMediaAsync(intro.Id, user, "movie", default));
-        Assert.Equal(1, searches);
 
         intro.ProviderIds["Tmdb"] = "43";
-        Assert.Null((await resolver.ResolveMediaAsync(intro.Id, user, "tv", default)).TmdbId);
-        Assert.Equal(2, searches);
-
-        series.ProviderIds = new() { ["Tmdb"] = "43" };
         Assert.Equal(new CinemaMediaResolver.Resolution(43, "tv"),
             await resolver.ResolveMediaAsync(intro.Id, user, "tv", default));
-        Assert.Equal(2, searches);
+
+        series.ProviderIds = new() { ["Tmdb"] = "42" };
+        Assert.Null((await resolver.ResolveMediaAsync(intro.Id, user, "tv", default)).TmdbId);
+
+        series.ProviderIds["Tmdb"] = "43";
+        Assert.Equal(new CinemaMediaResolver.Resolution(43, "tv"),
+            await resolver.ResolveMediaAsync(intro.Id, user, "tv", default));
+
+        intro.ProviderIds["TmdbMediaType"] = "movie";
+        Assert.Null((await resolver.ResolveMediaAsync(intro.Id, user, "tv", default)).TmdbId);
     }
 
 
@@ -220,6 +215,11 @@ public sealed class CinemaMediaResolverTests
         // in the trailer's filename; movie matching remains year-strict.
         movie.ProductionYear = null;
         Assert.Null((await resolver.ResolveMediaAsync(intro.Id, user, "movie", default)).TmdbId);
+        Assert.Equal(1, searches);
+
+        intro.ProviderIds["Tmdb"] = "42";
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "movie"),
+            await resolver.ResolveMediaAsync(intro.Id, user, "tv", default));
         Assert.Equal(1, searches);
     }
 

@@ -116,11 +116,7 @@ public sealed partial class CinemaMediaResolver
             candidates = new[] { new MediaName(n.Title, null) };
         else
             candidates = new[] { ParseName(item.Path, parseStandard), ParseName(item.Name, parseStandard, isPath: false) };
-        var names = candidates
-            .Where(n => n != null)
-            .Select(n => new MediaName(n!.Title,
-                n!.Year ?? (searchType == "movie" && owner == null ? item.ProductionYear : null)))
-            .ToArray();
+        var names = candidates.OfType<MediaName>().ToArray();
         // Try cleaned filenames first, then normal names, then less certain alternatives.
         var ordered = owner == null && filenameIdentity == null
             ? names.SelectMany(OrderedNames)

@@ -24,6 +24,12 @@ public sealed class CinemaMediaResolverCompatibilityTests
 
     [Theory]
     [InlineData("Dune.Part.Two.2024.Official.Trailer.mp4", "Dune Part Two", 2024)]
+    [InlineData("Dune2021.mp4", "Dune", 2021)]
+    [InlineData("Dune2021 Trailer.mp4", "Dune", 2021)]
+    [InlineData("Dune2021 Official Trailer 1080p.mp4", "Dune", 2021)]
+    [InlineData("The Batman2022 Trailer.mp4", "The Batman", 2022)]
+    [InlineData("Amélie2001 Trailer.mp4", "Amélie", 2001)]
+    [InlineData("Blade Runner2049 Trailer.mp4", "Blade Runner2049", null)]
     [InlineData("Dune 2021 Trailer Coming Soon.mp4", "Dune", 2021)]
     [InlineData("Dune 2021 Trailer Now Streaming.mp4", "Dune", 2021)]
     [InlineData("Dune 2021 Trailer Watch at Home.mp4", "Dune", 2021)]

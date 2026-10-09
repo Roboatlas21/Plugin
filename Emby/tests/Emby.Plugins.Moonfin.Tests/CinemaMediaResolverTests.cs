@@ -136,6 +136,9 @@ public sealed class CinemaMediaResolverTests
         Assert.Equal(new[] { 43 }, Matches(null));
         results[0].ProductionYear = null;
         Assert.Equal(new[] { 42, 43 }, Matches(null));
+        results[0].PremiereDate = new DateTime(2011, 1, 1);
+        Assert.Equal(new[] { 43 }, Matches(null));
+        Assert.Empty(Matches(2011)); // Known-year matching stays strict.
     }
 
     [Fact]

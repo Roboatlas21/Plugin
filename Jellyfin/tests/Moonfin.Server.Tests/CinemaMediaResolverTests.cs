@@ -345,7 +345,7 @@ public sealed class CinemaMediaResolverTests
     }
 
     [Fact]
-    public async Task YearlessSeriesPrefersDecadeNewerExactTitle()
+    public async Task YearlessSeriesUsesPremiereDateForDecadeNewerMatch()
     {
         var intro = new Video { Path = "Show Trailer.mp4" };
         var resolver = Resolver(intro, (type, title, year) =>
@@ -353,7 +353,11 @@ public sealed class CinemaMediaResolverTests
             Assert.Equal("tv", type);
             Assert.Equal("Show", title);
             Assert.Null(year);
-            return [Result(42, "Show", 1989), Result(43, "Show", 2024)];
+            var older = Result(42, "Show");
+            older.PremiereDate = new DateTime(1989, 1, 1);
+            var newer = Result(43, "Show");
+            newer.PremiereDate = new DateTime(2024, 1, 1);
+            return [older, newer];
         });
 
         Assert.Equal(new CinemaMediaResolver.Resolution(43, "tv"),

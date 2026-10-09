@@ -66,7 +66,12 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         if (expectedMediaType is not ("movie" or "tv") || (type != null && type != expectedMediaType))
             return new(null);
         Resolution? resolved = null;
-        var names = new[] { ParseName(item.Path), ParseName(item.Name) }
+        // When attached, identify the accessible owner, never a potentially unrelated trailer filename.
+        if (owner != null && (string.IsNullOrWhiteSpace(owner.Name) ||
+            owner.Name.Length > 200 || NormalizeTitle(owner.Name).Length == 0)) return new(null);
+        var names = (owner == null
+                ? new[] { ParseName(item.Path), ParseName(item.Name) }
+                : new[] { new MediaName(owner.Name, owner is Movie ? owner.ProductionYear : null) })
             .Where(n => n != null)
             .Select(n => expectedMediaType == "tv" ? new MediaName(n!.Title, null) : n!)
             .Distinct();

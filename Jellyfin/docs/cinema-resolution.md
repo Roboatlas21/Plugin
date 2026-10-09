@@ -11,9 +11,11 @@ pools separate. Moonfin does not read `OwnerId` or require changes to Jellyfin's
 Intros response.
 
 When there is no usable TMDB identity, Moonfin asks Moonbase to resolve it.
-The resolver can check ownership and user access internally, then use strict
-filename/display-name matching if necessary. Clients may also call this
-endpoint directly with typed metadata.
+The resolver checks ownership and user access internally. If an attached
+movie or series has no TMDB ID, it searches using the owner's title (and the
+owner's production year for movies), never the trailer filename. Standalone
+trailers still use strict filename/display-name matching. Clients may also
+call this endpoint directly with typed metadata.
 
 The endpoint requires the authenticated server user's access to the intro and any
 trailer owner. The response contains `tmdbId` and `mediaType` (`movie` or `tv`).

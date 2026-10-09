@@ -10,6 +10,10 @@ public sealed class CinemaMediaResolverTests
 {
     [Theory]
     [InlineData("Dune.Part.Two.2024.Official.Trailer.mp4", "Dune Part Two", 2024)]
+    [InlineData("Dune 2021 1080p [abc_defghij].mp4", "Dune", 2021)]
+    [InlineData("Dune 2021 Official Trailer 1080p [abcdefghijk].mp4", "Dune", 2021)]
+    [InlineData("Show Season 5 Trailer 1080p [abcdefghijk].mp4", "Show", null)]
+    [InlineData("Dune 2021 [abcdefghijk] 1080p.mp4", "Dune", 2021)]
     [InlineData("Dune 2021 [abc_defghij].mp4", "Dune", 2021)]
     [InlineData("Dune 2021 Trailer jdjdjsn.mp4", "Dune", 2021)]
     [InlineData("Dune official trailer 2021 jdjdjsn.mp4", "Dune", 2021)]

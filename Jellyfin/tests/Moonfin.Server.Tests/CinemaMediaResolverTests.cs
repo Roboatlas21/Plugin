@@ -38,6 +38,36 @@ public sealed class CinemaMediaResolverTests
         Assert.Equal(type, result.MediaType);
     }
 
+    [Theory]
+    [InlineData("movie", "tv")]
+    [InlineData("tv", "movie")]
+    [InlineData("movie-item", "tv")]
+    public async Task KnownTrailerTypeTakesPriorityForFilenameSearch(string source, string context)
+    {
+        var mediaType = source == "tv" ? "tv" : "movie";
+        var title = mediaType == "movie" ? "Dune" : "Show";
+        int? year = mediaType == "movie" ? 2021 : null;
+        Video intro = source == "movie-item"
+            ? new Movie { Path = "Dune 2021 Trailer.mp4" }
+            : new Video
+            {
+                Path = mediaType == "movie" ? "Dune 2021 Trailer.mp4" : "Show Trailer.mp4",
+                ProviderIds = new() { ["TmdbMediaType"] = mediaType },
+            };
+        var searches = 0;
+        var resolver = Resolver(intro, (kind, name, candidateYear) =>
+        {
+            searches++;
+            Assert.Equal(mediaType, kind);
+            Assert.Equal(title, name);
+            Assert.Equal(year, candidateYear);
+            return [Result(42, title, year ?? 2016)];
+        });
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, mediaType),
+            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), context, default));
+        Assert.Equal(1, searches);
+    }
+
     [Fact]
     public async Task UntypedIdsNeedMatchingSeriesFilenameAndConflictingTypesRemainInvalid()
     {
@@ -133,7 +163,7 @@ public sealed class CinemaMediaResolverTests
         var resolver = new CinemaMediaResolver(library, provider);
 
         Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
-            await resolver.ResolveMediaAsync(intro.Id, user, "tv", default));
+            await resolver.ResolveMediaAsync(intro.Id, user, "movie", default));
         Assert.Equal(1, searches);
 
         intro.ProviderIds["Tmdb"] = "43";
@@ -183,7 +213,7 @@ public sealed class CinemaMediaResolverTests
         var resolver = new CinemaMediaResolver(library, provider);
 
         Assert.Equal(new CinemaMediaResolver.Resolution(42, "movie"),
-            await resolver.ResolveMediaAsync(intro.Id, user, "movie", default));
+            await resolver.ResolveMediaAsync(intro.Id, user, "tv", default));
         Assert.Equal(1, searches);
 
         // A known owner with no year must not fall back to a misleading year

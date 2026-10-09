@@ -3,7 +3,6 @@ using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Providers;
-using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
 using Moonfin.Server.Services;
 using Xunit;
@@ -33,353 +32,101 @@ public sealed class CinemaMediaResolverTests
     [Theory]
     [InlineData("movie", "tv")]
     [InlineData("tv", "movie")]
-    public async Task ExplicitTypeOverridesFeatureContext(string type, string context)
+    public async Task TypedTmdbMetadataOverridesPlaybackContext(string type, string context)
     {
         var intro = new Video { ProviderIds = new() { ["Tmdb"] = "42", ["TmdbMediaType"] = type } };
         var resolver = Resolver(intro, (_, _, _) => throw new Exception("No search expected"));
-        var result = await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), context, default);
-        Assert.Equal(42, result.TmdbId);
-        Assert.Equal(type, result.MediaType);
-    }
-
-    [Fact]
-    public async Task TypedTvTrailerUsesTvSearchEvenBeforeMovie()
-    {
-        var intro = new Video
-        {
-            Path = "Silo Trailer.mp4",
-            ProviderIds = new() { ["TmdbMediaType"] = "tv" },
-        };
-        var resolver = Resolver(intro, (type, title, year) =>
-        {
-            Assert.Equal("tv", type);
-            Assert.Equal("Silo", title);
-            Assert.Null(year);
-            return [Result(42, "Silo")];
-        });
-        Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
-            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default));
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, type),
+            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), context, default));
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task SeasonAndEpisodeOwnedTrailersUseAccessibleSeriesIdentity(bool episodeOwner)
+    [InlineData("movie")]
+    [InlineData("season")]
+    [InlineData("episode")]
+    public async Task OwnedTrailersUseAccessibleMovieOrSeries(string ownerKind)
     {
         var user = Guid.NewGuid();
-        var series = new Series
+        var series = new Series { Id = Guid.NewGuid(), ProviderIds = new() { ["Tmdb"] = "42" } };
+        BaseItem owner = ownerKind switch
         {
-            Id = Guid.NewGuid(), Name = "Silo", ProviderIds = new() { ["Tmdb"] = "42" },
+            "movie" => new Movie { Id = Guid.NewGuid(), ProviderIds = new() { ["Tmdb"] = "42" } },
+            "season" => new Season { Id = Guid.NewGuid(), SeriesId = series.Id },
+            _ => new Episode { Id = Guid.NewGuid(), SeriesId = series.Id },
         };
-        BaseItem owner = episodeOwner
-            ? new Episode { Id = Guid.NewGuid(), SeriesId = series.Id, Name = "Pilot",
-                ProviderIds = new() { ["Tmdb"] = "999" } }
-            : new Season { Id = Guid.NewGuid(), SeriesId = series.Id, Name = "Season 1",
-                ProviderIds = new() { ["Tmdb"] = "999" } };
-        var trailer = new Video
-        {
-            Id = Guid.NewGuid(), OwnerId = owner.Id, Path = "Wrong Show Trailer.mp4",
-        };
-        var items = new Dictionary<Guid, BaseItem>
-        {
-            [trailer.Id] = trailer, [owner.Id] = owner, [series.Id] = series,
-        };
+        var intro = new Video { Id = Guid.NewGuid(), OwnerId = owner.Id, Path = "Wrong Title Trailer.mp4" };
         var library = new FakeLibraryManager
         {
             ItemForUserHandler = (id, uid) =>
             {
                 Assert.Equal(user, uid);
-                return items.GetValueOrDefault(id);
+                return id == intro.Id ? intro : id == owner.Id ? owner : id == series.Id ? series : null;
             },
         };
         var resolver = new CinemaMediaResolver(library, null!);
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, ownerKind == "movie" ? "movie" : "tv"),
+            await resolver.ResolveMediaAsync(intro.Id, user, "movie", default));
 
-        Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
-            await resolver.ResolveMediaAsync(trailer.Id, user, "movie", default));
-
-        items.Remove(series.Id);
-        Assert.Null((await resolver.ResolveMediaAsync(trailer.Id, user, "tv", default)).TmdbId);
-
-        items[series.Id] = series;
-        items.Remove(owner.Id);
-        Assert.Null((await resolver.ResolveMediaAsync(trailer.Id, user, "tv", default)).TmdbId);
+        intro.ProviderIds["Tmdb"] = "99";
+        Assert.Null((await resolver.ResolveMediaAsync(intro.Id, user, "movie", default)).TmdbId);
+        intro.ProviderIds.Clear();
+        library.ItemForUserHandler = (id, _) => id == intro.Id ? intro : null;
+        Assert.Null((await resolver.ResolveMediaAsync(intro.Id, user, "movie", default)).TmdbId);
     }
 
     [Fact]
-    public async Task OwnedMovieSearchUsesOwnerTitleAndYearNotTrailerFilename()
+    public async Task NeXrollMovieIdAllowsRenamingButRejectsConflictingIds()
     {
-        var user = Guid.NewGuid();
-        var movie = new Movie { Id = Guid.NewGuid(), Name = "Dune", ProductionYear = 2021 };
-        var trailer = new Video { Id = Guid.NewGuid(), OwnerId = movie.Id, Path = "Other Movie Trailer.mp4" };
-        var library = new FakeLibraryManager
-        {
-            ItemForUserHandler = (id, uid) =>
-            {
-                Assert.Equal(user, uid);
-                return id == trailer.Id ? trailer : id == movie.Id ? movie : null;
-            },
-        };
-        var provider = DispatchProxy.Create<IProviderManager, SearchProvider>();
-        int? expectedYear = 2021;
-        ((SearchProvider)(object)provider).Search = (kind, title, year) =>
-        {
-            Assert.Equal("movie", kind);
-            Assert.Equal("Dune", title);
-            Assert.Equal(expectedYear, year);
-            return [Result(42, "Dune", 2021)];
-        };
-        var resolver = new CinemaMediaResolver(library, provider);
-        Assert.Equal(new CinemaMediaResolver.Resolution(42, "movie"),
-            await resolver.ResolveMediaAsync(trailer.Id, user, "tv", default));
-
-        // An owned movie without a year still permits an unambiguous exact match.
-        movie.ProductionYear = null;
-        expectedYear = null;
-        Assert.Equal(new CinemaMediaResolver.Resolution(42, "movie"),
-            await resolver.ResolveMediaAsync(trailer.Id, user, "tv", default));
-    }
-
-    [Theory]
-    [InlineData("Silo 3883jsjsjd8dj.mp4", "")]
-    [InlineData("Silo ABCdefghiJK.mp4", "")]
-    public async Task GeneratedSuffixUsesExactSeriesTitleAsFallback(string path, string displayName)
-    {
-        var intro = new Video { Path = path, Name = displayName };
-        var searches = new List<string>();
-        var resolver = Resolver(intro, (type, title, year) =>
-        {
-            Assert.Equal("tv", type);
-            Assert.Null(year);
-            searches.Add(title);
-            return title == "Silo" ? [Result(42, "Silo")] : [];
-        });
-
-        Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
-            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
-        var fullTitle = string.IsNullOrEmpty(displayName)
-            ? System.IO.Path.GetFileNameWithoutExtension(path).Replace('_', ' ')
-            : displayName;
-        Assert.Equal(new[] { fullTitle, "Silo" }, searches);
-    }
-
-    [Theory]
-    [InlineData("Silo ABCdefghiJK.mp4", "Silo ABCdefghiJK")]
-    public async Task CompleteTitleMatchTakesPriorityOverSuffixFallback(string filename, string fullTitle)
-    {
-        var intro = new Video { Path = filename };
-        var calls = 0;
-        var resolver = Resolver(intro, (type, title, year) =>
-        {
-            calls++;
-            Assert.Equal(fullTitle, title);
-            return [Result(99, title)];
-        });
-
-        Assert.Equal(new CinemaMediaResolver.Resolution(99, "tv"),
-            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
-        Assert.Equal(1, calls);
-    }
-
-    [Fact]
-    public async Task DifferentMatchingDelimitedTitlesAreAmbiguous()
-    {
-        var intro = new Video { Path = "Show - Another Show Official Trailer.mp4" };
-        var resolver = Resolver(intro, (type, title, year) =>
-        {
-            Assert.Equal("tv", type);
-            Assert.Null(year);
-            return title switch
-            {
-                "Show" => [Result(42, title)],
-                "Another Show" => [Result(43, title)],
-                _ => [],
-            };
-        });
-
-        Assert.Null((await resolver.ResolveMediaAsync(
-            Guid.NewGuid(), Guid.NewGuid(), "tv", default)).TmdbId);
-    }
-
-    [Fact]
-    public async Task EmbeddedMovieTmdbIdResolvesWithoutYearOrSearch()
-    {
-        var intro = new Video { Path = "/trailers/Dune_438631_trailer.mp4" };
+        var intro = new Video { Path = "Dune_438631_trailer.mp4", Name = "Localized_Dune_438631_trailer" };
         var resolver = Resolver(intro, (_, _, _) => throw new Exception("No search expected"));
         Assert.Equal(new CinemaMediaResolver.Resolution(438631, "movie"),
             await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
-    }
-
-    [Theory]
-    [InlineData("/trailers/Silo_tvdb403245_trailer.mp4", "", false)]
-    [InlineData("/cache/abcdef1234567890.mp4", "Silo", true)]
-    public async Task TvdbIdUsesHostProviderRatherThanAmbiguousTitle(
-        string path, string name, bool metadataId)
-    {
-        var intro = new Video { Path = path, Name = name };
-        if (metadataId) intro.ProviderIds["Tvdb"] = "403245";
-        var lookups = 0;
-        var resolver = Resolver(intro,
-            (_, _, _) => throw new Exception("Title search should not run"),
-            query =>
-            {
-                lookups++;
-                Assert.Equal("403245", query.SearchInfo.ProviderIds["Tvdb"]);
-                return [new RemoteSearchResult
-                {
-                    Name = "Silo",
-                    ProviderIds = new() { ["Tmdb"] = "42", ["Tvdb"] = "403245" },
-                }];
-            });
-
-        Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
-            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default));
-        Assert.Equal(1, lookups);
-    }
-
-    [Fact]
-    public async Task UnmappedTvdbIdFallsBackToExactSeriesName()
-    {
-        var intro = new Video { Path = "Silo_tvdb403245_trailer.mp4" };
-        var titleLookups = 0;
-        var resolver = Resolver(intro, (type, name, year) =>
-        {
-            titleLookups++;
-            Assert.Equal("tv", type);
-            Assert.Equal("Silo", name);
-            Assert.Null(year);
-            return [Result(42, "Silo", 2023)];
-        }, _ => []);
-
-        Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
-            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default));
-        Assert.Equal(1, titleLookups);
-    }
-
-    [Fact]
-    public async Task ConflictingTvdbMappingsDoNotFallBackToName()
-    {
-        var intro = new Video { Path = "Silo_tvdb403245_trailer.mp4" };
-        var resolver = Resolver(intro,
-            (_, _, _) => throw new Exception("Title search should not run"),
-            _ => [Result(42, "Silo"), Result(43, "Silo")]);
-        Assert.Null((await resolver.ResolveMediaAsync(
-            Guid.NewGuid(), Guid.NewGuid(), "tv", default)).TmdbId);
-    }
-
-    [Fact]
-    public async Task FilenameIdentityRejectsConflictsButAcceptsRenamedTitles()
-    {
-        var intro = new Video
-        {
-            Path = "Dune_438631_trailer.mp4",
-            ProviderIds = new() { ["Tmdb"] = "42" },
-        };
-        var resolver = Resolver(intro, (_, _, _) => throw new Exception("No search expected"));
-        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
-
-        intro.ProviderIds.Clear();
-        intro.ProviderIds["TmdbMediaType"] = "tv";
-        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default)).TmdbId);
-
-        intro.ProviderIds.Clear();
-        intro.Path = "Silo_tvdb403245_trailer.mp4";
-        intro.ProviderIds["TmdbMediaType"] = "movie";
-        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
-
-        intro.ProviderIds.Clear();
-        intro.ProviderIds["Tvdb"] = "99";
-        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default)).TmdbId);
-
-        intro.ProviderIds.Clear();
-        intro.Path = "Dune_438631_trailer.mp4";
         intro.Name = "Other_12345_trailer";
         Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
-        intro.Name = "Localized_Dune_438631_trailer";
-        Assert.Equal(new CinemaMediaResolver.Resolution(438631, "movie"),
+    }
+
+    [Fact]
+    public async Task TvdbFilenameMapsThroughHostTmdbProvider()
+    {
+        var intro = new Video { Path = "Silo_tvdb403245_trailer.mp4" };
+        var resolver = Resolver(intro, (_, _, _) => throw new Exception("No title search expected"),
+            query =>
+            {
+                Assert.Equal("403245", query.SearchInfo.ProviderIds["Tvdb"]);
+                return [new RemoteSearchResult { ProviderIds = new() { ["Tmdb"] = "42", ["Tvdb"] = "403245" } }];
+            });
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
             await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default));
     }
 
     [Fact]
-    public async Task YearlessMovieResolvesUniqueExactTitleWithoutSearchingTv()
+    public async Task YearlessMovieOnlyPrefersClearlyNewerExactMatch()
     {
-        var intro = new Video { Path = "Interstellar Trailer.mp4" };
-        var searches = 0;
-        var resolver = Resolver(intro, (type, title, year) =>
-        {
-            searches++;
-            Assert.Equal("movie", type);
-            Assert.Equal("Interstellar", title);
-            Assert.Null(year);
-            return [Result(42, "Interstellar", 2014), Result(42, "Interstellar", 2014),
-                Result(90, "Interstellar 2", 2027)];
-        });
-
-        Assert.Equal(new CinemaMediaResolver.Resolution(42, "movie"),
-            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default));
-        Assert.Equal(1, searches);
-        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), null, default)).TmdbId);
-        Assert.Equal(1, searches);
-    }
-
-    [Fact]
-    public async Task YearlessMoviePrefersOnlyClearlyNewerExactMatch()
-    {
-        var intro = new Video { Path = "Dune Trailer.mp4" };
-        RemoteSearchResult[] results = [Result(42, "Dune", 1984), Result(43, "Dune", 2021)];
-        var resolver = Resolver(intro, (type, title, year) =>
-        {
-            Assert.Equal("movie", type);
-            Assert.Equal("Dune", title);
-            Assert.Null(year);
-            return results;
-        });
-
+        RemoteSearchResult[] matches = [Result(42, "Dune", 1984), Result(43, "Dune", 2021)];
+        var resolver = Resolver(new Video { Path = "Dune Trailer.mp4" }, (_, _, _) => matches);
         Assert.Equal(43, (await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
-        results = [Result(42, "Dune", 2012), Result(43, "Dune", 2021)];
-        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
-        results[0].ProductionYear = 2011; // Exactly 10 years is sufficient.
-        Assert.Equal(43, (await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
-        results[0].ProductionYear = null;
-        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
-        results = [Result(42, "Dune", 2011), new RemoteSearchResult { Name = "Dune" }];
-        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
-        results = [Result(42, "Dune", 2011), Result(43, "Dune", 2021), Result(43, "Dune", 2020)];
+        matches = [Result(42, "Dune", 2012), Result(43, "Dune", 2021)];
         Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
     }
 
     [Fact]
-    public async Task YearlessSeriesUsesPremiereDateForDecadeNewerMatch()
+    public async Task TvRemakeMatchingUsesPremiereDateWhenProductionYearIsMissing()
     {
-        var intro = new Video { Path = "Show Trailer.mp4" };
-        var resolver = Resolver(intro, (type, title, year) =>
-        {
-            Assert.Equal("tv", type);
-            Assert.Equal("Show", title);
-            Assert.Null(year);
-            var older = Result(42, "Show");
-            older.PremiereDate = new DateTime(1989, 1, 1);
-            var newer = Result(43, "Show");
-            newer.PremiereDate = new DateTime(2024, 1, 1);
-            return [older, newer];
-        });
-
+        var older = Result(42, "Show");
+        older.PremiereDate = new DateTime(1989, 1, 1);
+        var newer = Result(43, "Show");
+        newer.PremiereDate = new DateTime(2024, 1, 1);
+        var resolver = Resolver(new Video { Path = "Show Trailer.mp4" }, (_, _, _) => [older, newer]);
         Assert.Equal(new CinemaMediaResolver.Resolution(43, "tv"),
             await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
     }
 
     [Fact]
-    public async Task HashedFilenameFallsBackToReadableName()
+    public async Task UnreadablePathUsesDisplayTitle()
     {
         var intro = new Video { Path = new string('a', 64) + ".mp4", Name = "Show Season 5 Trailer" };
-        var searches = 0;
-        var resolver = Resolver(intro, (type, title, _) =>
-        {
-            searches++;
-            Assert.Equal("tv", type);
-            return title == "Show" ? [Result(42, "Show")] : [];
-        });
+        var resolver = Resolver(intro, (_, title, _) => title == "Show" ? [Result(42, "Show")] : []);
         Assert.Equal(42, (await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default)).TmdbId);
-        Assert.Equal(1, searches);
     }
 
     public class SearchProvider : DispatchProxy

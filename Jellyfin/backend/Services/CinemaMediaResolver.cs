@@ -68,8 +68,7 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         if (fromPath.HasValue && fromName.HasValue &&
             (fromPath.Value.MediaType != fromName.Value.MediaType ||
              fromPath.Value.TmdbId != fromName.Value.TmdbId ||
-             fromPath.Value.TvdbId != fromName.Value.TvdbId ||
-             NormalizeTitle(fromPath.Value.Title) != NormalizeTitle(fromName.Value.Title)))
+             fromPath.Value.TvdbId != fromName.Value.TvdbId))
             return new(null);
         var filenameIdentity = fromPath ?? fromName;
         if (filenameIdentity is { } named && type != null && type != named.MediaType)

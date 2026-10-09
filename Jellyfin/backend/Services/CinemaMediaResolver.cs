@@ -74,7 +74,8 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
             .Select(n => searchType == "tv"
                 ? new MediaName(n!.Title, null)
                 : new MediaName(n!.Title, n!.Year ?? (owner == null ? item.ProductionYear : null)))
-            .Distinct();
+            .GroupBy(n => (NormalizeTitle(n.Title), n.Year))
+            .Select(group => group.First());
         foreach (var name in names)
         {
             if (searchType == "movie" && !name!.Year.HasValue) continue;
@@ -124,20 +125,20 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         var title = parsed.Name ?? "";
         var year = parsed.Year;
 
-        // Jellyfin/Emby handle ordinary release names; only trim trailer-specific labels.
-        const string promo = @"(?:watch\s+at\s+home|now\s+streaming|streaming\s+now|available\s+now|coming\s+soon|only\s+in\s+theaters|in\s+theaters|on\s+digital|watch\s+now|now\s+playing|digital\s+release|first\s+look|special\s+look)";
-        title = Regex.Replace(title,
-            @"[\s._-]+(?:teaser[\s._-]+trailer|trailer|teaser)(?:[\s._-]+#?\d{1,2})?(?:[\s._-]+" + promo + @")?$",
-            "", RegexOptions.IgnoreCase);
-        // The host may remove "Trailer" but leave its "Official" or "Final" prefix.
-        if (Regex.IsMatch(filename, @"(?:official|final|theatrical)[\s._-]+(?:teaser[\s._-]+)?trailer\b", RegexOptions.IgnoreCase))
-            title = Regex.Replace(title, @"[\s._-]+(?:official|final|theatrical)$", "", RegexOptions.IgnoreCase);
-        title = Regex.Replace(title,
-            @"[\s._-]+(?:watch[\s._-]+at[\s._-]+home|watch[\s._-]+now|on[\s._-]+digital)$",
-            "", RegexOptions.IgnoreCase);
-        if (year.HasValue)
-            title = Regex.Replace(title, @"\s+(?=[A-Za-z0-9_-]{8,}$)(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]+$", "", RegexOptions.IgnoreCase);
+        // Once a filename says Trailer/Teaser, everything after that label is decoration.
+        // Use its last occurrence to preserve titles such as Trailer Park Boys.
+        var trailerLabels = Regex.Matches(title,
+            @"[\s._:-]+(?:(?:official|final|theatrical)[\s._:-]+)?(?:teaser[\s._:-]+trailer|trailer|teaser)(?![\p{L}\p{N}])",
+            RegexOptions.IgnoreCase);
+        if (trailerLabels.Count > 0)
+            title = title.Substring(0, trailerLabels[trailerLabels.Count - 1].Index);
 
+        // The host may remove Trailer but leave its Official/Final prefix.
+        if (Regex.IsMatch(filename, @"(?:official|final|theatrical)[\s._:-]+(?:teaser[\s._:-]+)?trailer\b", RegexOptions.IgnoreCase))
+            title = Regex.Replace(title, @"[\s._:-]+(?:official|final|theatrical)$", "", RegexOptions.IgnoreCase);
+        title = Regex.Replace(title,
+            @"[\s._:-]+(?:watch[\s._:-]+at[\s._:-]+home|watch[\s._:-]+now|on[\s._:-]+digital)$",
+            "", RegexOptions.IgnoreCase);
         // The host expects a delimiter before a release year; also accept Dune2021.
         if (!year.HasValue)
         {

@@ -37,8 +37,9 @@ own type cannot be established. It never types a bare TMDB ID or overrides
 explicit, item, or owner type. Movie searches still require exact normalized
 title plus matching year. Filename parsing delegates standard name/year and
 technical-label handling to the host's built-in library parser, then removes
-trailer labels, promotional trailer suffixes, generated-looking identifiers,
-and TV season hints. It also supports compact years such as Dune2021. Remote
+text from the last Trailer/Teaser label onward and trims TV season hints.
+It avoids guessing whether ordinary title words are video IDs, but still supports
+compact years such as Dune2021. Remote
 matches still require exact title and year. Series
 searches require an exact, unambiguous title
 and ignore the trailer filename's release year, which need not be the show's

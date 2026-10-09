@@ -159,7 +159,7 @@ namespace Emby.Plugins.Moonfin.Services
             const string qualitySuffixPattern = @"\s*[\[(]?(?:720p|1080p|2160p|4k|hd|uhd)[\])]?(?:[\s_]+[A-Za-z0-9_-]{7,})?\s*$";
             const string trailerSuffixPattern = @"(?:^|[\s\-–:])(?:official\s+|theatrical\s+|final\s+)?(?:teaser(?:\s+trailer)?|trailer)(?:\s*#?\d{1,2})?\s*$";
             // Keep underscores intact until embedded video IDs have been stripped.
-            title = Regex.Replace(title, @"(?<label>\b(?:trailer|teaser)(?:[\s_]+#?\d{1,2})?)[\s_]+[A-Za-z0-9_-]{7,}$",
+            title = Regex.Replace(title, @"(?<label>\b(?:trailer|teaser)(?:[\s_]+#?\d{1,2})?)[\s_]+[A-Za-z0-9_-]{6,}$",
                 "${label}", RegexOptions.IgnoreCase);
             // Remove video IDs and generated suffixes without losing a known release year.
             title = Regex.Replace(title, @"\s*\[[A-Za-z0-9_-]{11}\]\s*$", "");

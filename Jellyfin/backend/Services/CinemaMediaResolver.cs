@@ -127,21 +127,25 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         title = title.Replace('.', ' ').Trim();
         // Only remove trailing decorations; never remove words inside a movie title.
         const string qualitySuffixPattern = @"\s*[\[(]?(?:720p|1080p|2160p|4k|hd|uhd)[\])]?(?:[\s_]+[A-Za-z0-9_-]{7,})?\s*$";
-        title = Regex.Replace(title, qualitySuffixPattern, "", RegexOptions.IgnoreCase);
         const string trailerSuffixPattern = @"(?:^|[\s\-–:])(?:official\s+|theatrical\s+|final\s+)?(?:teaser(?:\s+trailer)?|trailer)(?:\s*#?\d{1,2})?\s*$";
         // Keep underscores intact until embedded video IDs have been stripped.
-        title = Regex.Replace(title, @"(?<label>\b(?:trailer|teaser))[\s_]+[A-Za-z0-9_-]{7,}$",
+        title = Regex.Replace(title, @"(?<label>\b(?:trailer|teaser)(?:[\s_]+#?\d{1,2})?)[\s_]+[A-Za-z0-9_-]{7,}$",
             "${label}", RegexOptions.IgnoreCase);
         // Remove video IDs and generated suffixes without losing a known release year.
         title = Regex.Replace(title, @"\s*\[[A-Za-z0-9_-]{11}\]\s*$", "");
+        title = Regex.Replace(title, qualitySuffixPattern, "", RegexOptions.IgnoreCase);
         title = Regex.Replace(title, trailerSuffixPattern, "", RegexOptions.IgnoreCase).Trim(' ', '-', '–', ':');
         title = Regex.Replace(title, @"\s*\[[A-Za-z0-9_-]{11}\]\s*$", "");
-        title = Regex.Replace(title, @"(?<year>(?:19|20)\d{2}[)\]]?)[\s_]+[A-Za-z0-9_-]{7,}$",
-            "${year}", RegexOptions.IgnoreCase);
+        title = Regex.Replace(title, @"^(?<prefix>.*)(?<year>(?:19|20)\d{2}[)\]]?)[\s_]+[A-Za-z0-9_-]{7,}$",
+            "${prefix}${year}", RegexOptions.IgnoreCase);
         title = title.Replace('_', ' ');
         // A trailing video ID may have hidden a preceding quality label.
         title = Regex.Replace(title, qualitySuffixPattern, "", RegexOptions.IgnoreCase);
         title = Regex.Replace(title, trailerSuffixPattern, "", RegexOptions.IgnoreCase).Trim(' ', '-', '–', ':');
+        // Remove known promotional copy only when adjacent to a release year.
+        const string promoPattern = @"(?:watch\s+at\s+home|now\s+streaming|streaming\s+now|available\s+now|coming\s+soon|only\s+in\s+theaters|in\s+theaters|on\s+digital|watch\s+now|now\s+playing|digital\s+release|first\s+look|special\s+look|new)";
+        title = Regex.Replace(title, @"\s+" + promoPattern + @"(?=\s+(?:19|20)\d{2}\b)", "", RegexOptions.IgnoreCase);
+        title = Regex.Replace(title, @"(?<year>(?:19|20)\d{2}[)\]]?)\s+" + promoPattern + @"\s*$", "${year}", RegexOptions.IgnoreCase);
         int? year = null;
         var match = Regex.Match(title, @"^(?<title>.+?)[\s\-(\[]+(?<year>\d{4})[)\]]?\s*$");
         if (match.Success && int.TryParse(match.Groups["year"].Value, out var parsed) &&

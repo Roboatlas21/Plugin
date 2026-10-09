@@ -24,6 +24,13 @@ public sealed class CinemaMediaResolverCompatibilityTests
 
     [Theory]
     [InlineData("Dune.Part.Two.2024.Official.Trailer.mp4", "Dune Part Two", 2024)]
+    [InlineData("Dune 2021 jdidisisj.mp4", "Dune", 2021)]
+    [InlineData("Dune official trailer 2021 jdjdjsn.mp4", "Dune", 2021)]
+    [InlineData("Dune (2021) [abcdefghijk].mp4", "Dune", 2021)]
+    [InlineData("Dune 2021 Trailer [abcdefghijk].mp4", "Dune", 2021)]
+    [InlineData("Dune dhjdiii3jeb 2023.mp4", "Dune", 2023)]
+    [InlineData("Dune Part Two 2024 jdjdjsn.mp4", "Dune Part Two", 2024)]
+    [InlineData("Pride and Prejudice 2005.mp4", "Pride and Prejudice", 2005)]
     [InlineData("Dune Official Trailer (2024).mp4", "Dune", 2024)]
     [InlineData("Dune Trailer 2 (2024).mp4", "Dune", 2024)]
     [InlineData("Show Season 5 Trailer (2026).mp4", "Show", null)]
@@ -156,6 +163,31 @@ public sealed class CinemaMediaResolverCompatibilityTests
         var resolver = new CinemaMediaResolver(library, provider);
         Assert.Equal(new CinemaMediaResolver.Resolution(693134, "movie"),
             await resolver.ResolveMediaAsync(intro.Id, Guid.NewGuid(), "movie", CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData("Dune 2021 jdidisisj.mp4")]
+    [InlineData("Dune official trailer 2021 jdjdjsn.mp4")]
+    public async Task GeneratedSuffixSearchStillRequiresExactMovieTitleAndYear(string filename)
+    {
+        var intro = new Video { Id = Guid.NewGuid(), Path = filename };
+        var library = new FakeLibraryManager { ItemForUserHandler = (_, _) => intro };
+        var provider = DispatchProxy.Create<IProviderManager, SearchProvider>();
+        var search = (SearchProvider)(object)provider;
+        search.Search = query =>
+        {
+            Assert.Equal("Dune", query.SearchInfo.Name);
+            Assert.Equal(2021, query.SearchInfo.Year);
+            return [Result(42, "Dune", 2021)];
+        };
+        var resolver = new CinemaMediaResolver(library, provider);
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "movie"),
+            await resolver.ResolveMediaAsync(intro.Id, Guid.NewGuid(), "movie", default));
+
+        search.Search = _ => [Result(42, "Dune", 2024)];
+        Assert.Null((await resolver.ResolveMediaAsync(intro.Id, Guid.NewGuid(), "movie", default)).TmdbId);
+        search.Search = _ => [Result(42, "Dune Part Two", 2021)];
+        Assert.Null((await resolver.ResolveMediaAsync(intro.Id, Guid.NewGuid(), "movie", default)).TmdbId);
     }
 
     [Fact]

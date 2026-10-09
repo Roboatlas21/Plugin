@@ -50,10 +50,9 @@ namespace Emby.Plugins.Moonfin.Services
                     return new Resolution(null);
             }
 
-            // Moonfin normally consumes trustworthy unattached typed metadata locally.
-            // If the request reaches Moonbase, still parse direct metadata so an attached
-            // trailer can be checked against its accessible owner and so this endpoint
-            // remains safe when called directly. Feature context never supplies the type.
+            // Moonfin uses a valid TMDB ID directly when it can determine the type.
+            // When the fallback is called, still validate any accessible owner and
+            // direct metadata; playback context does not type a bare server-side ID.
             var explicitType = ProviderValue(item.ProviderIds, "TmdbMediaType");
             if (explicitType != null && explicitType is not ("movie" or "tv")) return new Resolution(null);
             var itemType = item is Movie ? "movie" : null;

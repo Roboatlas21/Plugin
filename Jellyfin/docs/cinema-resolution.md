@@ -3,24 +3,29 @@
 Jellyfin and Emby expose the same typed resolver contract:
 `GET /Moonfin/Cinema/ResolveMedia?itemId=<uuid>&expectedMediaType=movie|tv`.
 
-Moonfin first resolves unattached typed TMDB metadata locally. An unattached
-video with an untyped TMDB ID also resolves locally as a movie if it is playing
-before a movie. Neither fast path requires Moonbase. The server resolver validates
-attached-trailer ownership and user access, and handles strict filename/display-name
-fallback when identity is still unknown. The endpoint remains self-contained and can
-also return direct typed metadata because attached trailers may need that metadata
-validated against their owner, and callers may invoke the endpoint directly.
+Moonfin uses a positive TMDB ID locally, determining its media type from the
+explicit `TmdbMediaType` provider value, the item's Movie/Series classification,
+or the playback context (movie before a movie, series before an episode).
+Playback context assumes that the intro provider keeps movie and series trailer
+pools separate. Moonfin does not read `OwnerId` or require changes to Jellyfin's
+Intros response.
+
+When there is no usable TMDB identity, Moonfin asks Moonbase to resolve it.
+The resolver can check ownership and user access internally, then use strict
+filename/display-name matching if necessary. Clients may also call this
+endpoint directly with typed metadata.
 
 The endpoint requires the authenticated server user's access to the intro and any
 trailer owner. The response contains `tmdbId` and `mediaType` (`movie` or `tv`).
 An unresolved result has null identity fields. Lookups have an eight-second
 budget and no completed-result cache.
 
-TMDB IDs are not globally unique across movies and TV. An explicit
-`ProviderIds.TmdbMediaType`, a Movie item, or an accessible Movie/Series trailer
-owner establishes type. An untyped ID on a TV trailer requires either a matching ID from its
-accessible Series owner or confirmation from a strict series lookup. Conflicting types and IDs
-are rejected; no trailer-plugin-specific provider marker is required.
+TMDB IDs are not globally unique across movies and TV. For server-side
+resolution, an explicit `ProviderIds.TmdbMediaType`, a Movie item, or an
+accessible Movie/Series trailer owner establishes type. An untyped TV ID
+encountered by the resolver needs either a matching Series-owner ID or a strict
+series lookup. Conflicting types and IDs are rejected. The owner relationship
+is only examined on the server; no trailer-plugin-specific marker is required.
 
 `expectedMediaType` restricts filename searches; it does not type an unverified
 ID or override a trustworthy typed identity. Movie searches require exact normalized

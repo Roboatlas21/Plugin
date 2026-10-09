@@ -1,6 +1,5 @@
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Plugins;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Moonfin.Server.Services;
 
@@ -39,11 +38,6 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<CustomRowFetchService>();
         serviceCollection.AddSingleton<CollectionOrderService>();
         serviceCollection.AddSingleton<CinemaMediaResolver>();
-        // The normal Jellyfin Intros DTO omits OwnerId. Attach it only to owned
-        // intros so Moonfin's existing guard delegates identity checks to Moonbase.
-        serviceCollection.AddTransient<CinemaIntroOwnershipFilter>();
-        serviceCollection.Configure<MvcOptions>(options =>
-            options.Filters.AddService<CinemaIntroOwnershipFilter>());
         serviceCollection.AddSingleton<GamesService>();
         serviceCollection.AddSingleton<GameSavesService>();
         // MoonfinPlugin.ResolveDataFolderPath() must be called INSIDE each factory lambda, not

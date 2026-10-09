@@ -21,7 +21,7 @@ public sealed class CinemaMediaResolverTests
     }
 
     [Fact]
-    public void YearlessRemakesUsePremiereDateButKnownMovieYearsRemainStrict()
+    public void PremiereDateSupportsYearlessAndKnownYearMatches()
     {
         var method = typeof(CinemaMediaResolver).GetMethod("Matches", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
@@ -39,7 +39,8 @@ public sealed class CinemaMediaResolverTests
         int[] Matches(int? year) => ((IEnumerable<int>)method.Invoke(null,
             new object[] { new CinemaMediaResolver.MediaName("Show", year), results })!).ToArray();
         Assert.Equal(new[] { 43 }, Matches(null));
-        Assert.Empty(Matches(1989));
+        Assert.Equal(new[] { 42 }, Matches(1989));
+        Assert.Empty(Matches(1990));
     }
 
     [Fact]

@@ -118,20 +118,31 @@ public sealed class CinemaMediaResolverTests
         Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
     }
 
-    [Fact]
-    public async Task TvRemakeMatchingUsesPremiereDateWhenProductionYearIsMissing()
+    [Theory]
+    [InlineData("Show Trailer.mp4", null, 43)]
+    [InlineData("Show (1989) Trailer.mp4", 1989, 42)]
+    [InlineData("Show (2024) Trailer.mp4", 2024, 43)]
+    public async Task TvRemakeMatchingUsesPremiereDateWhenProductionYearIsMissing(
+        string filename, int? expectedYear, int expectedId)
     {
         var older = Result(42, "Show");
         older.PremiereDate = new DateTime(1989, 1, 1);
         var newer = Result(43, "Show");
         newer.PremiereDate = new DateTime(2024, 1, 1);
-        var resolver = Resolver(new Video { Path = "Show Trailer.mp4" }, (_, _, _) => [older, newer]);
-        Assert.Equal(new CinemaMediaResolver.Resolution(43, "tv"),
+        var resolver = Resolver(new Video { Path = filename }, (type, title, year) =>
+        {
+            Assert.Equal("tv", type);
+            Assert.Equal("Show", title);
+            Assert.Equal(expectedYear, year);
+            return [older, newer];
+        });
+        Assert.Equal(new CinemaMediaResolver.Resolution(expectedId, "tv"),
             await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
     }
 
     [Theory]
     [InlineData("Silo ABCdefghiJK.mp4", "", "Silo", "tv", null)]
+    [InlineData("Silo Season 5 (2026) Trailer.mp4", "", "Silo", "tv", null)]
     [InlineData("Dune2021 Trailer.mp4", "", "Dune", "movie", 2021)]
     [InlineData("Trailer Park Boys Official Trailer abcdefghijk.mp4", "", "Trailer Park Boys", "tv", null)]
     [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.mp4", "Show Season 5 Trailer", "Show", "tv", null)]

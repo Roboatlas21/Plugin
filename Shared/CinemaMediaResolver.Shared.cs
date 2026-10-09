@@ -111,16 +111,15 @@ public sealed partial class CinemaMediaResolver
             owner.Name.Length > 200 || NormalizeTitle(owner.Name).Length == 0)) return new(null);
         MediaName?[] candidates;
         if (owner != null)
-            candidates = new[] { new MediaName(owner.Name, owner is Movie ? owner.ProductionYear : null) };
+            candidates = new[] { new MediaName(owner.Name, owner.ProductionYear) };
         else if (filenameIdentity is { } n)
             candidates = new[] { new MediaName(n.Title, null) };
         else
             candidates = new[] { ParseName(item.Path, parseStandard), ParseName(item.Name, parseStandard, isPath: false) };
         var names = candidates
             .Where(n => n != null)
-            .Select(n => searchType == "tv"
-                ? new MediaName(n!.Title, null)
-                : new MediaName(n!.Title, n!.Year ?? (owner == null ? item.ProductionYear : null)))
+            .Select(n => new MediaName(n!.Title,
+                n!.Year ?? (searchType == "movie" && owner == null ? item.ProductionYear : null)))
             .GroupBy(n => (NormalizeTitle(n.Title), n.Year))
             .Select(group => group.First()).ToArray();
         // Only try delimited alternatives when the complete title yields no exact match.
@@ -148,7 +147,7 @@ public sealed partial class CinemaMediaResolver
                 {
                     results = await AwaitSearch(_providers.GetRemoteSearchResults<Series, SeriesInfo>(new RemoteSearchQuery<SeriesInfo>
                     {
-                        SearchInfo = new SeriesInfo { Name = name!.Title },
+                        SearchInfo = new SeriesInfo { Name = name!.Title, Year = name.Year },
                         SearchProviderName = "TheMovieDb",
                         IncludeDisabledProviders = false,
                     }, cancellationToken), cancellationToken).ConfigureAwait(false);
@@ -279,7 +278,7 @@ public sealed partial class CinemaMediaResolver
     {
         var title = NormalizeTitle(name.Title);
         var exact = results.Where(r => NormalizeTitle(r.Name ?? "") == title &&
-                (!name.Year.HasValue || r.ProductionYear == name.Year)).ToArray();
+                (!name.Year.HasValue || (r.ProductionYear ?? r.PremiereDate?.Year) == name.Year)).ToArray();
         // An exact candidate without an ID leaves identity uncertain too.
         var ids = exact.Select(r => PositiveTmdb(r.ProviderIds) ?? 0).Distinct().ToArray();
         if (name.Year.HasValue || ids.Length < 2 || ids.Contains(0)) return ids;

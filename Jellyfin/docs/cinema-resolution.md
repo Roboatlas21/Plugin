@@ -31,7 +31,9 @@ is only examined on the server; no trailer-plugin-specific marker is required.
 
 `expectedMediaType` restricts filename searches; it does not type an unverified
 ID or override a trustworthy typed identity. Movie searches require exact normalized
-title plus matching year. Series searches require an exact, unambiguous title
+title plus matching year. Filename parsing ignores conventional trailer labels,
+bracketed YouTube IDs, and generated-looking suffixes around an explicit year;
+remote matches still require the exact title and year. Series searches require an exact, unambiguous title
 and ignore the trailer filename's release year, which need not be the show's
 debut year. Season N/SNN suffixes are also ignored when matching series.
 The Seerr request dialog handles season selection independently.

@@ -1,62 +1,44 @@
 # Typed Cinema Mode resolution
 
-Jellyfin and Emby expose the same typed resolver contract:
+Jellyfin and Emby expose the same typed endpoint:
 `GET /Moonfin/Cinema/ResolveMedia?itemId=<uuid>&expectedMediaType=movie|tv`.
 
-Moonfin uses a positive TMDB ID locally, determining its media type from the
-explicit `TmdbMediaType` provider value, the item's Movie/Series classification,
-or the playback context (movie before a movie, series before an episode).
-Playback context assumes that the intro provider keeps movie and series trailer
-pools separate. Moonfin does not read `OwnerId` or require changes to Jellyfin's
-Intros response.
+Moonfin uses a positive TMDB ID when the trailer's media type is known from
+`TmdbMediaType`, its Movie/Series item classification, or the playing feature.
+The last option assumes that untyped movie and TV trailers are kept in separate
+intro pools. No changes to Jellyfin's Intros response are needed.
 
-When there is no usable TMDB identity, Moonfin asks Moonbase to resolve it.
-The resolver checks ownership and user access internally. If an attached
-movie or series has no TMDB ID, it searches using the owner's title (and the
-owner's production year for movies), never the trailer filename. Standalone
-trailers still use strict filename/display-name matching. Clients may also
-call this endpoint directly with typed metadata.
+When Moonfin cannot establish an identity, the authenticated resolver validates
+access to the video and its owner. If a Movie or Series owns the trailer, owner
+metadata and title are authoritative. Owned movies must have a release year for
+name-based search; TV title searches do not require a year.
 
-The endpoint requires the authenticated server user's access to the intro and any
-trailer owner. The response contains `tmdbId` and `mediaType` (`movie` or `tv`).
-An unresolved result has no usable identity: its fields may be null or omitted
-(Emby omits null-valued JSON properties). Moonfin handles both forms. Lookups
-have an eight-second budget and no completed-result cache.
+The resolver also recognizes provider IDs embedded in standalone trailer names:
+`Title_tmdb123_trailer`, `Title_123_trailer`, and `Title_tvdb456_trailer`.
+Explicit prefixes identify TMDB versus TVDB; an unprefixed numeric suffix is
+treated as a movie TMDB ID unless it resembles a release year. Contradicting
+item, owner, path, or display-name metadata is rejected.
 
-TMDB IDs are not globally unique across movies and TV. For server-side
-resolution, an explicit `ProviderIds.TmdbMediaType`, a Movie item, or an
-accessible Movie/Series trailer owner establishes type. Once the type is known,
-a positive trailer TMDB ID is trusted for movies and series alike; if the
-owner also has an ID, they must agree. Untyped standalone videos normally use strict filename matching. NeXroll's
-`Title_<tmdbId>_trailer` convention provides a movie TMDB ID directly, while
-`Title_tvdb<tvdbId>_trailer` establishes TV type and supplies a clean series title
-for an exact TMDB search (a TVDB ID is never treated as a TMDB ID). Conflicting types and IDs are rejected. The owner
-relationship is only examined on the server; no trailer-plugin-specific
-marker is required.
+A TVDB ID from either the filename or `ProviderIds.Tvdb` is resolved using
+the host's `TheMovieDb` remote series provider. This is an ID-only lookup,
+not a fuzzy title search. A unique positive TMDB mapping is accepted; conflicting
+or invalid nonempty results are rejected. A result's TVDB ID must match if the
+provider includes one (Jellyfin does; some Emby versions do not). If no mapping
+is returned, the resolver falls back to strict, unambiguous series-title matching.
 
-`expectedMediaType` selects the filename-search category only when the intro's
-own type or NeXroll's explicit filename convention cannot establish it. It never types a bare TMDB ID or overrides
-explicit, item, or owner type. Movie searches still require exact normalized
-title plus matching year. Filename parsing delegates standard name/year and
-technical-label handling to the host's built-in library parser, then removes
-text from the last Trailer/Teaser label onward and trims TV season hints.
-It avoids guessing whether ordinary title words are video IDs, but still supports
-compact years such as Dune2021. Remote
-matches still require exact title and year. Series
-searches require an exact, unambiguous title
-and ignore the trailer filename's release year, which need not be the show's
-debut year. Season N/SNN suffixes are also ignored when matching series.
-The Seerr request dialog handles season selection independently.
+Other filenames use the host's native parser with a small trailer-label cleanup.
+Movie name searches require exact normalized title and year; TV searches require
+an exact series title and ignore season numbers or trailer-release years.
+Readable display names can recover hashed file paths. Display names are treated
+as titles, not filesystem paths, so a slash in `Ranma1/2` is preserved.
+Only after a full-title miss are delimiter-separated or generated-ID-suffix
+candidates tried. Ambiguous matches remain unresolved.
 
-Generic untyped filenames still rely on movie/TV trailer pool separation for
-search category. NeXroll's filename IDs establish type independently; other mixed
-pools need explicit type metadata. Search never switches categories after a miss. Readable display names can identify cached files with
-hashed/unmatched names; display names are parsed as text, not as filesystem paths.
-If exact title matching fails for a standalone trailer, the resolver can try
-alternatives separated by a pipe or spaced dash, or a title without a
-long mixed letter-and-number suffix. The complete title is tried first.
-Every candidate must still match TMDB exactly, movies still require a release
-year, and ambiguous matches
-remain unresolved. Owner metadata and NeXroll IDs bypass this fallback.
+`expectedMediaType` only selects a name-search category when authoritative
+item/owner and embedded-ID metadata cannot establish it. Searches do not switch
+from movie to TV or vice versa after a miss. Unresolvable media simply hides
+Request; Cinema Mode playback and Skip remain usable.
 
-Cinema Mode uses only `ResolveMedia` to resolve movies and series.
+The endpoint returns `tmdbId` and `mediaType` (`movie` or `tv`).
+It uses an eight-second server-side timeout, has no completed-result cache,
+and requires access to the intro and any registered owner.

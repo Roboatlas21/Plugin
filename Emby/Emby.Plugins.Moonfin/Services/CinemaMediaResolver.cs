@@ -73,32 +73,66 @@ namespace Emby.Plugins.Moonfin.Services
                 return new Resolution(id, type);
             }
 
-            // NeXroll names movies Title_tmdbId_trailer and shows Title_tvdbId_trailer.
-            // An unmarked number is a movie TMDB ID; a TVDB number only types a TV search.
-            var fromPath = owner == null ? ParseNeXrollName(item.Path) : null;
-            var fromName = owner == null ? ParseNeXrollName(item.Name) : null;
+            // File-based identifiers are usable regardless of which program created the trailer.
+            var fromPath = owner == null ? ParseTrailerFilenameIdentity(item.Path) : null;
+            var fromName = owner == null ? ParseTrailerFilenameIdentity(item.Name, isPath: false) : null;
             if (fromPath.HasValue && fromName.HasValue &&
                 (fromPath.Value.MediaType != fromName.Value.MediaType ||
                  fromPath.Value.TmdbId != fromName.Value.TmdbId ||
+                 fromPath.Value.TvdbId != fromName.Value.TvdbId ||
                  NormalizeTitle(fromPath.Value.Title) != NormalizeTitle(fromName.Value.Title)))
                 return new Resolution(null);
-            var nexroll = fromPath ?? fromName;
-            if (nexroll is { } named)
-            {
-                if (type != null && type != named.MediaType) return new Resolution(null);
-                if (named.TmdbId is int movieId)
-                {
-                    if (direct.HasValue && direct.Value != movieId) return new Resolution(null);
-                    return new(movieId, "movie");
-                }
-                if (direct.HasValue) return new(direct.Value, "tv");
-            }
-
-            // Known type or the NeXroll TVDB label determines category; context is last resort.
-            var searchType = type ?? nexroll?.MediaType ?? expectedMediaType;
-            if (searchType is not ("movie" or "tv"))
+            var filenameIdentity = fromPath ?? fromName;
+            if (filenameIdentity is { } named && type != null && type != named.MediaType)
                 return new Resolution(null);
 
+            var itemTvdb = PositiveId(item.ProviderIds, "Tvdb");
+            var ownerTvdb = owner == null ? null : PositiveId(owner.ProviderIds, "Tvdb");
+            if (itemTvdb.HasValue && ownerTvdb.HasValue && itemTvdb != ownerTvdb)
+                return new Resolution(null);
+            if (filenameIdentity?.TvdbId is int fileTvdb &&
+                ((itemTvdb.HasValue && itemTvdb != fileTvdb) ||
+                 (ownerTvdb.HasValue && ownerTvdb != fileTvdb)))
+                return new Resolution(null);
+            var tvdbId = itemTvdb ?? ownerTvdb ?? filenameIdentity?.TvdbId;
+
+            if (filenameIdentity?.TmdbId is int movieId)
+            {
+                if (tvdbId.HasValue || (direct.HasValue && direct != movieId)) return new Resolution(null);
+                return new(movieId, "movie");
+            }
+
+            // Known metadata and typed filename IDs override playback context.
+            var searchType = type ?? filenameIdentity?.MediaType ?? (tvdbId.HasValue ? "tv" : expectedMediaType);
+            if (searchType is not ("movie" or "tv") || (tvdbId.HasValue && searchType != "tv"))
+                return new Resolution(null);
+
+            if (tvdbId is int externalId)
+            {
+                // Use an ID-only provider lookup. A blank Name avoids guessing by title.
+                var results = await _providers.GetRemoteSearchResults<Series, SeriesInfo>(
+                    new RemoteSearchQuery<SeriesInfo>
+                    {
+                        SearchInfo = new SeriesInfo
+                        {
+                            Name = string.Empty,
+                            ProviderIds = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                            {
+                                ["Tvdb"] = externalId.ToString(CultureInfo.InvariantCulture),
+                            },
+                        },
+                        SearchProviderName = "TheMovieDb",
+                        IncludeDisabledProviders = false,
+                    },
+                    cancellationToken).ConfigureAwait(false);
+                var mappedResults = results.ToArray();
+                if (mappedResults.Length > 0)
+                {
+                    var mappedId = UniqueTvdbTmdbId(externalId, mappedResults);
+                    if (!mappedId.HasValue || (direct.HasValue && direct != mappedId)) return new Resolution(null);
+                    return new(mappedId.Value, "tv");
+                }
+            }
             // When attached, identify the accessible owner, never a potentially unrelated trailer filename.
             if (owner != null && (string.IsNullOrWhiteSpace(owner.Name) ||
                 owner.Name.Length > 200 || NormalizeTitle(owner.Name).Length == 0)) return new Resolution(null);
@@ -106,7 +140,7 @@ namespace Emby.Plugins.Moonfin.Services
             MediaName?[] candidates;
             if (owner != null)
                 candidates = new[] { new MediaName(owner.Name, owner is Movie ? owner.ProductionYear : null) };
-            else if (nexroll is { } n)
+            else if (filenameIdentity is { } n)
                 candidates = new[] { new MediaName(n.Title, null) };
             else
                 candidates = new[] { ParseName(item.Path, parseStandard), ParseName(item.Name, parseStandard, isPath: false) };
@@ -119,7 +153,7 @@ namespace Emby.Plugins.Moonfin.Services
                 .Select(group => group.First()).ToArray();
 
             // Only try delimited alternatives when the complete title yields no exact match.
-            var alternatives = owner == null && nexroll == null
+            var alternatives = owner == null && filenameIdentity == null
                 ? names.SelectMany(DelimitedNames)
                     .GroupBy(n => (NormalizeTitle(n.Title), n.Year))
                     .Select(group => group.First()).ToArray()
@@ -174,12 +208,29 @@ namespace Emby.Plugins.Moonfin.Services
         private static string? ProviderValue(IDictionary<string, string>? ids, string key) =>
             ids?.FirstOrDefault(p => p.Key.Equals(key, StringComparison.OrdinalIgnoreCase)).Value;
 
-        public static int? PositiveTmdb(IDictionary<string, string>? ids)
+        private static int? PositiveId(IDictionary<string, string>? ids, string key)
         {
-            var value = ProviderValue(ids, "Tmdb");
-            return int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id > 0
-                ? id
-                : (int?)null;
+            var value = ProviderValue(ids, key);
+            return int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id > 0 ? id : null;
+        }
+
+        public static int? PositiveTmdb(IDictionary<string, string>? ids) => PositiveId(ids, "Tmdb");
+
+        /// <summary>Accept a unique TMDB mapping from a TVDB-based series lookup.</summary>
+        public static int? UniqueTvdbTmdbId(int tvdbId, IEnumerable<RemoteSearchResult> results)
+        {
+            int? found = null;
+            foreach (var result in results)
+            {
+                var reportedTvdb = ProviderValue(result.ProviderIds, "Tvdb");
+                if (reportedTvdb != null &&
+                    (!int.TryParse(reportedTvdb, NumberStyles.None, CultureInfo.InvariantCulture, out var reported) || reported != tvdbId))
+                    return null;
+                var id = PositiveTmdb(result.ProviderIds);
+                if (!id.HasValue || (found.HasValue && found != id)) return null;
+                found = id;
+            }
+            return found;
         }
 
         public static MediaName? ParseName(string? pathOrName, Func<string, ItemLookupInfo> parseStandard, bool isPath = true)
@@ -263,20 +314,24 @@ namespace Emby.Plugins.Moonfin.Services
                 .Distinct();
         }
 
-        // NeXroll's TVDB ID marks a series, but is not itself a TMDB ID.
-        public static (string Title, string MediaType, int? TmdbId)? ParseNeXrollName(string? pathOrName)
+        // Recognize embedded provider IDs by their namespace, not the downloader.
+        public static (string Title, string MediaType, int? TmdbId, int? TvdbId)? ParseTrailerFilenameIdentity(
+            string? pathOrName, bool isPath = true)
         {
             if (string.IsNullOrWhiteSpace(pathOrName)) return null;
-            var filename = pathOrName.Replace('\\', '/').Split('/').Last();
+            var filename = isPath ? pathOrName.Replace('\\', '/').Split('/').Last() : pathOrName;
             var match = Regex.Match(filename,
-                @"^(?<title>.+)_(?<tvdb>tvdb)?(?<id>[1-9]\d*)_trailer(?:\.(?:mp4|mkv|avi|mov|webm|m4v|ts))?$",
+                @"^(?<title>.+)_(?<source>tvdb|tmdb)?(?<id>[1-9]\d*)_trailer(?:\.(?:mp4|mkv|avi|mov|webm|m4v|ts))?$",
                 RegexOptions.IgnoreCase);
             if (!match.Success || !int.TryParse(match.Groups["id"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var id))
                 return null;
+            var source = match.Groups["source"].Value;
+            // A bare four-digit year is not reliable evidence of a TMDB ID.
+            if (source.Length == 0 && id >= 1900 && id <= DateTime.UtcNow.Year + 3) return null;
             var title = match.Groups["title"].Value.Replace('_', ' ').Trim();
             if (title.Length == 0 || title.Length > 200 || NormalizeTitle(title).Length == 0) return null;
-            var tv = match.Groups["tvdb"].Success;
-            return (title, tv ? "tv" : "movie", tv ? (int?)null : id);
+            var isTv = source.Equals("tvdb", StringComparison.OrdinalIgnoreCase);
+            return (title, isTv ? "tv" : "movie", isTv ? (int?)null : id, isTv ? id : (int?)null);
         }
 
         private static string NormalizeTitle(string title) => string.Concat(

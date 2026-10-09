@@ -66,8 +66,9 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         // When attached, identify the accessible owner, never a potentially unrelated trailer filename.
         if (owner != null && (string.IsNullOrWhiteSpace(owner.Name) ||
             owner.Name.Length > 200 || NormalizeTitle(owner.Name).Length == 0)) return new(null);
+        Func<string, ItemLookupInfo> parseStandard = library.ParseName;
         var names = (owner == null
-                ? new[] { ParseName(item.Path), ParseName(item.Name) }
+                ? new[] { ParseName(item.Path, parseStandard), ParseName(item.Name, parseStandard) }
                 : new[] { new MediaName(owner.Name, owner is Movie ? owner.ProductionYear : null) })
             .Where(n => n != null)
             .Select(n => searchType == "tv"
@@ -114,62 +115,56 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         return int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id > 0 ? id : null;
     }
 
-    public static MediaName? ParseName(string? pathOrName)
+    public static MediaName? ParseName(string? pathOrName, Func<string, ItemLookupInfo> parseStandard)
     {
         if (string.IsNullOrWhiteSpace(pathOrName)) return null;
-        // Either host's path separator can occur in provider metadata.
-        var title = pathOrName.Replace('\\', '/').Split('/').Last();
-        title = Regex.Replace(title, @"\.(mp4|mkv|avi|mov|webm|m4v|ts)$", "", RegexOptions.IgnoreCase);
-        title = title.Replace('.', ' ').Trim();
-        // Only remove trailing decorations; never remove words inside a movie title.
-        const string qualitySuffixPattern = @"\s*[\[(]?(?:full[\s_]+hd|4k[\s_]+hdr|720p|1080p|2160p|4k|hd|uhd)[\])]?(?:[\s_]+[A-Za-z0-9_-]{7,})?\s*$";
-        const string promoPattern = @"(?:watch\s+at\s+home|now\s+streaming|streaming\s+now|available\s+now|coming\s+soon|only\s+in\s+theaters|in\s+theaters|on\s+digital|watch\s+now|now\s+playing|digital\s+release|first\s+look|special\s+look)";
-        const string trailerSuffixPattern = @"(?:^|[\s\-–:])(?:official\s+|theatrical\s+|final\s+)?(?:teaser(?:\s+trailer)?|trailer)(?:\s*#?\d{1,2})?(?:\s+" + promoPattern + @")?\s*$";
-        // Keep underscores intact until embedded video IDs have been stripped.
-        title = Regex.Replace(title, @"(?<label>\b(?:trailer|teaser)(?:[\s_]+#?\d{1,2})?)[\s_]+[A-Za-z0-9_-]{6,}$",
-            "${label}", RegexOptions.IgnoreCase);
-        // Remove video IDs and generated suffixes without losing a known release year.
-        title = Regex.Replace(title, @"\s*\[[A-Za-z0-9_-]{11}\]\s*$", "");
-        title = Regex.Replace(title, qualitySuffixPattern, "", RegexOptions.IgnoreCase);
-        title = Regex.Replace(title, trailerSuffixPattern, "", RegexOptions.IgnoreCase).Trim(' ', '-', '–', ':');
-        title = Regex.Replace(title, @"\s*\[[A-Za-z0-9_-]{11}\]\s*$", "");
-        title = Regex.Replace(title, @"^(?<prefix>.*)(?<year>(?:19|20)\d{2}[)\]]?)[\s_]+[A-Za-z0-9_-]{7,}$",
-            "${prefix}${year}", RegexOptions.IgnoreCase);
-        title = title.Replace('_', ' ');
-        // A trailing video ID may have hidden a preceding quality label.
-        title = Regex.Replace(title, qualitySuffixPattern, "", RegexOptions.IgnoreCase);
-        title = Regex.Replace(title, trailerSuffixPattern, "", RegexOptions.IgnoreCase).Trim(' ', '-', '–', ':');
-        // Remove known promotional copy only when adjacent to a release year.
-        title = Regex.Replace(title, @"\s+" + promoPattern + @"(?=\s+(?:19|20)\d{2}\b)", "", RegexOptions.IgnoreCase);
-        title = Regex.Replace(title, @"(?<year>(?:19|20)\d{2}[)\]]?)\s+" + promoPattern + @"\s*$", "${year}", RegexOptions.IgnoreCase);
-        int? year = null;
-        var match = Regex.Match(title, @"^(?<title>.+?)(?:[\s\-(\[]+|(?<=\p{L}))(?<year>\d{4})[)\]]?\s*$");
-        if (match.Success && int.TryParse(match.Groups["year"].Value, out var parsed) &&
-            parsed >= 1900 && parsed <= DateTime.UtcNow.Year + 3)
-        {
-            year = parsed;
-            title = match.Groups["title"].Value.Trim(' ', '-', '–', ':');
-        }
-        // The year may follow "Trailer", so remove that suffix after extracting it.
-        title = Regex.Replace(title, trailerSuffixPattern, "", RegexOptions.IgnoreCase).Trim(' ', '-', '–', ':');
+        var filename = pathOrName.Replace('\\', '/').Split('/').Last();
+        filename = Regex.Replace(filename, @"\.(mp4|mkv|avi|mov|webm|m4v|ts)$", "", RegexOptions.IgnoreCase);
+        var parsed = parseStandard(filename);
+        var title = parsed.Name ?? "";
+        var year = parsed.Year;
+
+        // Jellyfin/Emby handle ordinary release names; only trim trailer-specific labels.
+        const string promo = @"(?:watch\s+at\s+home|now\s+streaming|streaming\s+now|available\s+now|coming\s+soon|only\s+in\s+theaters|in\s+theaters|on\s+digital|watch\s+now|now\s+playing|digital\s+release|first\s+look|special\s+look)";
+        title = Regex.Replace(title,
+            @"[\s._-]+(?:teaser[\s._-]+trailer|trailer|teaser)(?:[\s._-]+#?\d{1,2})?(?:[\s._-]+" + promo + @")?$",
+            "", RegexOptions.IgnoreCase);
+        // The host may remove "Trailer" but leave its "Official" or "Final" prefix.
+        if (Regex.IsMatch(filename, @"(?:official|final|theatrical)[\s._-]+(?:teaser[\s._-]+)?trailer\b", RegexOptions.IgnoreCase))
+            title = Regex.Replace(title, @"[\s._-]+(?:official|final|theatrical)$", "", RegexOptions.IgnoreCase);
+        title = Regex.Replace(title,
+            @"[\s._-]+(?:watch[\s._-]+at[\s._-]+home|watch[\s._-]+now|on[\s._-]+digital)$",
+            "", RegexOptions.IgnoreCase);
         if (year.HasValue)
             title = Regex.Replace(title, @"\s+(?=[A-Za-z0-9_-]{8,}$)(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]+$", "", RegexOptions.IgnoreCase);
-        // Treat a trailer's season suffix as decoration, not request metadata.
-        var seriesTitle = Regex.Replace(title, @"[\s\-:]+(?:season\s+|s)\d{1,3}$", "", RegexOptions.IgnoreCase);
+
+        // The host expects a delimiter before a release year; also accept Dune2021.
+        if (!year.HasValue)
+        {
+            var compact = Regex.Match(title, @"^(?<title>.*\p{L})(?<year>19\d{2}|20\d{2})$");
+            if (compact.Success && int.TryParse(compact.Groups["year"].Value, out var candidate)
+                && candidate <= DateTime.UtcNow.Year + 3)
+            {
+                title = compact.Groups["title"].Value;
+                year = candidate;
+            }
+        }
+
+        var seriesTitle = Regex.Replace(title, @"[\s._:-]+(?:season[\s._-]*|s)\d{1,3}$", "", RegexOptions.IgnoreCase);
         if (seriesTitle != title)
         {
-            title = Regex.Replace(seriesTitle, @"[\s\-(\[]+\d{4}[)\]]?\s*$", "")
-                .Trim(' ', '-', ':');
+            title = seriesTitle;
             year = null;
         }
-        // A numeric title such as 1917 remains a title, not a year. Cache hashes
-        // cannot identify a work; try the readable item name instead.
-        if (title.Length == 0 || title.Length > 200 || NormalizeTitle(title).Length == 0 ||
-            Regex.IsMatch(title, @"\A[0-9a-f]{32,64}\z", RegexOptions.IgnoreCase)) return null;
-        return new(title, year);
+
+        title = title.Replace('.', ' ').Replace('_', ' ').Trim(' ', '-', '–', ':');
+        if (year is < 1900 || year > DateTime.UtcNow.Year + 3) year = null;
+        if (title.Length == 0 || title.Length > 200 || NormalizeTitle(title).Length == 0
+            || Regex.IsMatch(title, @"\A[0-9a-f]{32,64}\z", RegexOptions.IgnoreCase)) return null;
+        return new MediaName(title, year);
     }
 
-    private static IEnumerable<int> Matches(MediaName name, IEnumerable<RemoteSearchResult> results)
+        private static IEnumerable<int> Matches(MediaName name, IEnumerable<RemoteSearchResult> results)
     {
         var title = NormalizeTitle(name.Title);
         return results.Where(r => NormalizeTitle(r.Name ?? "") == title &&

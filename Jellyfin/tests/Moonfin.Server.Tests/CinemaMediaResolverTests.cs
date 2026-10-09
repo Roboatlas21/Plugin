@@ -245,6 +245,44 @@ public sealed class CinemaMediaResolverTests
         Assert.Contains("Ranma1/2", searched);
     }
 
+    [Theory]
+    [InlineData("Silo 3883jsjsjd8dj.mp4", "")]
+    [InlineData("Silo_3883jsjsjd8dj.mp4", "")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.mp4", "Silo 3883jsjsjd8dj")]
+    public async Task GeneratedSuffixUsesExactSeriesTitleAsFallback(string path, string displayName)
+    {
+        var intro = new Video { Path = path, Name = displayName };
+        var searches = new List<string>();
+        var resolver = Resolver(intro, (type, title, year) =>
+        {
+            Assert.Equal("tv", type);
+            Assert.Null(year);
+            searches.Add(title);
+            return title == "Silo" ? [Result(42, "Silo")] : [];
+        });
+
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
+            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
+        Assert.Equal(new[] { "Silo 3883jsjsjd8dj", "Silo" }, searches);
+    }
+
+    [Fact]
+    public async Task FullAlphanumericTitleMatchTakesPriorityOverSuffixFallback()
+    {
+        var intro = new Video { Path = "Silo 3883jsjsjd8dj.mp4" };
+        var calls = 0;
+        var resolver = Resolver(intro, (type, title, year) =>
+        {
+            calls++;
+            Assert.Equal("Silo 3883jsjsjd8dj", title);
+            return [Result(99, title)];
+        });
+
+        Assert.Equal(new CinemaMediaResolver.Resolution(99, "tv"),
+            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
+        Assert.Equal(1, calls);
+    }
+
     [Fact]
     public async Task ExactFullTitleWinsBeforeDelimitedFallback()
     {

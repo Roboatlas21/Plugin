@@ -104,6 +104,23 @@ public sealed class CinemaMediaResolverTests
         Assert.Equal("Ranma1/2", parsed?.Title);
     }
 
+    [Theory]
+    [InlineData("Silo 3883jsjsjd8dj", "Silo")]
+    [InlineData("Silo_3883jsjsjd8dj", "Silo")]
+    [InlineData("Silo Bv9wTsjqpSQ", "Silo")]
+    [InlineData("The Godfather2", null)]
+    [InlineData("Blade Runner 2049", null)]
+    [InlineData("Silo abcdefghi", null)]
+    public void GeneratedSuffixCandidateDoesNotRemoveOrdinaryTitleWords(string name, string? expected)
+    {
+        var method = typeof(CinemaMediaResolver).GetMethod("DelimitedNames",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        var alternatives = (IEnumerable<CinemaMediaResolver.MediaName>)method.Invoke(
+            null, new object[] { new CinemaMediaResolver.MediaName(name, null) })!;
+        Assert.Equal(expected, alternatives.SingleOrDefault()?.Title);
+    }
+
     [Fact]
     public void EndpointRequiresAuthentication()
     {

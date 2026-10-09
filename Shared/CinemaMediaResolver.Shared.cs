@@ -120,49 +120,41 @@ public sealed partial class CinemaMediaResolver
             .Where(n => n != null)
             .Select(n => new MediaName(n!.Title,
                 n!.Year ?? (searchType == "movie" && owner == null ? item.ProductionYear : null)))
+            .ToArray();
+        // Try cleaned filenames first, then normal names, then less certain alternatives.
+        var ordered = owner == null && filenameIdentity == null
+            ? names.SelectMany(OrderedNames)
+            : names;
+        foreach (var name in ordered
             .GroupBy(n => (NormalizeTitle(n.Title), n.Year))
-            .Select(group => group.First()).ToArray();
-        // Only try delimited alternatives when the complete title yields no exact match.
-        var alternatives = owner == null && filenameIdentity == null
-            ? names.SelectMany(DelimitedNames)
-                .GroupBy(n => (NormalizeTitle(n.Title), n.Year))
-                .Select(group => group.First()).ToArray()
-            : Array.Empty<MediaName>();
-        foreach (var batch in new[] { names, alternatives })
+            .Select(group => group.First()))
         {
-            Resolution? resolved = null;
-            foreach (var name in batch)
+            IEnumerable<RemoteSearchResult> results;
+            if (searchType == "movie")
             {
-                IEnumerable<RemoteSearchResult> results;
-                if (searchType == "movie")
+                results = await AwaitSearch(_providers.GetRemoteSearchResults<Movie, MovieInfo>(new RemoteSearchQuery<MovieInfo>
                 {
-                    results = await AwaitSearch(_providers.GetRemoteSearchResults<Movie, MovieInfo>(new RemoteSearchQuery<MovieInfo>
-                    {
-                        SearchInfo = new MovieInfo { Name = name!.Title, Year = name.Year },
-                        SearchProviderName = "TheMovieDb",
-                        IncludeDisabledProviders = false,
-                    }, cancellationToken), cancellationToken).ConfigureAwait(false);
-                }
-                else
-                {
-                    results = await AwaitSearch(_providers.GetRemoteSearchResults<Series, SeriesInfo>(new RemoteSearchQuery<SeriesInfo>
-                    {
-                        SearchInfo = new SeriesInfo { Name = name!.Title, Year = name.Year },
-                        SearchProviderName = "TheMovieDb",
-                        IncludeDisabledProviders = false,
-                    }, cancellationToken), cancellationToken).ConfigureAwait(false);
-                }
-                // Use TMDB's ranking, filtering the known year when the host doesn't.
-                var first = results.FirstOrDefault(r => !name!.Year.HasValue ||
-                    (r.ProductionYear ?? r.PremiereDate?.Year) == name.Year);
-                var matchId = PositiveTmdb(first?.ProviderIds);
-                if (!matchId.HasValue) continue;
-                if (direct.HasValue && direct != matchId) return new(null);
-                var match = new Resolution(matchId.Value, searchType);
-                if (resolved != null && resolved.TmdbId != match.TmdbId) return new(null);
-                resolved = match;
+                    SearchInfo = new MovieInfo { Name = name!.Title, Year = name.Year },
+                    SearchProviderName = "TheMovieDb",
+                    IncludeDisabledProviders = false,
+                }, cancellationToken), cancellationToken).ConfigureAwait(false);
             }
-            if (resolved != null) return resolved;
+            else
+            {
+                results = await AwaitSearch(_providers.GetRemoteSearchResults<Series, SeriesInfo>(new RemoteSearchQuery<SeriesInfo>
+                {
+                    SearchInfo = new SeriesInfo { Name = name!.Title, Year = name.Year },
+                    SearchProviderName = "TheMovieDb",
+                    IncludeDisabledProviders = false,
+                }, cancellationToken), cancellationToken).ConfigureAwait(false);
+            }
+            // Use TMDB's ranking, filtering the known year if necessary.
+            var first = results.FirstOrDefault(r => !name.Year.HasValue ||
+                (r.ProductionYear ?? r.PremiereDate?.Year) == name.Year);
+            var matchId = PositiveTmdb(first?.ProviderIds);
+            if (!matchId.HasValue) continue;
+            if (direct.HasValue && direct != matchId) return new(null);
+            return new(matchId.Value, searchType);
         }
         return new(null);
     }
@@ -252,28 +244,27 @@ public sealed partial class CinemaMediaResolver
         return new MediaName(title, year);
     }
 
-    // Delimited titles may include channel names or descriptions.
-    // Verify each part with an exact remote match rather than guessing keywords.
-    private static IEnumerable<MediaName> DelimitedNames(MediaName source)
+    // Avoid TMDB's fuzzy matches for generated filename suffixes.
+    private static IEnumerable<MediaName> OrderedNames(MediaName source)
     {
         var title = source.Title.Trim(' ', '|');
-        foreach (Match separator in Regex.Matches(title, @"\s*\|\s*|\s+[-–—]\s+"))
-        {
-            var before = title.Substring(0, separator.Index).Trim(' ', '|');
-            var after = title.Substring(separator.Index + separator.Length).Trim(' ', '|');
-            if (after.Length > 0) yield return new MediaName(after, source.Year);
-            if (before.Length > 0) yield return new MediaName(before, source.Year);
-        }
-
-        // Try generated-looking suffixes only if the full title has no exact match.
         var suffix = Regex.Match(title, @"[\s._-]+(?<id>[A-Za-z0-9_-]{8,})$");
         var token = suffix.Groups["id"].Value;
-        // Long letter-only IDs need stronger case patterns than ordinary title words.
         var mixedCaseId = token.Length >= 10 && token.All(char.IsLetter) &&
             Regex.IsMatch(token, @"[A-Z]{2}") && Regex.IsMatch(token, @"[a-z]{2,}[A-Z]");
         if (suffix.Success && token.Any(char.IsLetter) &&
             (token.Count(char.IsDigit) > 1 || Regex.IsMatch(token, @"\d[A-Za-z]") || mixedCaseId))
             yield return new MediaName(title.Substring(0, suffix.Index), source.Year);
+
+        yield return source;
+        // Only try channel/description fragments when the full title found nothing.
+        foreach (Match separator in Regex.Matches(title, @"\s*\|\s*|\s+[-–—]\s+"))
+        {
+            var before = title.Substring(0, separator.Index).Trim(' ', '|');
+            var after = title.Substring(separator.Index + separator.Length).Trim(' ', '|');
+            if (before.Length > 0) yield return new MediaName(before, source.Year);
+            if (after.Length > 0) yield return new MediaName(after, source.Year);
+        }
     }
 
     // Recognize embedded provider IDs by their namespace, not the downloader.

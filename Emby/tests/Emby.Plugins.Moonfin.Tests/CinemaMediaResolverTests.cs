@@ -154,6 +154,28 @@ public sealed class CinemaMediaResolverTests
     }
 
     [Fact]
+    public void YearlessMovieMatchingStillRejectsAmbiguousTmdbIds()
+    {
+        var matchMethod = typeof(CinemaMediaResolver).GetMethod(
+            "Matches", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(matchMethod);
+        var results = new MediaBrowser.Model.Providers.RemoteSearchResult[]
+        {
+            new() { Name = "Dune", ProductionYear = 1984, ProviderIds = new() { ["Tmdb"] = "42" } },
+            new() { Name = "Dune", ProductionYear = 2021, ProviderIds = new() { ["Tmdb"] = "43" } },
+            new() { Name = "Other Movie", ProductionYear = 2021, ProviderIds = new() { ["Tmdb"] = "90" } },
+        };
+
+        var yearless = (IEnumerable<int>)matchMethod.Invoke(null,
+            new object[] { new CinemaMediaResolver.MediaName("Dune", null), results })!;
+        Assert.Equal(new[] { 42, 43 }, yearless);
+
+        var withYear = (IEnumerable<int>)matchMethod.Invoke(null,
+            new object[] { new CinemaMediaResolver.MediaName("Dune", 2021), results })!;
+        Assert.Equal(new[] { 43 }, withYear);
+    }
+
+    [Fact]
     public void EndpointRequiresAuthentication()
     {
         Assert.NotNull(typeof(ResolveCinemaMediaRequest).GetCustomAttribute<AuthenticatedAttribute>());

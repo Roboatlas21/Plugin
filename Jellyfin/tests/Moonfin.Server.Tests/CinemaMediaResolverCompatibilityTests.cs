@@ -156,11 +156,12 @@ public sealed class CinemaMediaResolverCompatibilityTests
         var library = new FakeLibraryManager { ItemForUserHandler = (_, _) => intro };
         var provider = DispatchProxy.Create<IProviderManager, SearchProvider>();
         var searches = 0;
+        int? expectedYear = 2021;
         ((SearchProvider)(object)provider).Search = query =>
         {
             searches++;
             Assert.Equal("Dune", query.SearchInfo.Name);
-            Assert.Equal(2021, query.SearchInfo.Year);
+            Assert.Equal(expectedYear, query.SearchInfo.Year);
             return [Result(42, "Dune", 2021)];
         };
         var resolver = new CinemaMediaResolver(library, provider);
@@ -169,8 +170,10 @@ public sealed class CinemaMediaResolverCompatibilityTests
         Assert.Equal(1, searches);
 
         intro.ProductionYear = null;
-        Assert.Null((await resolver.ResolveMediaAsync(intro.Id, Guid.NewGuid(), "movie", default)).TmdbId);
-        Assert.Equal(1, searches);
+        expectedYear = null;
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "movie"),
+            await resolver.ResolveMediaAsync(intro.Id, Guid.NewGuid(), "movie", default));
+        Assert.Equal(2, searches);
     }
 
     [Fact]

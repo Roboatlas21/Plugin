@@ -484,12 +484,47 @@ public sealed class CinemaMediaResolverTests
     }
 
     [Fact]
-    public async Task YearlessMovieNeverFallsThroughToSeriesAndUnknownContextNeverSearches()
+    public async Task YearlessMovieResolvesUniqueExactTitleWithoutSearchingTv()
     {
-        var intro = new Video { Path = "Show Trailer.mp4" };
-        var resolver = Resolver(intro, (_, _, _) => throw new Exception("No search expected"));
-        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
+        var intro = new Video { Path = "Interstellar Trailer.mp4" };
+        var searches = 0;
+        var resolver = Resolver(intro, (type, title, year) =>
+        {
+            searches++;
+            Assert.Equal("movie", type);
+            Assert.Equal("Interstellar", title);
+            Assert.Null(year);
+            return [Result(42, "Interstellar", 2014), Result(42, "Interstellar", 2014),
+                Result(90, "Interstellar 2", 2027)];
+        });
+
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "movie"),
+            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default));
+        Assert.Equal(1, searches);
         Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), null, default)).TmdbId);
+        Assert.Equal(1, searches);
+    }
+
+    [Fact]
+    public async Task YearlessMovieRejectsAmbiguousOrMissingTmdbIds()
+    {
+        var intro = new Video { Path = "Dune Trailer.mp4" };
+        var results = new RemoteSearchResult[]
+        {
+            Result(42, "Dune", 1984),
+            Result(43, "Dune", 2021),
+        };
+        var resolver = Resolver(intro, (type, title, year) =>
+        {
+            Assert.Equal("movie", type);
+            Assert.Equal("Dune", title);
+            Assert.Null(year);
+            return results;
+        });
+
+        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
+        results = [Result(42, "Dune", 2021), new RemoteSearchResult { Name = "Dune" }];
+        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
     }
 
     [Fact]

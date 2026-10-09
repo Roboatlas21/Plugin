@@ -140,9 +140,18 @@ public sealed class CinemaMediaResolverTests
     [InlineData("Silo 3883jsjsjd8dj", "Silo")]
     [InlineData("Silo_3883jsjsjd8dj", "Silo")]
     [InlineData("Silo Bv9wTsjqpSQ", "Silo")]
+    [InlineData("Silo ABCdefghiJK", "Silo")]
+    [InlineData("Silo ABcdefghiJK", "Silo")]
+    [InlineData("Silo abcDEfghij", "Silo")]
     [InlineData("The Godfather2", null)]
     [InlineData("Blade Runner 2049", null)]
     [InlineData("Silo abcdefghi", null)]
+    [InlineData("Silo abcdefghijk", null)]
+    [InlineData("Silo ABCDEFGHIJK", null)]
+    [InlineData("Silo SpiderMan", null)]
+    [InlineData("The LordOfTheRings", null)]
+    [InlineData("Alien Resurrection", null)]
+    [InlineData("The Matrix Resurrections", null)]
     public void GeneratedSuffixCandidateDoesNotRemoveOrdinaryTitleWords(string name, string? expected)
     {
         var method = typeof(CinemaMediaResolver).GetMethod("DelimitedNames",

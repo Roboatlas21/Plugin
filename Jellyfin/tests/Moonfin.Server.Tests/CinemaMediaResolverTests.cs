@@ -328,6 +328,9 @@ public sealed class CinemaMediaResolverTests
     [Theory]
     [InlineData("Silo 3883jsjsjd8dj.mp4", "")]
     [InlineData("Silo_3883jsjsjd8dj.mp4", "")]
+    [InlineData("Silo ABCdefghiJK.mp4", "")]
+    [InlineData("Silo_ABcdefghiJK.mp4", "")]
+    [InlineData("Silo abcDEfghij.mp4", "")]
     [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.mp4", "Silo 3883jsjsjd8dj")]
     public async Task GeneratedSuffixUsesExactSeriesTitleAsFallback(string path, string displayName)
     {
@@ -343,18 +346,23 @@ public sealed class CinemaMediaResolverTests
 
         Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
             await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
-        Assert.Equal(new[] { "Silo 3883jsjsjd8dj", "Silo" }, searches);
+        var fullTitle = string.IsNullOrEmpty(displayName)
+            ? System.IO.Path.GetFileNameWithoutExtension(path).Replace('_', ' ')
+            : displayName;
+        Assert.Equal(new[] { fullTitle, "Silo" }, searches);
     }
 
-    [Fact]
-    public async Task FullAlphanumericTitleMatchTakesPriorityOverSuffixFallback()
+    [Theory]
+    [InlineData("Silo 3883jsjsjd8dj.mp4", "Silo 3883jsjsjd8dj")]
+    [InlineData("Silo ABCdefghiJK.mp4", "Silo ABCdefghiJK")]
+    public async Task CompleteTitleMatchTakesPriorityOverSuffixFallback(string filename, string fullTitle)
     {
-        var intro = new Video { Path = "Silo 3883jsjsjd8dj.mp4" };
+        var intro = new Video { Path = filename };
         var calls = 0;
         var resolver = Resolver(intro, (type, title, year) =>
         {
             calls++;
-            Assert.Equal("Silo 3883jsjsjd8dj", title);
+            Assert.Equal(fullTitle, title);
             return [Result(99, title)];
         });
 

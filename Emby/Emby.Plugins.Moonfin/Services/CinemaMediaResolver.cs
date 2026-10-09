@@ -68,9 +68,12 @@ namespace Emby.Plugins.Moonfin.Services
             if (direct.HasValue && owned.HasValue && direct != owned) return new Resolution(null);
 
             var hasDirectId = ProviderValue(item.ProviderIds, "Tmdb") != null;
-            // An untyped ID is only usable after the filename confirms the same ID.
             if (hasDirectId && !direct.HasValue) return new Resolution(null);
-            if ((direct ?? owned) is int id && type != null)
+            // A Series owner establishes type, not the correctness of an untyped trailer ID.
+            // If the owner has no TMDB ID, verify that ID with a strict series lookup.
+            var unverifiedTvId = type == "tv" && direct.HasValue &&
+                explicitType == null && !owned.HasValue;
+            if ((direct ?? owned) is int id && type != null && !unverifiedTvId)
             {
                 return new Resolution(id, type);
             }
@@ -81,7 +84,9 @@ namespace Emby.Plugins.Moonfin.Services
 
             Resolution? resolved = null;
             var names = new[] { ParseName(item.Path), ParseName(item.Name) }
-                .Where(n => n != null).Distinct();
+                .Where(n => n != null)
+                .Select(n => expectedMediaType == "tv" ? new MediaName(n!.Title, null) : n!)
+                .Distinct();
 
             foreach (var name in names)
             {
@@ -103,11 +108,7 @@ namespace Emby.Plugins.Moonfin.Services
                     results = await _providers.GetRemoteSearchResults<Series, SeriesInfo>(
                         new RemoteSearchQuery<SeriesInfo>
                         {
-                            SearchInfo = new SeriesInfo
-                            {
-                                Name = name!.Title,
-                                Year = name.Year,
-                            },
+                            SearchInfo = new SeriesInfo { Name = name!.Title },
                             IncludeDisabledProviders = false,
                         },
                         cancellationToken).ConfigureAwait(false);

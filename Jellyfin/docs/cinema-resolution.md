@@ -18,15 +18,15 @@ budget and no completed-result cache.
 
 TMDB IDs are not globally unique across movies and TV. An explicit
 `ProviderIds.TmdbMediaType`, a Movie item, or an accessible Movie/Series trailer
-owner establishes type. An untyped ID in a TV trailer must be confirmed against
-the same TMDB ID in a strict series filename match. Conflicting types and IDs
+owner establishes type. An untyped ID on a TV trailer requires either a matching ID from its
+accessible Series owner or confirmation from a strict series lookup. Conflicting types and IDs
 are rejected; no trailer-plugin-specific provider marker is required.
 
 `expectedMediaType` restricts filename searches; it does not type an unverified
 ID or override a trustworthy typed identity. Movie searches require exact normalized
-title plus matching year. Series searches require an exact, unambiguous title;
-year is optional. A trailer filename's Season N/SNN suffix is ignored when
-finding the series; its accompanying year is not treated as the show's debut year.
+title plus matching year. Series searches require an exact, unambiguous title
+and ignore the trailer filename's release year, which need not be the show's
+debut year. Season N/SNN suffixes are also ignored when matching series.
 The Seerr request dialog handles season selection independently.
 
 Filename-only setups must use movie trailers before movies and series trailers

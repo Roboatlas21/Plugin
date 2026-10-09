@@ -58,8 +58,29 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
             return new(id, type);
         }
 
-        // Known item or owner type takes precedence; context only helps untyped filenames.
-        var searchType = type ?? expectedMediaType;
+        // NeXroll names movies Title_tmdbId_trailer and shows Title_tvdbId_trailer.
+        // An unmarked number is a movie TMDB ID; a TVDB number only types a TV search.
+        var fromPath = owner == null ? ParseNeXrollName(item.Path) : null;
+        var fromName = owner == null ? ParseNeXrollName(item.Name) : null;
+        if (fromPath.HasValue && fromName.HasValue &&
+            (fromPath.Value.MediaType != fromName.Value.MediaType ||
+             fromPath.Value.TmdbId != fromName.Value.TmdbId ||
+             NormalizeTitle(fromPath.Value.Title) != NormalizeTitle(fromName.Value.Title)))
+            return new(null);
+        var nexroll = fromPath ?? fromName;
+        if (nexroll is { } named)
+        {
+            if (type != null && type != named.MediaType) return new(null);
+            if (named.TmdbId is int movieId)
+            {
+                if (direct.HasValue && direct.Value != movieId) return new(null);
+                return new(movieId, "movie");
+            }
+            if (direct.HasValue) return new(direct.Value, "tv");
+        }
+
+        // Known type or the NeXroll TVDB label determines category; context is last resort.
+        var searchType = type ?? nexroll?.MediaType ?? expectedMediaType;
         if (searchType is not ("movie" or "tv"))
             return new(null);
         Resolution? resolved = null;
@@ -68,7 +89,9 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
             owner.Name.Length > 200 || NormalizeTitle(owner.Name).Length == 0)) return new(null);
         Func<string, ItemLookupInfo> parseStandard = library.ParseName;
         var names = (owner == null
-                ? new[] { ParseName(item.Path, parseStandard), ParseName(item.Name, parseStandard) }
+                ? (nexroll is { } n
+            ? new MediaName?[] { new MediaName(n.Title, null) }
+            : new[] { ParseName(item.Path, parseStandard), ParseName(item.Name, parseStandard) })
                 : new[] { new MediaName(owner.Name, owner is Movie ? owner.ProductionYear : null) })
             .Where(n => n != null)
             .Select(n => searchType == "tv"
@@ -172,6 +195,22 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
                 (!name.Year.HasValue || r.ProductionYear == name.Year))
             // An exact candidate without an ID leaves identity uncertain too.
             .Select(r => PositiveTmdb(r.ProviderIds) ?? 0).Distinct();
+    }
+
+    // NeXroll's TVDB ID marks a series, but is not itself a TMDB ID.
+    public static (string Title, string MediaType, int? TmdbId)? ParseNeXrollName(string? pathOrName)
+    {
+        if (string.IsNullOrWhiteSpace(pathOrName)) return null;
+        var filename = pathOrName.Replace('\\', '/').Split('/').Last();
+        var match = Regex.Match(filename,
+            @"^(?<title>.+)_(?<tvdb>tvdb)?(?<id>[1-9]\d*)_trailer(?:\.(?:mp4|mkv|avi|mov|webm|m4v|ts))?$",
+            RegexOptions.IgnoreCase);
+        if (!match.Success || !int.TryParse(match.Groups["id"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var id))
+            return null;
+        var title = match.Groups["title"].Value.Replace('_', ' ').Trim();
+        if (title.Length == 0 || title.Length > 200 || NormalizeTitle(title).Length == 0) return null;
+        var tv = match.Groups["tvdb"].Success;
+        return (title, tv ? "tv" : "movie", tv ? null : id);
     }
 
     private static string NormalizeTitle(string title) => string.Concat(

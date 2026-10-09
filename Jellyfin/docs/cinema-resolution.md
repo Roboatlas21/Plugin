@@ -27,13 +27,15 @@ TMDB IDs are not globally unique across movies and TV. For server-side
 resolution, an explicit `ProviderIds.TmdbMediaType`, a Movie item, or an
 accessible Movie/Series trailer owner establishes type. Once the type is known,
 a positive trailer TMDB ID is trusted for movies and series alike; if the
-owner also has an ID, they must agree. Untyped standalone videos still need
-strict filename matching. Conflicting types and IDs are rejected. The owner
+owner also has an ID, they must agree. Untyped standalone videos normally use strict filename matching. NeXroll's
+`Title_<tmdbId>_trailer` convention provides a movie TMDB ID directly, while
+`Title_tvdb<tvdbId>_trailer` establishes TV type and supplies a clean series title
+for an exact TMDB search (a TVDB ID is never treated as a TMDB ID). Conflicting types and IDs are rejected. The owner
 relationship is only examined on the server; no trailer-plugin-specific
 marker is required.
 
 `expectedMediaType` selects the filename-search category only when the intro's
-own type cannot be established. It never types a bare TMDB ID or overrides
+own type or NeXroll's explicit filename convention cannot establish it. It never types a bare TMDB ID or overrides
 explicit, item, or owner type. Movie searches still require exact normalized
 title plus matching year. Filename parsing delegates standard name/year and
 technical-label handling to the host's built-in library parser, then removes

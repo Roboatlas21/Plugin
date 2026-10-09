@@ -147,7 +147,6 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
             Resolution? resolved = null;
             foreach (var name in batch)
             {
-                if (searchType == "movie" && !name!.Year.HasValue) continue;
                 IEnumerable<RemoteSearchResult> results;
                 if (searchType == "movie")
                 {

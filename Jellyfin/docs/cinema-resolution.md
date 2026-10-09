@@ -10,8 +10,9 @@ intro pools. No changes to Jellyfin's Intros response are needed.
 
 When Moonfin cannot establish an identity, the authenticated resolver validates
 access to the video and its owner. If a Movie or Series owns the trailer, owner
-metadata and title are authoritative. Owned movies must have a release year for
-name-based search; TV title searches do not require a year.
+metadata and title are authoritative. Movie title searches use the release
+year when available; yearless searches require one distinct exact TMDB match.
+TV title searches do not require a year.
 
 The resolver also recognizes provider IDs embedded in standalone trailer names:
 `Title_tmdb123_trailer`, `Title_123_trailer`, and `Title_tvdb456_trailer`.
@@ -27,8 +28,10 @@ provider includes one (Jellyfin does; some Emby versions do not). If no mapping
 is returned, the resolver falls back to strict, unambiguous series-title matching.
 
 Other filenames use the host's native parser with a small trailer-label cleanup.
-Movie name searches require exact normalized title and year; TV searches require
-an exact series title and ignore season numbers or trailer-release years.
+Movie name searches require an exact normalized title and, when available, a
+matching year. Without a year, the exact match must identify one distinct TMDB
+movie among the provider results. TV searches require an exact series title
+and ignore season numbers or trailer-release years.
 Readable display names can recover hashed file paths. Display names are treated
 as titles, not filesystem paths, so a slash in `Ranma1/2` is preserved.
 Only after a full-title miss are delimiter-separated or generated-ID-suffix

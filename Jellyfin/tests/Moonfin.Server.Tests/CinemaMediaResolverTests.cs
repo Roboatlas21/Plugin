@@ -97,7 +97,7 @@ public sealed class CinemaMediaResolverTests
     }
 
     [Fact]
-    public async Task UnmappedTvdbIdFallsBackToExactSeriesName()
+    public async Task UnmappedTvdbIdFallsBackToRankedSeriesSearch()
     {
         var lookedUp = false;
         var resolver = Resolver(new Video { Path = "Silo_tvdb403245_trailer.mp4" },
@@ -109,20 +109,20 @@ public sealed class CinemaMediaResolverTests
     }
 
     [Fact]
-    public async Task YearlessMovieOnlyPrefersClearlyNewerExactMatch()
+    public async Task YearlessMovieUsesTmdbRankingWithLocalizedTitles()
     {
-        RemoteSearchResult[] matches = [Result(42, "Dune", 1984), Result(43, "Dune", 2021)];
+        RemoteSearchResult[] matches = [Result(43, "Duna", 2021), Result(42, "Dune", 1984)];
         var resolver = Resolver(new Video { Path = "Dune Trailer.mp4" }, (_, _, _) => matches);
         Assert.Equal(43, (await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
-        matches = [Result(42, "Dune", 2012), Result(43, "Dune", 2021)];
-        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
+        matches = [Result(42, "Dune", 1984), Result(43, "Duna", 2021)];
+        Assert.Equal(42, (await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
     }
 
     [Theory]
     [InlineData("Show Trailer.mp4", null, 43)]
     [InlineData("Show (1989) Trailer.mp4", 1989, 42)]
     [InlineData("Show (2024) Trailer.mp4", 2024, 43)]
-    public async Task TvRemakeMatchingUsesPremiereDateWhenProductionYearIsMissing(
+    public async Task TvSearchRespectsTmdbRankingAndKnownPremiereYear(
         string filename, int? expectedYear, int expectedId)
     {
         var older = Result(42, "Show");
@@ -134,7 +134,7 @@ public sealed class CinemaMediaResolverTests
             Assert.Equal("tv", type);
             Assert.Equal("Show", title);
             Assert.Equal(expectedYear, year);
-            return [older, newer];
+            return [newer, older];
         });
         Assert.Equal(new CinemaMediaResolver.Resolution(expectedId, "tv"),
             await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));

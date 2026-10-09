@@ -329,7 +329,7 @@ namespace Emby.Plugins.Moonfin.Services
 
             // Prefer a remake only when all competing IDs have reliable, distinct years.
             var dated = exact.GroupBy(r => PositiveTmdb(r.ProviderIds)!.Value)
-                .Select(g => (Id: g.Key, Years: g.Select(r => r.ProductionYear).Distinct().ToArray()))
+                .Select(g => (Id: g.Key, Years: g.Select(r => r.ProductionYear ?? r.PremiereDate?.Year).Distinct().ToArray()))
                 .ToArray();
             if (dated.Any(g => g.Years.Length != 1 || !g.Years[0].HasValue)) return ids;
             var newest = dated.OrderByDescending(g => g.Years[0]!.Value).ToArray();

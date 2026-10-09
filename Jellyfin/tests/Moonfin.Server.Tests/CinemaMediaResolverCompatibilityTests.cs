@@ -93,6 +93,15 @@ public sealed class CinemaMediaResolverCompatibilityTests
         Assert.Equal(year, parsed.Year);
     }
 
+    [Fact]
+    public void DisplayNamesWithSlashesAreNotTreatedAsPaths()
+    {
+        var library = (ILibraryManager)new FakeLibraryManager();
+        var parsed = CinemaMediaResolver.ParseName(
+            "Ranma1/2 Official Trailer", library.ParseName, isPath: false);
+        Assert.Equal("Ranma1/2", parsed?.Title);
+    }
+
     private static RemoteSearchResult Result(int id, string title = "Dune: Part Two", int? year = 2024) => new()
     {
         Name = title, ProductionYear = year,

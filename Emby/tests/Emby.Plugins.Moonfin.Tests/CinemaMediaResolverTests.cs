@@ -88,6 +88,23 @@ public sealed class CinemaMediaResolverTests
     }
 
     [Fact]
+    public void DisplayNameWithFractionSlashIsNotParsedAsAFilePath()
+    {
+        var parsed = CinemaMediaResolver.ParseName(
+            "Ranma1/2 Official Trailer",
+            input =>
+            {
+                Assert.Equal("Ranma1/2 Official Trailer", input);
+                return new MediaBrowser.Controller.Providers.ItemLookupInfo
+                {
+                    Name = "Ranma1/2 Official",
+                };
+            },
+            isPath: false);
+        Assert.Equal("Ranma1/2", parsed?.Title);
+    }
+
+    [Fact]
     public void EndpointRequiresAuthentication()
     {
         Assert.NotNull(typeof(ResolveCinemaMediaRequest).GetCustomAttribute<AuthenticatedAttribute>());

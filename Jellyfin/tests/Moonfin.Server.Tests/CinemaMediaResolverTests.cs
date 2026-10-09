@@ -224,6 +224,67 @@ public sealed class CinemaMediaResolverTests
     }
 
     [Fact]
+    public async Task DelimitedDisplayNameResolvesSeriesWithoutGuessingChannelNames()
+    {
+        var intro = new Video
+        {
+            Path = "/cache/" + new string('a', 64) + ".mp4",
+            Name = "Netflix Anime - Ranma1/2 | Official Trailer | Netflix - Bv9wTsjqpSQ",
+        };
+        var searched = new List<string>();
+        var resolver = Resolver(intro, (type, title, year) =>
+        {
+            Assert.Equal("tv", type);
+            Assert.Null(year);
+            searched.Add(title);
+            return title == "Ranma1/2" ? [Result(777, "Ranma ½", 2024)] : [];
+        });
+
+        Assert.Equal(new CinemaMediaResolver.Resolution(777, "tv"),
+            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
+        Assert.Contains("Ranma1/2", searched);
+    }
+
+    [Fact]
+    public async Task ExactFullTitleWinsBeforeDelimitedFallback()
+    {
+        var intro = new Video { Path = "Spider-Man - No Way Home 2021 Official Trailer.mp4" };
+        var count = 0;
+        var resolver = Resolver(intro, (type, title, year) =>
+        {
+            count++;
+            Assert.Equal("movie", type);
+            Assert.Equal("Spider-Man - No Way Home", title);
+            Assert.Equal(2021, year);
+            return [Result(42, "Spider-Man: No Way Home", 2021)];
+        });
+
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "movie"),
+            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default));
+        Assert.Equal(1, count);
+    }
+
+    [Fact]
+    public async Task DifferentMatchingDelimitedTitlesAreAmbiguous()
+    {
+        var intro = new Video { Path = "Show - Another Show Official Trailer.mp4" };
+        var resolver = Resolver(intro, (type, title, year) =>
+        {
+            Assert.Equal("tv", type);
+            Assert.Null(year);
+            return title switch
+            {
+                "Show" => [Result(42, title)],
+                "Another Show" => [Result(43, title)],
+                _ => [],
+            };
+        });
+
+        Assert.Null((await resolver.ResolveMediaAsync(
+            Guid.NewGuid(), Guid.NewGuid(), "tv", default)).TmdbId);
+    }
+
+    [Fact]
     public async Task NeXrollMovieFilenameUsesTmdbIdWithoutMovieYearOrSearch()
     {
         var intro = new Video { Path = "/nexup/movies/Dune_438631_trailer.mp4" };

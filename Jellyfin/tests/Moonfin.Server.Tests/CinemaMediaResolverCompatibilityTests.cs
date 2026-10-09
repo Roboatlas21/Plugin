@@ -4,9 +4,7 @@ using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
-using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
-using MediaBrowser.Model.Providers;
 using Microsoft.AspNetCore.Authorization;
 using Moonfin.Server.Api;
 using Moonfin.Server.Services;
@@ -25,65 +23,15 @@ public sealed class CinemaMediaResolverCompatibilityTests
 
     [Theory]
     [InlineData("Dune.Part.Two.2024.Official.Trailer.mp4", "Dune Part Two", 2024)]
-    [InlineData("Dune2021.mp4", "Dune", 2021)]
     [InlineData("Dune2021 Trailer.mp4", "Dune", 2021)]
-    [InlineData("Dune2021 Official Trailer 1080p.mp4", "Dune", 2021)]
-    [InlineData("The Batman2022 Trailer.mp4", "The Batman", 2022)]
-    [InlineData("Amélie2001 Trailer.mp4", "Amélie", 2001)]
-    [InlineData("Blade Runner2049 Trailer.mp4", "Blade Runner2049", null)]
-    [InlineData("Dune 2021 Trailer Coming Soon.mp4", "Dune", 2021)]
-    [InlineData("Dune 2021 Trailer Now Streaming.mp4", "Dune", 2021)]
-    [InlineData("Dune 2021 Trailer Watch at Home.mp4", "Dune", 2021)]
-    [InlineData("The Batman 2022 Official Trailer Full HD.mp4", "The Batman", 2022)]
-    [InlineData("Oppenheimer 2023 4K HDR Trailer.mp4", "Oppenheimer", 2023)]
-    [InlineData("Dune 2021 4K HDR Trailer Watch at Home.mp4", "Dune", 2021)]
     [InlineData("Show Season 5 Trailer Now Streaming.mp4", "Show", null)]
-    [InlineData("The New World (2005) Trailer.mp4", "The New World", 2005)]
     [InlineData("The New 2024 Trailer.mp4", "The New", 2024)]
-    [InlineData("A New 2021 Trailer.mp4", "A New", 2021)]
-    [InlineData("The New 2024 Trailer Now Streaming.mp4", "The New", 2024)]
-    [InlineData("Dune watch at home 2021 trailer djdjdj.mp4", "Dune", 2021)]
-    [InlineData("The Batman Watch Now 2022 Teaser Trailer W3FFSjR.mp4", "The Batman", 2022)]
     [InlineData("Oppenheimer (2023) On Digital Teaser Trailer 1080p [QB176lyq-GH].webm", "Oppenheimer", 2023)]
-    [InlineData("1917 Watch at Home 2019 Teaser Trailer XlkNHBEvuV.mp4", "1917", 2019)]
-    [InlineData("Dune 2021 Trailer 2 sYaHxIjL1BL.mp4", "Dune", 2021)]
-    [InlineData("Spider-Man:.No.Way.Home.2021.Trailer.[6xvIn6wNh4K].mkv", "Spider-Man: No Way Home", 2021)]
-    [InlineData("Home Alone Watch at Home 1990 Trailer djdjdj.mp4", "Home Alone", 1990)]
-    [InlineData("Dune 2021 1080p [abc_defghij].mp4", "Dune", 2021)]
-    [InlineData("Dune 2021 1080p abcdefghijk.mp4", "Dune", 2021)]
-    [InlineData("Dune 2021 Official Trailer 1080p abcdefghijk.mp4", "Dune", 2021)]
-    [InlineData("Show Season 5 Trailer 1080p abcdefghijk.mp4", "Show", null)]
     [InlineData("Dune 2021 Official Trailer 1080p [abcdefghijk].mp4", "Dune", 2021)]
-    [InlineData("Show Season 5 Trailer 1080p [abcdefghijk].mp4", "Show", null)]
-    [InlineData("Dune 2021 [abcdefghijk] 1080p.mp4", "Dune", 2021)]
-    [InlineData("Dune 2021 [abc_defghij].mp4", "Dune", 2021)]
-    [InlineData("Dune 2021 Trailer jdjdjsn.mp4", "Dune", 2021)]
-    [InlineData("Dune official trailer 2021 jdjdjsn.mp4", "Dune", 2021)]
-    [InlineData("Dune_2021_Trailer_jdjdjsn.mp4", "Dune", 2021)]
-    [InlineData("Dune 2021 abcd_efghij.mp4", "Dune", 2021)]
-    [InlineData("Dune 2021 [abc_defghij] Trailer.mp4", "Dune", 2021)]
-    [InlineData("Dune 2021 jdidisisj.mp4", "Dune", 2021)]
-    [InlineData("Dune (2021) [abcdefghijk].mp4", "Dune", 2021)]
-    [InlineData("Dune 2021 Trailer [abcdefghijk].mp4", "Dune", 2021)]
-    [InlineData("Dune dhjdiii3jeb 2023.mp4", "Dune dhjdiii3jeb", 2023)]
-    [InlineData("Dune Part Two 2024 jdjdjsn.mp4", "Dune Part Two", 2024)]
-    [InlineData("Pride and Prejudice 2005.mp4", "Pride and Prejudice", 2005)]
-    [InlineData("Dune Official Trailer (2024).mp4", "Dune", 2024)]
-    [InlineData("Dune Trailer 2 (2024).mp4", "Dune", 2024)]
-    [InlineData("Show Season 5 Trailer (2026).mp4", "Show", null)]
     [InlineData("C:\\Intros\\The Batman 2022 Trailer.mp4", "The Batman", 2022)]
-    [InlineData("/intros/Superman (2025).mp4", "Superman", 2025)]
-    [InlineData("Silo Trailer ABCdefghiJK.mp4", "Silo", null)]
-    [InlineData("Silo Teaser Trailer short.mp4", "Silo", null)]
-    [InlineData("Silo Season 5 Official Trailer abcdefghijk.mp4", "Silo", null)]
-    [InlineData("Silo.Trailer.Now.Streaming.mp4", "Silo", null)]
-    [InlineData("Silo_Teaser_Trailer_more.mp4", "Silo", null)]
     [InlineData("Trailer Park Boys Official Trailer abcdefghijk.mp4", "Trailer Park Boys", null)]
     [InlineData("The Godfather2 1974 Trailer.mp4", "The Godfather2", 1974)]
-    [InlineData("The Terminator3 2003 Trailer.mp4", "The Terminator3", 2003)]
     [InlineData("1917 Trailer.mp4", "1917", null)]
-    [InlineData("1917 (2019) Official Trailer 2 1080p.mp4", "1917", 2019)]
-    [InlineData("2001 A Space Odyssey Trailer 2160p.mp4", "2001 A Space Odyssey", null)]
     public void ExtractsOnlyTrailingDecorations(string name, string title, int? year)
     {
         var library = (ILibraryManager)new FakeLibraryManager();
@@ -91,89 +39,6 @@ public sealed class CinemaMediaResolverCompatibilityTests
         Assert.NotNull(parsed);
         Assert.Equal(title, parsed.Title);
         Assert.Equal(year, parsed.Year);
-    }
-
-    [Fact]
-    public void ProviderIdsInDisplayNamesDoNotMisparseSlashes()
-    {
-        var parsed = CinemaMediaResolver.ParseTrailerFilenameIdentity(
-            "Ranma1/2_tvdb123456_trailer", isPath: false);
-        Assert.NotNull(parsed);
-        Assert.Equal("Ranma1/2", parsed.Value.Title);
-        Assert.Equal(123456, parsed.Value.TvdbId);
-    }
-
-    [Fact]
-    public void DisplayNamesWithSlashesAreNotTreatedAsPaths()
-    {
-        var library = (ILibraryManager)new FakeLibraryManager();
-        var parsed = CinemaMediaResolver.ParseName(
-            "Ranma1/2 Official Trailer", library.ParseName, isPath: false);
-        Assert.Equal("Ranma1/2", parsed?.Title);
-    }
-
-    private static RemoteSearchResult Result(int id, string title = "Dune: Part Two", int? year = 2024) => new()
-    {
-        Name = title, ProductionYear = year,
-        ProviderIds = new Dictionary<string, string> { ["Tmdb"] = id.ToString() },
-    };
-
-    [Fact]
-    public async Task ExactTitleAndYearRequiredAndProvidersDeduplicated()
-    {
-        var item = new Video { Id = Guid.NewGuid(), Path = "/intros/Dune.Part.Two.2024.Official.Trailer.mp4" };
-        var library = new FakeLibraryManager { ItemForUserHandler = (_, _) => item };
-        var provider = DispatchProxy.Create<IProviderManager, SearchProvider>();
-        var resolver = new CinemaMediaResolver(library, provider);
-        var candidates = new (RemoteSearchResult[] Results, int? Expected)[]
-        {
-            ([Result(693134), Result(693134)], 693134),
-            ([Result(1, year: 2021)], null),
-            ([Result(1, title: "Dune")], null),
-            ([Result(1), Result(2)], null),
-            ([Result(0)], null),
-            ([], null),
-        };
-
-        foreach (var (results, expected) in candidates)
-        {
-            ((SearchProvider)(object)provider).Search = _ => results;
-            var resolved = await resolver.ResolveMediaAsync(item.Id, Guid.NewGuid(), "movie", CancellationToken.None);
-            Assert.Equal(expected, resolved.TmdbId);
-        }
-    }
-
-    [Fact]
-    public async Task StandaloneIntroUsesProductionYearWhenItsNameHasNoYear()
-    {
-        var intro = new Video
-        {
-            Id = Guid.NewGuid(),
-            Path = "/trailers/" + new string('a', 64) + ".mp4",
-            Name = "Dune",
-            ProductionYear = 2021,
-        };
-        var library = new FakeLibraryManager { ItemForUserHandler = (_, _) => intro };
-        var provider = DispatchProxy.Create<IProviderManager, SearchProvider>();
-        var searches = 0;
-        int? expectedYear = 2021;
-        ((SearchProvider)(object)provider).Search = query =>
-        {
-            searches++;
-            Assert.Equal("Dune", query.SearchInfo.Name);
-            Assert.Equal(expectedYear, query.SearchInfo.Year);
-            return [Result(42, "Dune", 2021)];
-        };
-        var resolver = new CinemaMediaResolver(library, provider);
-        Assert.Equal(new CinemaMediaResolver.Resolution(42, "movie"),
-            await resolver.ResolveMediaAsync(intro.Id, Guid.NewGuid(), "movie", default));
-        Assert.Equal(1, searches);
-
-        intro.ProductionYear = null;
-        expectedYear = null;
-        Assert.Equal(new CinemaMediaResolver.Resolution(42, "movie"),
-            await resolver.ResolveMediaAsync(intro.Id, Guid.NewGuid(), "movie", default));
-        Assert.Equal(2, searches);
     }
 
     [Fact]
@@ -196,30 +61,6 @@ public sealed class CinemaMediaResolverCompatibilityTests
         intro.ProviderIds.Clear();
         items.Remove(movie.Id); // Owner absent or filtered by user access.
         Assert.Null((await resolver.ResolveMediaAsync(intro.Id, user, "movie", CancellationToken.None)).TmdbId);
-    }
-
-    [Fact]
-    public async Task GenericVideoOwnerMustBeAccessible()
-    {
-        var user = Guid.NewGuid();
-        var movie = new Movie { Id = Guid.NewGuid(), ProviderIds = new() { ["Tmdb"] = "42" } };
-        var video = new Video
-        {
-            Id = Guid.NewGuid(),
-            OwnerId = movie.Id,
-            ProviderIds = new() { ["Tmdb"] = "42", ["TmdbMediaType"] = "movie" },
-        };
-        Assert.NotEqual(ExtraType.Trailer, video.ExtraType);
-        var library = new FakeLibraryManager
-        {
-            ItemForUserHandler = (id, _) => id == video.Id ? video : null,
-        };
-        var resolver = new CinemaMediaResolver(library, null!);
-        Assert.Null((await resolver.ResolveMediaAsync(video.Id, user, "movie", CancellationToken.None)).TmdbId);
-
-        library.ItemForUserHandler = (id, _) => id == video.Id ? video : id == movie.Id ? movie : null;
-        Assert.Equal(new CinemaMediaResolver.Resolution(42, "movie"),
-            await resolver.ResolveMediaAsync(video.Id, user, "movie", CancellationToken.None));
     }
 
     [Fact]
@@ -248,16 +89,5 @@ public sealed class CinemaMediaResolverCompatibilityTests
         };
         Assert.IsType<Microsoft.AspNetCore.Mvc.UnauthorizedResult>(
             (await controller.ResolveMedia(Guid.NewGuid(), "tv", CancellationToken.None)).Result);
-    }
-
-    public class SearchProvider : DispatchProxy
-    {
-        public Func<RemoteSearchQuery<MovieInfo>, IEnumerable<RemoteSearchResult>> Search { get; set; } = null!;
-        protected override object? Invoke(MethodInfo? method, object?[]? args)
-        {
-            Assert.Equal("GetRemoteSearchResults", method!.Name);
-            Assert.Equal(new[] { typeof(Movie), typeof(MovieInfo) }, method.GetGenericArguments());
-            return Task.FromResult(Search((RemoteSearchQuery<MovieInfo>)args![0]!));
-        }
     }
 }

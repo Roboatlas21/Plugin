@@ -48,9 +48,9 @@ and ignore the trailer filename's release year, which need not be the show's
 debut year. Season N/SNN suffixes are also ignored when matching series.
 The Seerr request dialog handles season selection independently.
 
-Untyped filename-only setups must use movie trailers before movies and series
-trailers before episodes. Mixed pools need explicit type metadata. Search never switches
-categories after a miss. Readable display names can identify cached files with
+Generic untyped filenames still rely on movie/TV trailer pool separation for
+search category. NeXroll's filename IDs establish type independently; other mixed
+pools need explicit type metadata. Search never switches categories after a miss. Readable display names can identify cached files with
 hashed/unmatched names; ambiguous or contradictory matches return no identity.
 
 Cinema Mode uses only `ResolveMedia` to resolve movies and series.

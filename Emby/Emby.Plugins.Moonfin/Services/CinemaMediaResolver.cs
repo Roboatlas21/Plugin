@@ -81,14 +81,14 @@ namespace Emby.Plugins.Moonfin.Services
                 (fromPath.Value.MediaType != fromName.Value.MediaType ||
                  fromPath.Value.TmdbId != fromName.Value.TmdbId ||
                  NormalizeTitle(fromPath.Value.Title) != NormalizeTitle(fromName.Value.Title)))
-                return new(null);
+                return new Resolution(null);
             var nexroll = fromPath ?? fromName;
             if (nexroll is { } named)
             {
-                if (type != null && type != named.MediaType) return new(null);
+                if (type != null && type != named.MediaType) return new Resolution(null);
                 if (named.TmdbId is int movieId)
                 {
-                    if (direct.HasValue && direct.Value != movieId) return new(null);
+                    if (direct.HasValue && direct.Value != movieId) return new Resolution(null);
                     return new(movieId, "movie");
                 }
                 if (direct.HasValue) return new(direct.Value, "tv");
@@ -104,11 +104,14 @@ namespace Emby.Plugins.Moonfin.Services
             if (owner != null && (string.IsNullOrWhiteSpace(owner.Name) ||
                 owner.Name.Length > 200 || NormalizeTitle(owner.Name).Length == 0)) return new Resolution(null);
             Func<string, ItemLookupInfo> parseStandard = name => _library.ParseName(name.AsSpan());
-            var names = (owner == null
-                    ? (nexroll is { } n
-                ? new MediaName?[] { new MediaName(n.Title, null) }
-                : new[] { ParseName(item.Path, parseStandard), ParseName(item.Name, parseStandard) })
-                    : new[] { new MediaName(owner.Name, owner is Movie ? owner.ProductionYear : null) })
+            MediaName?[] candidates;
+            if (owner != null)
+                candidates = new[] { new MediaName(owner.Name, owner is Movie ? owner.ProductionYear : null) };
+            else if (nexroll is { } n)
+                candidates = new[] { new MediaName(n.Title, null) };
+            else
+                candidates = new[] { ParseName(item.Path, parseStandard), ParseName(item.Name, parseStandard) };
+            var names = candidates
                 .Where(n => n != null)
                 .Select(n => searchType == "tv"
                     ? new MediaName(n!.Title, null)
@@ -242,7 +245,7 @@ namespace Emby.Plugins.Moonfin.Services
             var title = match.Groups["title"].Value.Replace('_', ' ').Trim();
             if (title.Length == 0 || title.Length > 200 || NormalizeTitle(title).Length == 0) return null;
             var tv = match.Groups["tvdb"].Success;
-            return (title, tv ? "tv" : "movie", tv ? null : id);
+            return (title, tv ? "tv" : "movie", tv ? (int?)null : id);
         }
 
         private static string NormalizeTitle(string title) => string.Concat(

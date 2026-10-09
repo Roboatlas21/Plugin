@@ -88,11 +88,14 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         if (owner != null && (string.IsNullOrWhiteSpace(owner.Name) ||
             owner.Name.Length > 200 || NormalizeTitle(owner.Name).Length == 0)) return new(null);
         Func<string, ItemLookupInfo> parseStandard = library.ParseName;
-        var names = (owner == null
-                ? (nexroll is { } n
-            ? new MediaName?[] { new MediaName(n.Title, null) }
-            : new[] { ParseName(item.Path, parseStandard), ParseName(item.Name, parseStandard) })
-                : new[] { new MediaName(owner.Name, owner is Movie ? owner.ProductionYear : null) })
+        MediaName?[] candidates;
+        if (owner != null)
+            candidates = new[] { new MediaName(owner.Name, owner is Movie ? owner.ProductionYear : null) };
+        else if (nexroll is { } n)
+            candidates = new[] { new MediaName(n.Title, null) };
+        else
+            candidates = new[] { ParseName(item.Path, parseStandard), ParseName(item.Name, parseStandard) };
+        var names = candidates
             .Where(n => n != null)
             .Select(n => searchType == "tv"
                 ? new MediaName(n!.Title, null)
@@ -210,7 +213,7 @@ public sealed class CinemaMediaResolver(ILibraryManager library, IProviderManage
         var title = match.Groups["title"].Value.Replace('_', ' ').Trim();
         if (title.Length == 0 || title.Length > 200 || NormalizeTitle(title).Length == 0) return null;
         var tv = match.Groups["tvdb"].Success;
-        return (title, tv ? "tv" : "movie", tv ? null : id);
+        return (title, tv ? "tv" : "movie", tv ? (int?)null : id);
     }
 
     private static string NormalizeTitle(string title) => string.Concat(

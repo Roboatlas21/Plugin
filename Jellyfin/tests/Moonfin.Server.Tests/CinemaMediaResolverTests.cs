@@ -267,7 +267,7 @@ public sealed class CinemaMediaResolverTests
     }
 
     [Fact]
-    public async Task FilenameIdentityConflictsStayUnresolved()
+    public async Task FilenameIdentityRejectsConflictsButAcceptsRenamedTitles()
     {
         var intro = new Video
         {
@@ -294,6 +294,9 @@ public sealed class CinemaMediaResolverTests
         intro.Path = "Dune_438631_trailer.mp4";
         intro.Name = "Other_12345_trailer";
         Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
+        intro.Name = "Localized_Dune_438631_trailer";
+        Assert.Equal(new CinemaMediaResolver.Resolution(438631, "movie"),
+            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default));
     }
 
     [Fact]

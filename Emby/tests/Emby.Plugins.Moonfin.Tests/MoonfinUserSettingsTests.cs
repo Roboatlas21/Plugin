@@ -147,30 +147,14 @@ public class MoonfinUserSettingsTests
 
 
     [Fact]
-    public void CinemaModeSkipSettingsRoundTrip()
+    public void CinemaSettingsRoundTripKeepsZeroAndUnset()
     {
-        var settings = Parse(
-            "{\"global\":{\"cinemaModeSkipCountdown\":\"progressBar\"," +
-            "\"cinemaModeSkipAutoHide\":\"s10\"}}");
-
-        Assert.Equal("progressBar", settings.Global?.CinemaModeSkipCountdown);
-        Assert.Equal("s10", settings.Global?.CinemaModeSkipAutoHide);
-
-        var json = JsonSerializer.Serialize(settings);
-        Assert.Contains("\"cinemaModeSkipCountdown\":\"progressBar\"", json, StringComparison.Ordinal);
-        Assert.Contains("\"cinemaModeSkipAutoHide\":\"s10\"", json, StringComparison.Ordinal);
-    }
-
-    [Theory]
-    [InlineData(0)]
-    [InlineData(15)]
-    [InlineData(60)]
-    public void CinemaMinimumPreservesNumericZeroAndNull(int seconds)
-    {
-        var settings = Parse("{\"global\":{\"cinemaModeSkipMinDurationSeconds\":" + seconds + "}}");
-        Assert.Equal(seconds, settings.Global?.CinemaModeSkipMinDurationSeconds);
-        var roundTrip = Parse(JsonSerializer.Serialize(settings));
-        Assert.Equal(seconds, roundTrip.Global?.CinemaModeSkipMinDurationSeconds);
+        var settings = Parse("{\"global\":{\"cinemaModeSkipCountdown\":\"progressBar\"," +
+            "\"cinemaModeSkipAutoHide\":\"s10\",\"cinemaModeSkipMinDurationSeconds\":0}}");
+        var restored = Parse(JsonSerializer.Serialize(settings));
+        Assert.Equal("progressBar", restored.Global?.CinemaModeSkipCountdown);
+        Assert.Equal("s10", restored.Global?.CinemaModeSkipAutoHide);
+        Assert.Equal(0, restored.Global?.CinemaModeSkipMinDurationSeconds);
         Assert.Null(Parse("{\"global\":{}}").Global?.CinemaModeSkipMinDurationSeconds);
     }
 

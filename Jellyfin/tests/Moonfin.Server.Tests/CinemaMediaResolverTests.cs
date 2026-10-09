@@ -11,11 +11,8 @@ namespace Moonfin.Server.Tests;
 
 public sealed class CinemaMediaResolverTests
 {
-    private static RemoteSearchResult Result(int id, string title, int? year = null) => new()
-    {
-        Name = title, ProductionYear = year,
-        ProviderIds = new() { ["Tmdb"] = id.ToString() },
-    };
+    private static RemoteSearchResult Result(int id, string title, int? year = null) =>
+        new() { Name = title, ProductionYear = year, ProviderIds = new() { ["Tmdb"] = id.ToString() } };
 
     private static CinemaMediaResolver Resolver(
         Video intro,
@@ -100,6 +97,18 @@ public sealed class CinemaMediaResolverTests
     }
 
     [Fact]
+    public async Task UnmappedTvdbIdFallsBackToExactSeriesName()
+    {
+        var lookedUp = false;
+        var resolver = Resolver(new Video { Path = "Silo_tvdb403245_trailer.mp4" },
+            (type, name, year) => lookedUp && type == "tv" && name == "Silo" && year == null
+                ? [Result(42, "Silo")] : [],
+            _ => { lookedUp = true; return []; });
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
+            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default));
+    }
+
+    [Fact]
     public async Task YearlessMovieOnlyPrefersClearlyNewerExactMatch()
     {
         RemoteSearchResult[] matches = [Result(42, "Dune", 1984), Result(43, "Dune", 2021)];
@@ -121,12 +130,19 @@ public sealed class CinemaMediaResolverTests
             await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
     }
 
-    [Fact]
-    public async Task UnreadablePathUsesDisplayTitle()
+    [Theory]
+    [InlineData("Silo ABCdefghiJK.mp4", "", "Silo", "tv", null)]
+    [InlineData("Dune2021 Trailer.mp4", "", "Dune", "movie", 2021)]
+    [InlineData("Trailer Park Boys Official Trailer abcdefghijk.mp4", "", "Trailer Park Boys", "tv", null)]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.mp4", "Show Season 5 Trailer", "Show", "tv", null)]
+    public async Task TrailerNamesResolveThroughHostParser(
+        string path, string displayName, string title, string type, int? year)
     {
-        var intro = new Video { Path = new string('a', 64) + ".mp4", Name = "Show Season 5 Trailer" };
-        var resolver = Resolver(intro, (_, title, _) => title == "Show" ? [Result(42, "Show")] : []);
-        Assert.Equal(42, (await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default)).TmdbId);
+        var intro = new Video { Path = path, Name = displayName };
+        var resolver = Resolver(intro, (kind, candidate, candidateYear) =>
+            kind == type && candidate == title && candidateYear == year ? [Result(42, title, year)] : []);
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, type),
+            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), type, default));
     }
 
     public class SearchProvider : DispatchProxy

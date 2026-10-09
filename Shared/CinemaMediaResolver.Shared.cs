@@ -125,12 +125,14 @@ public sealed partial class CinemaMediaResolver
             .GroupBy(n => (NormalizeTitle(n.Title), n.Year))
             .Select(group => group.First()))
         {
+            // Mirror Jellyfin's TMDB title cleanup, which its remote-search API skips.
+            var searchName = Regex.Replace(name.Title, @"[\W_-[·]]+", " ");
             IEnumerable<RemoteSearchResult> results;
             if (searchType == "movie")
             {
                 results = await AwaitSearch(_providers.GetRemoteSearchResults<Movie, MovieInfo>(new RemoteSearchQuery<MovieInfo>
                 {
-                    SearchInfo = new MovieInfo { Name = name!.Title, Year = name.Year },
+                    SearchInfo = new MovieInfo { Name = searchName, Year = name.Year },
                     SearchProviderName = "TheMovieDb",
                     IncludeDisabledProviders = false,
                 }, cancellationToken), cancellationToken).ConfigureAwait(false);
@@ -139,7 +141,7 @@ public sealed partial class CinemaMediaResolver
             {
                 results = await AwaitSearch(_providers.GetRemoteSearchResults<Series, SeriesInfo>(new RemoteSearchQuery<SeriesInfo>
                 {
-                    SearchInfo = new SeriesInfo { Name = name!.Title, Year = name.Year },
+                    SearchInfo = new SeriesInfo { Name = searchName, Year = name.Year },
                     SearchProviderName = "TheMovieDb",
                     IncludeDisabledProviders = false,
                 }, cancellationToken), cancellationToken).ConfigureAwait(false);

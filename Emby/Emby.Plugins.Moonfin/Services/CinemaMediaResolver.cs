@@ -305,12 +305,14 @@ namespace Emby.Plugins.Moonfin.Services
                 if (before.Length > 0) yield return new MediaName(before, source.Year);
             }
 
-            // Some downloaders append a long alphanumeric ID without a Trailer label.
-            // Do not mistake ordinary title words ending in a single digit for an ID.
+            // Try generated-looking suffixes only if the full title has no exact match.
             var suffix = Regex.Match(title, @"[\s._-]+(?<id>[A-Za-z0-9_-]{8,})$");
             var token = suffix.Groups["id"].Value;
+            // Long letter-only IDs need stronger case patterns than ordinary title words.
+            var mixedCaseId = token.Length >= 10 && token.All(char.IsLetter) &&
+                Regex.IsMatch(token, @"[A-Z]{2}") && Regex.IsMatch(token, @"[a-z]{2,}[A-Z]");
             if (suffix.Success && token.Any(char.IsLetter) &&
-                (token.Count(char.IsDigit) > 1 || Regex.IsMatch(token, @"\d[A-Za-z]")))
+                (token.Count(char.IsDigit) > 1 || Regex.IsMatch(token, @"\d[A-Za-z]") || mixedCaseId))
                 yield return new MediaName(title.Substring(0, suffix.Index), source.Year);
         }
 

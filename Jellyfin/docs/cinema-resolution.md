@@ -37,7 +37,8 @@ and ignore season numbers or trailer-release years.
 Readable display names can recover hashed file paths. Display names are treated
 as titles, not filesystem paths, so a slash in `Ranma1/2` is preserved.
 Only after a full-title miss are delimiter-separated or generated-ID-suffix
-candidates tried. Ambiguous matches remain unresolved.
+candidates tried, including long mixed-case letter-only identifiers. Ordinary
+title-cased words are not treated as IDs. Ambiguous matches remain unresolved.
 
 `expectedMediaType` only selects a name-search category when authoritative
 item/owner and embedded-ID metadata cannot establish it. Searches do not switch

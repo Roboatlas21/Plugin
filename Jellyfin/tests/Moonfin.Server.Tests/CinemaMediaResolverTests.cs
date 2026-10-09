@@ -112,7 +112,12 @@ public sealed class CinemaMediaResolverTests
     public async Task YearlessMovieUsesTmdbRankingWithLocalizedTitles()
     {
         RemoteSearchResult[] matches = [Result(43, "Duna", 2021), Result(42, "Dune", 1984)];
-        var resolver = Resolver(new Video { Path = "Dune Trailer.mp4" }, (_, _, _) => matches);
+        var resolver = Resolver(new Video { Path = "Dune Trailer.mp4", Name = "Other Movie Trailer" },
+            (_, title, _) =>
+            {
+                Assert.Equal("Dune", title);
+                return matches;
+            });
         Assert.Equal(43, (await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
         matches = [Result(42, "Dune", 1984), Result(43, "Duna", 2021)];
         Assert.Equal(42, (await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
@@ -150,10 +155,16 @@ public sealed class CinemaMediaResolverTests
         string path, string displayName, string title, string type, int? year)
     {
         var intro = new Video { Path = path, Name = displayName };
+        var searches = new List<string>();
         var resolver = Resolver(intro, (kind, candidate, candidateYear) =>
-            kind == type && candidate == title && candidateYear == year ? [Result(42, title, year)] : []);
+        {
+            searches.Add(candidate);
+            return kind == type && candidate == title && candidateYear == year
+                ? [Result(42, title, year)] : [Result(99, "Unrelated")];
+        });
         Assert.Equal(new CinemaMediaResolver.Resolution(42, type),
             await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), type, default));
+        Assert.Equal(new[] { title }, searches);
     }
 
     public class SearchProvider : DispatchProxy

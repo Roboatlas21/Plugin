@@ -1,10 +1,7 @@
 name: Build
 
 on:
-  push:
-    branches: [master]
-  pull_request:
-    branches: [master]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -113,40 +110,8 @@ jobs:
           steps.emby_tests.outcome != 'success'
         run: exit 1
 
-      - name: Save build results
-        if: always() && github.event_name == 'pull_request'
-        run: |
-          mkdir -p "${{ runner.temp }}/build-results"
-
-          cat > "${{ runner.temp }}/build-results/outcomes.json" <<EOF
-          {
-            "pr_number": ${{ github.event.pull_request.number }},
-            "sha": "${{ github.event.pull_request.head.sha }}",
-            "backend_build": "${{ steps.backend_build.outcome }}",
-            "emby_build": "${{ steps.emby_build.outcome }}",
-            "tests": "${{ steps.tests.outcome }}",
-            "salvage_tests": "${{ steps.salvage_tests.outcome }}",
-            "emby_tests": "${{ steps.emby_tests.outcome }}",
-            "jellyfin_abi": "${{ steps.jf_meta.outputs.abi }}",
-            "emby_version": "${{ steps.emby_build.outputs.version }}"
-          }
-          EOF
-
-          for log in backend-build.log emby-build.log tests.log salvage-tests.log emby-tests.log; do
-            if [ -f "${{ runner.temp }}/$log" ]; then
-              cp "${{ runner.temp }}/$log" "${{ runner.temp }}/build-results/"
-            fi
-          done
-
-      - name: Upload build results
-        if: always() && github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-results
-          path: ${{ runner.temp }}/build-results/
-
       - name: Package Jellyfin ZIP
-        if: github.event_name == 'push' && steps.backend_build.outcome == 'success' && steps.emby_build.outcome == 'success'
+        if: steps.backend_build.outcome == 'success' && steps.emby_build.outcome == 'success'
         id: jf_package
         run: |
           VERSION="${{ steps.jf_meta.outputs.version }}"
@@ -190,21 +155,21 @@ jobs:
           echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
 
       - name: Upload Jellyfin artifact
-        if: github.event_name == 'push' && steps.backend_build.outcome == 'success' && steps.emby_build.outcome == 'success'
+        if: steps.backend_build.outcome == 'success' && steps.emby_build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.jf_package.outputs.zip_name }}
           path: ${{ steps.jf_package.outputs.zip_name }}
 
       - name: Upload Emby artifact
-        if: github.event_name == 'push' && steps.backend_build.outcome == 'success' && steps.emby_build.outcome == 'success'
+        if: steps.backend_build.outcome == 'success' && steps.emby_build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.emby_build.outputs.zip_name }}
           path: Emby/${{ steps.emby_build.outputs.zip_name }}
 
-      - name: Build summary (master)
-        if: github.event_name == 'push' && steps.backend_build.outcome == 'success' && steps.emby_build.outcome == 'success'
+      - name: Build summary
+        if: steps.backend_build.outcome == 'success' && steps.emby_build.outcome == 'success'
         run: |
           echo "## Build Successful" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

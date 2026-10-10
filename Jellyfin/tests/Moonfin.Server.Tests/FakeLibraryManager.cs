@@ -12,9 +12,14 @@ namespace Moonfin.Server.Tests;
 /// GamesService never reaches them from this path; a test that somehow does exercise one will fail
 /// loudly rather than silently returning bogus data. The similar items tests opt two of those
 /// members back in by setting <see cref="ItemsResultHandler"/> and <see cref="PeopleHandler"/>.
+/// Cinema tests use Jellyfin's naming library through ParseName.
 /// </summary>
 internal sealed class FakeLibraryManager : ILibraryManager
 {
+    private static readonly Emby.Naming.Common.NamingOptions NamingOptions = new();
+
+    internal Func<Guid, Guid, MediaBrowser.Controller.Entities.BaseItem?>? ItemForUserHandler { get; set; }
+
     private readonly List<VirtualFolderInfo> _folders;
     private readonly Action? _beforeGetVirtualFolders;
 
@@ -153,9 +158,10 @@ internal sealed class FakeLibraryManager : ILibraryManager
         throw new NotImplementedException();
     }
 
-    T ILibraryManager.GetItemById<T>(System.Guid id, System.Guid userId)
+    T ILibraryManager.GetItemById<T>(System.Guid id, System.Guid userId) where T : class
     {
-        throw new NotImplementedException();
+        if (ItemForUserHandler == null) throw new NotImplementedException();
+        return (ItemForUserHandler(id, userId) as T)!;
     }
 
     T ILibraryManager.GetItemById<T>(System.Guid id, Jellyfin.Data.Entities.User? user)
@@ -295,7 +301,11 @@ internal sealed class FakeLibraryManager : ILibraryManager
 
     MediaBrowser.Controller.Providers.ItemLookupInfo ILibraryManager.ParseName(System.String name)
     {
-        throw new NotImplementedException();
+        // Follow Jellyfin 10.10's ParseName with the same naming library.
+        var info = Emby.Naming.Video.VideoResolver.CleanDateTime(name, NamingOptions);
+        var title = Emby.Naming.Video.VideoResolver.TryCleanString(info.Name, NamingOptions, out var cleaned)
+            ? cleaned : info.Name;
+        return new MediaBrowser.Controller.Providers.ItemLookupInfo { Name = title, Year = info.Year };
     }
 
     System.Guid ILibraryManager.GetNewItemId(System.String key, System.Type type)

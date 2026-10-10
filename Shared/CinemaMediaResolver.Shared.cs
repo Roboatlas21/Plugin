@@ -210,14 +210,14 @@ public sealed partial class CinemaMediaResolver
         // Once a filename says Trailer/Teaser, everything after that label is decoration.
         // Use the last trailer label to avoid truncating earlier title words.
         var trailerLabels = Regex.Matches(title,
-            @"[\s._:|-]+(?:(?:official|final|theatrical)[\s._:-]+)?(?:teaser[\s._:-]+trailer|trailer|teaser)(?![\p{L}\p{N}])",
+            @"[\s._:|-]+(?:(?:official|final|theatrical)[\s._:|-]+)?(?:teaser[\s._:|-]+trailer|trailer|teaser)(?![\p{L}\p{N}])",
             RegexOptions.IgnoreCase);
         if (trailerLabels.Count > 0)
             title = title.Substring(0, trailerLabels[trailerLabels.Count - 1].Index);
 
         // The host may remove Trailer but leave its Official/Final prefix.
-        if (Regex.IsMatch(filename, @"(?:official|final|theatrical)[\s._:-]+(?:teaser[\s._:-]+)?trailer\b", RegexOptions.IgnoreCase))
-            title = Regex.Replace(title, @"[\s._:-]+(?:official|final|theatrical)$", "", RegexOptions.IgnoreCase);
+        if (Regex.IsMatch(filename, @"(?:official|final|theatrical)[\s._:|-]+(?:teaser[\s._:|-]+)?trailer\b", RegexOptions.IgnoreCase))
+            title = Regex.Replace(title, @"[\s._:|-]+(?:official|final|theatrical)$", "", RegexOptions.IgnoreCase);
         title = Regex.Replace(title,
             @"[\s._:-]+(?:watch[\s._:-]+at[\s._:-]+home|watch[\s._:-]+now|on[\s._:-]+digital)$",
             "", RegexOptions.IgnoreCase);

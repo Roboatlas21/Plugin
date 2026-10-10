@@ -148,6 +148,7 @@ public sealed class CinemaMediaResolverTests
     [Theory]
     [InlineData("Silo ABCdefghiJK.mp4", "", "Silo", "tv", null)]
     [InlineData("Netflix Anime - Ranma1⧸2 ｜ Official Trailer ｜ Netflix [Bv9wTsjqpSQ].mp4", "", "Ranma1 2", "tv", null)]
+    [InlineData("Netflix Anime - Ranma1⧸2｜Official Trailer｜Netflix [Bv9wTsjqpSQ].mp4", "", "Ranma1 2", "tv", null)]
     [InlineData("Unrelated Channel - Ranma1⧸2 ｜ Official Trailer ｜ Netflix [Bv9wTsjqpSQ].mp4", "", "Ranma1 2", "tv", null)]
     [InlineData("Warner Bros - Dune - Part Two ｜ Official Trailer ｜ Warner Bros [Bv9wTsjqpSQ].mp4", "", "Dune Part Two", "movie", null)]
     [InlineData("Dune - Part Two ｜ Official Trailer ｜ Warner Bros.mp4", "", "Dune Part Two", "movie", null)]

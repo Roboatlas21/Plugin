@@ -10,7 +10,11 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: moonbase-test-release
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -46,6 +50,12 @@ jobs:
             exit 1
           fi
 
+          # Give each manual build a new revision so Jellyfin can offer it as an update.
+          if [ "$GITHUB_RUN_NUMBER" -gt 65534 ]; then
+            echo "::error::The build number exceeds the assembly revision limit."
+            exit 1
+          fi
+          VERSION="${VERSION%.*}.${GITHUB_RUN_NUMBER}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "abi=${ABI}.0" >> "$GITHUB_OUTPUT"
 
@@ -57,6 +67,8 @@ jobs:
       - name: Build Jellyfin plugin
         id: backend_build
         continue-on-error: true
+        env:
+          VERSION: ${{ steps.jf_meta.outputs.version }}
         run: |
           set -o pipefail
           rm -rf Jellyfin/backend/bin/Release Jellyfin/backend/obj/Release
@@ -64,18 +76,22 @@ jobs:
           dotnet publish Jellyfin/backend/Moonfin.Server.csproj \
             -c Release \
             -o Jellyfin/backend/bin/Release/net8.0/publish \
+            -p:AssemblyVersion="$VERSION" \
+            -p:FileVersion="$VERSION" \
+            -p:Version="$VERSION" \
             2>&1 | tee "${{ runner.temp }}/backend-build.log"
           dotnet run --project Jellyfin/tools/verify-plugin/VerifyPlugin.csproj \
             -c Release -- \
-            Jellyfin/backend/bin/Release/net8.0/publish/Moonfin.Server.dll \
+            Jellyfin/backend/bin/Release/net8.0/publish/Moonfin.Server.dll "$VERSION" \
             2>&1 | tee -a "${{ runner.temp }}/backend-build.log"
 
       - name: Build Emby plugin
         id: emby_build
         continue-on-error: true
+        env:
+          EMBY_VERSION: ${{ steps.jf_meta.outputs.version }}
         run: |
           set -o pipefail
-          EMBY_VERSION=$(grep -oPm1 '(?<=<AssemblyVersion>)[^<]+' Emby/Emby.Plugins.Moonfin/Emby.Plugins.Moonfin.csproj)
           echo "version=$EMBY_VERSION" >> "$GITHUB_OUTPUT"
           echo "zip_name=Moonfin.Emby-${EMBY_VERSION}.zip" >> "$GITHUB_OUTPUT"
           # build.sh builds the netstandard2.1 plugin and assembles the drop-in zip.
@@ -162,26 +178,54 @@ jobs:
           echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
           echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
 
-      - name: Upload Jellyfin artifact
-        if: steps.backend_build.outcome == 'success' && steps.emby_build.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.jf_package.outputs.zip_name }}
-          path: ${{ steps.jf_package.outputs.zip_name }}
-
-      - name: Upload Emby artifact
-        if: steps.backend_build.outcome == 'success' && steps.emby_build.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.emby_build.outputs.zip_name }}
-          path: Emby/${{ steps.emby_build.outputs.zip_name }}
-
-      - name: Build summary
-        if: steps.backend_build.outcome == 'success' && steps.emby_build.outcome == 'success'
+      - name: Publish test release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_BRANCH: ${{ inputs.build_branch }}
+          VERSION: ${{ steps.jf_meta.outputs.version }}
+          TARGET_ABI: ${{ steps.jf_meta.outputs.abi }}
+          JELLYFIN_ZIP: ${{ steps.jf_package.outputs.zip_name }}
+          EMBY_ZIP: ${{ steps.emby_build.outputs.zip_name }}
+          CHECKSUM: ${{ steps.jf_package.outputs.checksum }}
         run: |
-          echo "## Build Successful" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Plugin | Version | Artifact |" >> $GITHUB_STEP_SUMMARY
-          echo "|---|---|---|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Jellyfin** | \`${{ steps.jf_meta.outputs.version }}\` | \`${{ steps.jf_package.outputs.zip_name }}\` (MD5 \`${{ steps.jf_package.outputs.checksum }}\`) |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Emby** | \`${{ steps.emby_build.outputs.version }}\` | \`${{ steps.emby_build.outputs.zip_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          TAG="test-${VERSION}"
+          SOURCE_SHA=$(git rev-parse HEAD)
+          RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+          REPOSITORY_URL="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/refs/heads/master/test-manifest.json"
+          SOURCE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${JELLYFIN_ZIP}"
+          CHANGELOG="Test build from ${BUILD_BRANCH} (${SOURCE_SHA})."
+
+          jq --arg version "$VERSION" --arg abi "$TARGET_ABI" \
+            --arg checksum "$CHECKSUM" --arg source "$SOURCE_URL" \
+            --arg changelog "$CHANGELOG" --arg owner "$GITHUB_REPOSITORY_OWNER" \
+            --arg image "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${SOURCE_SHA}/Jellyfin/backend/assets/logo.png" \
+            --arg timestamp "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+            '[.[0] | .owner = $owner | .imageUrl = $image | .versions = [{
+              version: $version, targetAbi: $abi, sourceUrl: $source,
+              checksum: $checksum, changelog: $changelog,
+              timestamp: $timestamp, dependencies: []
+            }]]' manifest.json > test-manifest.json
+
+          printf '%s\n\nJellyfin test repository:\n%s\n' \
+            "$CHANGELOG" "$REPOSITORY_URL" > "$RUNNER_TEMP/release-notes.txt"
+
+          # Upload everything before making the release available to Jellyfin.
+          gh release create "$TAG" "$JELLYFIN_ZIP" "Emby/$EMBY_ZIP" test-manifest.json \
+            --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" \
+            --title "Moonbase ${VERSION} (test build)" \
+            --notes-file "$RUNNER_TEMP/release-notes.txt" --prerelease --draft
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
+
+          # Keep the repository URL stable while each release keeps its own ZIP and checksum.
+          FILE_SHA=$(gh api "repos/${GITHUB_REPOSITORY}/contents?ref=master" \
+            --jq '.[] | select(.name == "test-manifest.json") | .sha')
+          jq -n --arg message "Update test repository for ${VERSION}" \
+            --arg content "$(base64 -w 0 test-manifest.json)" --arg sha "$FILE_SHA" \
+            '{message: $message, branch: "master", content: $content}
+             + (if $sha == "" then {} else {sha: $sha} end)' \
+            > "$RUNNER_TEMP/test-manifest-update.json"
+          gh api --method PUT "repos/${GITHUB_REPOSITORY}/contents/test-manifest.json" \
+            --input "$RUNNER_TEMP/test-manifest-update.json" --silent
+
+          printf '## Test release published\n\n[Moonbase %s](%s)\n\nJellyfin repository URL:\n\n%s\n' \
+            "$VERSION" "$RELEASE_URL" "$REPOSITORY_URL" >> "$GITHUB_STEP_SUMMARY"

@@ -1,4 +1,3 @@
-using System;
 using MediaBrowser.Controller.Net;
 using MediaBrowser.Model.Services;
 
@@ -8,7 +7,7 @@ namespace Emby.Plugins.Moonfin.Api
     [Authenticated]
     public class ResolveCinemaMediaRequest : IReturn<object>
     {
-        public Guid ItemId { get; set; }
+        public string ItemId { get; set; } = string.Empty;
         public string? ExpectedMediaType { get; set; }
     }
 }

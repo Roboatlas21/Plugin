@@ -47,7 +47,7 @@ namespace Emby.Plugins.Moonfin.Api
             if (user == null) return Json(401, new { error = "User not authenticated" });
 
             var expected = request.ExpectedMediaType;
-            if (request.ItemId == Guid.Empty || (expected != null && expected != "movie" && expected != "tv"))
+            if (string.IsNullOrWhiteSpace(request.ItemId) || (expected != null && expected != "movie" && expected != "tv"))
                 return Json(400, new { error = "Invalid Cinema media request" });
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));

@@ -50,6 +50,14 @@ public sealed partial class CinemaMediaResolver
             .ConfigureAwait(false);
     }
 
+    // An extra attached to a season or episode advertises its series.
+    private static Guid OwnerSeriesId(BaseItem owner) => owner switch
+    {
+        Season season => season.SeriesId,
+        Episode episode => episode.SeriesId,
+        _ => Guid.Empty,
+    };
+
     private static Task<IEnumerable<RemoteSearchResult>> AwaitSearch(
         Task<IEnumerable<RemoteSearchResult>> search, CancellationToken cancellationToken) =>
         search.WaitAsync(cancellationToken);

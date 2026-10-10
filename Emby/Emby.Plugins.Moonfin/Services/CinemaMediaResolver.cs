@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Controller.Entities;
@@ -25,23 +26,22 @@ namespace Emby.Plugins.Moonfin.Services
 
         public sealed record Resolution(int? TmdbId, string? MediaType = null);
 
-        public async Task<Resolution> ResolveMediaAsync(Guid itemId, User user,
+        public async Task<Resolution> ResolveMediaAsync(string itemId, User user,
             string? expectedMediaType, CancellationToken cancellationToken)
         {
             var item = _library.GetItemById(itemId) as Video;
             if (item == null || item is Episode || !item.IsVisibleStandalone(user)) return new(null);
 
-            BaseItem? owner = null;
-            if (item.OwnerId != Guid.Empty)
+            // Emby exposes numeric parent/series IDs rather than Jellyfin's OwnerId.
+            BaseItem? owner = item.GetParents()
+                .FirstOrDefault(parent => parent is Movie or Series or Season or Episode);
+            if (owner is Season or Episode)
             {
-                owner = _library.GetItemById(item.OwnerId);
-                if (owner == null || !owner.IsVisibleStandalone(user)) return new(null);
-                var seriesId = OwnerSeriesId(owner);
-                if (seriesId != Guid.Empty)
-                    owner = _library.GetItemById(seriesId) as Series;
-                if ((owner is not Movie && owner is not Series) || !owner.IsVisibleStandalone(user))
-                    return new(null);
+                if (owner.SeriesId <= 0) return new(null);
+                owner = _library.GetItemById(owner.SeriesId) as Series;
+                if (owner == null) return new(null);
             }
+            if (owner != null && !owner.IsVisibleStandalone(user)) return new(null);
 
             return await ResolveItemAsync(item, owner, expectedMediaType,
                 name => _library.ParseName(name.AsSpan()), cancellationToken).ConfigureAwait(false);

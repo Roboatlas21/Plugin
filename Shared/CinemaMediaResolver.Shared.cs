@@ -89,7 +89,7 @@ public sealed partial class CinemaMediaResolver
                     SearchInfo = new SeriesInfo
                     {
                         Name = string.Empty,
-                        ProviderIds = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                        ProviderIds = new()
                         {
                             ["Tvdb"] = externalId.ToString(CultureInfo.InvariantCulture),
                         },
@@ -156,14 +156,6 @@ public sealed partial class CinemaMediaResolver
         }
         return new(null);
     }
-
-    // An extra attached to a season or episode advertises its series.
-    private static Guid OwnerSeriesId(BaseItem owner) => owner switch
-    {
-        Season season => season.SeriesId,
-        Episode episode => episode.SeriesId,
-        _ => Guid.Empty,
-    };
 
     private static string? ProviderValue(IDictionary<string, string>? ids, string key) =>
         ids?.FirstOrDefault(p => p.Key.Equals(key, StringComparison.OrdinalIgnoreCase)).Value;

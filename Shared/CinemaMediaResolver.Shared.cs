@@ -219,7 +219,7 @@ public sealed partial class CinemaMediaResolver
         if (Regex.IsMatch(filename, @"(?:official|final|theatrical)[\s._:|-]+(?:teaser[\s._:|-]+)?trailer\b", RegexOptions.IgnoreCase))
             title = Regex.Replace(title, @"[\s._:|-]+(?:official|final|theatrical)$", "", RegexOptions.IgnoreCase);
         title = Regex.Replace(title,
-            @"[\s._:-]+(?:watch[\s._:-]+at[\s._:-]+home|watch[\s._:-]+now|on[\s._:-]+digital)$",
+            @"[\s._:|-]+(?:watch[\s._:|-]+at[\s._:|-]+home|watch[\s._:|-]+now|on[\s._:|-]+digital)$",
             "", RegexOptions.IgnoreCase);
         // Handle release years joined directly to titles, which the host may not parse.
         if (!year.HasValue)
@@ -233,7 +233,7 @@ public sealed partial class CinemaMediaResolver
             }
         }
 
-        var seriesTitle = Regex.Replace(title, @"[\s._:-]+(?:season[\s._-]*|s)\d{1,3}$", "", RegexOptions.IgnoreCase);
+        var seriesTitle = Regex.Replace(title, @"[\s._:|-]+(?:season[\s._|-]*|s)\d{1,3}$", "", RegexOptions.IgnoreCase);
         if (seriesTitle != title)
         {
             title = seriesTitle;

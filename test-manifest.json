@@ -1,0 +1,22 @@
+[
+  {
+    "guid": "8c5d0e91-4f2a-4b6d-9e3f-1a7c8d9e0f2b",
+    "name": "Moonbase",
+    "overview": "Moonfin server plugin for Jellyfin with web app hosting, settings sync, theming, and Seerr integrations",
+    "description": "Moonbase is the Moonfin server plugin for Jellyfin, powering settings sync, the Moonfin Web app at /Moonfin/Web/, a built-in theme editor with custom theme APIs, media bar and ratings integrations, and Seerr proxy/SSO with admin defaults and broadcasts across Moonfin clients.",
+    "owner": "Roboatlas21",
+    "category": "General",
+    "imageUrl": "https://raw.githubusercontent.com/Roboatlas21/Plugin/43e94211c7a56b6167758fedc81906fea400fa76/Jellyfin/backend/assets/logo.png",
+    "versions": [
+      {
+        "version": "2.4.0.2",
+        "targetAbi": "10.10.0.0",
+        "sourceUrl": "https://github.com/Roboatlas21/Plugin/releases/download/test-2.4.0.2/Moonfin.Server-2.4.0.2.zip",
+        "checksum": "242B2A409FDC0FEE8500EA13E22F5F6C",
+        "changelog": "Test build from feat/cinema-mode-skip-trailer-settings-final (43e94211c7a56b6167758fedc81906fea400fa76).",
+        "timestamp": "2026-10-10T18:58:38Z",
+        "dependencies": []
+      }
+    ]
+  }
+]

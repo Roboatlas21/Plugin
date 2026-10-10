@@ -197,7 +197,7 @@ public sealed partial class CinemaMediaResolver
     {
         if (string.IsNullOrWhiteSpace(pathOrName)) return null;
         var filename = isPath ? pathOrName.Replace('\\', '/').Split('/').Last() : pathOrName;
-        filename = Regex.Replace(filename, @"\.(mp4|mkv|avi|mov|webm|m4v|ts)$", "", RegexOptions.IgnoreCase)
+        filename = Regex.Replace(filename, @"\.(mp4|mkv|avi|mov|webm|m4v|ts|m2ts)$", "", RegexOptions.IgnoreCase)
             .Normalize(NormalizationForm.FormKC).Replace('⧸', '/').Replace('⁄', '/').Replace('∕', '/');
         // Channel-prefixed downloads use "Uploader - Title [video ID]".
         var prefixed = Regex.Match(filename,
@@ -269,7 +269,7 @@ public sealed partial class CinemaMediaResolver
         if (string.IsNullOrWhiteSpace(pathOrName)) return null;
         var filename = isPath ? pathOrName.Replace('\\', '/').Split('/').Last() : pathOrName;
         var match = Regex.Match(filename,
-            @"^(?<title>.+)_(?<source>tvdb|tmdb)?(?<id>[1-9]\d*)_trailer(?:\.(?:mp4|mkv|avi|mov|webm|m4v|ts))?$",
+            @"^(?<title>.+)_(?<source>tvdb|tmdb)?(?<id>[1-9]\d*)_trailer(?:\.(?:mp4|mkv|avi|mov|webm|m4v|ts|m2ts))?$",
             RegexOptions.IgnoreCase);
         if (!match.Success || !int.TryParse(match.Groups["id"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var id))
             return null;

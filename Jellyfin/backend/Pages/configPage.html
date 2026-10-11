@@ -922,12 +922,13 @@
                         <div class="checkboxContainer checkboxContainer-withDescription">
                             <label class="emby-checkbox-label">
                                 <input type="checkbox" id="CinemaFilenameSearchEnabled" is="emby-checkbox" />
-                                <span>Identify trailers using filename search</span>
+                                <span>Allow filename-based trailer identification (fallback)</span>
                             </label>
                             <div class="fieldDescription">
-                                Search TMDB by filename or display name when a trailer has no identifying metadata
-                                or attached movie or series. Moonfin uses the result to show the Seerr Request button
-                                and availability status for the advertised movie or series during Cinema Mode.
+                                Moonfin automatically identifies trailers for the Seerr Request button and availability
+                                status using metadata, attached movie or series information, and IDs embedded in filenames.
+                                If these methods cannot identify a trailer, enable this optional fallback to search TMDB
+                                using its filename or display name.
                             </div>
                         </div>
                     </div>

@@ -46,12 +46,12 @@ public sealed partial class CinemaMediaResolver
         if (ownerId == Guid.Empty && !string.IsNullOrWhiteSpace(item.Path))
         {
             // Other intro providers may register the same trailer file as a separate Video.
-            var matches = _library.GetItemList(new InternalItemsQuery
+            var matches = _library.GetItemsResult(new InternalItemsQuery
             {
                 Path = item.Path,
                 HasOwnerId = true,
                 GroupByPresentationUniqueKey = false,
-            });
+            }).Items;
             var ownerIds = matches
             .Where(extra => extra.ExtraType == ExtraType.Trailer)
             .OfType<Video>()

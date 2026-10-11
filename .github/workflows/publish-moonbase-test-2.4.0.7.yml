@@ -16,14 +16,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      SOURCE_SHA: 285ff722e720f6db7f7bfe39b62204df81019944
+      SOURCE_SHA: 07d540ee61b30b26919647c7c353a99c5c7bf0de
       VERSION: 2.4.0.7
       RELEASE_TAG: test-2.4.0.7
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 285ff722e720f6db7f7bfe39b62204df81019944
+          ref: 07d540ee61b30b26919647c7c353a99c5c7bf0de
           fetch-depth: 0
 
       - name: Verify exact source checkout and that release does not exist

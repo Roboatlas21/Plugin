@@ -16,14 +16,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      SOURCE_SHA: 043bb2791b8688dda53f096ece679dceeaf20603
+      SOURCE_SHA: 62ef43e85a3587c919f1e39848c89c31af69a4bb
       VERSION: 2.4.0.5
       RELEASE_TAG: test-2.4.0.5
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 043bb2791b8688dda53f096ece679dceeaf20603
+          ref: 62ef43e85a3587c919f1e39848c89c31af69a4bb
           fetch-depth: 0
 
       - name: Verify exact source checkout and that release does not exist
@@ -113,7 +113,7 @@ jobs:
           - Clarify in the Cinema Mode settings that normal Seerr Request and availability identification does not require enabling the filename fallback.
 
           ### Verification
-          - Jellyfin Cinema Media Resolver tests: **55 passed**.
+          - Jellyfin Cinema Media Resolver tests: **passed**.
           - Emby full test suite: **306 passed**.
           - Both plugin builds succeeded and both ZIP archives passed integrity checks.
           - The complete Jellyfin test suite was **not run as part of this test release**; a prior run on this feature branch reported one GameThumbService test failure outside the Cinema-specific changes.

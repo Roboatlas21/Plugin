@@ -3,9 +3,9 @@ name: Publish Moonbase 2.4.0.5 test release
 on:
   push:
     branches:
-      - ci/moonbase-test-release-2.4.0.5-20261011
+      - ci/moonbase-test-release-2.4.0.4-20261011
     paths:
-      - '.github/workflows/publish-moonbase-test-2.4.0.5.yml'
+      - '.github/workflows/publish-moonbase-test-2.4.0.4.yml'
 
 permissions:
   contents: write

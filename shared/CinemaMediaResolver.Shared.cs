@@ -27,8 +27,7 @@ public sealed partial class CinemaMediaResolver
         string? expectedMediaType, Func<string, ItemLookupInfo> parseStandard,
         CancellationToken cancellationToken)
     {
-        // A TMDB ID needs a movie or TV type. Check the trailer and its owner;
-        // playback context alone cannot tell us which kind of ID we have.
+        // Check the trailer and its owner before falling back to playback context.
         var explicitType = ProviderValue(item.ProviderIds, "TmdbMediaType");
         if (explicitType != null && explicitType is not ("movie" or "tv")) return new(null);
         var itemType = item is Movie ? "movie" : null;
@@ -41,9 +40,12 @@ public sealed partial class CinemaMediaResolver
         if (direct.HasValue && owned.HasValue && direct != owned) return new(null);
         var hasDirectId = ProviderValue(item.ProviderIds, "Tmdb") != null;
         if (hasDirectId && !direct.HasValue) return new(null);
-        if ((direct ?? owned) is int id && type != null)
+        // Untyped trailer pools must play movie trailers before movies
+        // and series trailers before episodes.
+        var directType = type ?? expectedMediaType;
+        if ((direct ?? owned) is int id && directType is "movie" or "tv")
         {
-            return new(id, type);
+            return new(id, directType);
         }
 
         // Read provider IDs embedded in trailer filenames.

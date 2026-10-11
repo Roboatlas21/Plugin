@@ -36,6 +36,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+      - name: Build original 10.10 plugin assembly for binary API comparison
+        shell: bash
+        run: |
+          dotnet build Jellyfin/backend/Moonfin.Server.csproj -c Release
+          cp Jellyfin/backend/bin/Release/net8.0/Moonfin.Server.dll "$RUNNER_TEMP/Moonfin.Server.10.10.dll"
       - name: Adjust API references in CI working tree only
         shell: bash
         run: |
@@ -70,3 +75,6 @@ jobs:
           PY
       - name: Compile all Moonbase Jellyfin production source against 12.2 with trigger shim
         run: dotnet build Jellyfin/backend/Moonfin.Server.csproj -c Release
+      - name: Compare original compiled method references against Jellyfin 12.2 assemblies
+        shell: bash
+        run: dotnet run --project .github/compatibility-audit/AbiCheck.csproj -c Release -- "$RUNNER_TEMP/Moonfin.Server.10.10.dll"

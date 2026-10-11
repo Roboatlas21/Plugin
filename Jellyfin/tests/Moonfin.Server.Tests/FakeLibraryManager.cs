@@ -19,6 +19,7 @@ internal sealed class FakeLibraryManager : ILibraryManager
     private static readonly Emby.Naming.Common.NamingOptions NamingOptions = new();
 
     internal Func<Guid, Guid, MediaBrowser.Controller.Entities.BaseItem?>? ItemForUserHandler { get; set; }
+    internal Func<Guid, MediaBrowser.Controller.Entities.BaseItem?>? ItemByIdHandler { get; set; }
 
     private readonly List<VirtualFolderInfo> _folders;
     private readonly Action? _beforeGetVirtualFolders;
@@ -150,7 +151,8 @@ internal sealed class FakeLibraryManager : ILibraryManager
 
     MediaBrowser.Controller.Entities.BaseItem ILibraryManager.GetItemById(System.Guid id)
     {
-        throw new NotImplementedException();
+        if (ItemByIdHandler == null) throw new NotImplementedException();
+        return ItemByIdHandler(id)!;
     }
 
     T ILibraryManager.GetItemById<T>(System.Guid id)

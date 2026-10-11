@@ -56,7 +56,7 @@ public sealed class CinemaMediaResolverTests
     [InlineData("season", true)]
     [InlineData("episode", false)]
     [InlineData("episode", true)]
-    public async Task OwnedTrailersUseAccessibleMovieOrSeries(string ownerKind, bool hasTrailerId)
+    public async Task OwnedTrailersUseMovieOrSeriesMetadata(string ownerKind, bool hasTrailerId)
     {
         var user = Guid.NewGuid();
         var series = new Series { Id = Guid.NewGuid(), ProviderIds = new() { ["Tmdb"] = "42" } };
@@ -73,8 +73,9 @@ public sealed class CinemaMediaResolverTests
             ItemForUserHandler = (id, uid) =>
             {
                 Assert.Equal(user, uid);
-                return id == intro.Id ? intro : id == owner.Id ? owner : id == series.Id ? series : null;
+                return id == intro.Id ? intro : null;
             },
+            ItemByIdHandler = id => id == owner.Id ? owner : id == series.Id ? series : null,
         };
         var resolver = new CinemaMediaResolver(library, null!);
         Assert.Equal(new CinemaMediaResolver.Resolution(42, ownerKind == "movie" ? "movie" : "tv"),
@@ -83,7 +84,7 @@ public sealed class CinemaMediaResolverTests
         intro.ProviderIds["Tmdb"] = "99";
         Assert.Null((await resolver.ResolveMediaAsync(intro.Id, user, "movie", default)).TmdbId);
         intro.ProviderIds.Clear();
-        library.ItemForUserHandler = (id, _) => id == intro.Id ? intro : null;
+        library.ItemByIdHandler = _ => null;
         Assert.Null((await resolver.ResolveMediaAsync(intro.Id, user, "movie", default)).TmdbId);
     }
 
@@ -104,8 +105,9 @@ public sealed class CinemaMediaResolverTests
             ItemForUserHandler = (id, uid) =>
             {
                 Assert.Equal(user, uid);
-                return id == intro.Id ? intro : id == attached.Id ? attached : id == other.Id ? other : id == movie.Id ? movie : null;
+                return id == intro.Id ? intro : null;
             },
+            ItemByIdHandler = id => id == movie.Id ? movie : null,
             ItemsResultHandler = query =>
             {
                 Assert.Equal(path, query.Path);
@@ -116,6 +118,35 @@ public sealed class CinemaMediaResolverTests
         };
         var resolver = new CinemaMediaResolver(library, null!);
         Assert.Equal(new CinemaMediaResolver.Resolution(42, expectedType),
+            await resolver.ResolveMediaAsync(intro.Id, user, "tv", default));
+    }
+
+    [Fact]
+    public async Task PrivateTrailerCanUseOwnerMetadataWithoutOwnerLibraryAccess()
+    {
+        var user = Guid.NewGuid();
+        const string path = "/data/movies/12 Strong (2018)/Trailer.mp4";
+        var intro = new Video { Id = Guid.NewGuid(), Path = path };
+        var movie = new Movie { Id = Guid.NewGuid(), ProviderIds = new() { ["Tmdb"] = "42" } };
+        var attached = new Trailer { Id = Guid.NewGuid(), Path = path, OwnerId = movie.Id, ExtraType = ExtraType.Trailer };
+        var library = new FakeLibraryManager
+        {
+            ItemForUserHandler = (id, uid) =>
+            {
+                Assert.Equal(intro.Id, id);
+                Assert.Equal(user, uid);
+                return intro;
+            },
+            ItemByIdHandler = id => id == movie.Id ? movie : null,
+            ItemsResultHandler = query =>
+            {
+                Assert.Equal(path, query.Path);
+                return [attached];
+            },
+        };
+        var resolver = new CinemaMediaResolver(library, null!);
+
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, "movie"),
             await resolver.ResolveMediaAsync(intro.Id, user, "tv", default));
     }
 

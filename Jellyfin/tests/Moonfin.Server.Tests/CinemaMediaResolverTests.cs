@@ -156,6 +156,25 @@ public sealed class CinemaMediaResolverTests
             await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default));
     }
 
+    [Theory]
+    [InlineData("Trailer.mp4")]
+    [InlineData("Official Trailer.mp4")]
+    [InlineData("Final Teaser Trailer 2.mp4")]
+    [InlineData("Trailer 1.mp4")]
+    [InlineData("Teaser.mp4")]
+    [InlineData("Intro.mp4")]
+    [InlineData("Preroll.mp4")]
+    [InlineData("Coming Soon.mp4")]
+    [InlineData("Special Look.mp4")]
+    [InlineData("Watch Now.mp4")]
+    [InlineData("On Digital.mp4")]
+    public async Task GenericPromoOnlyNamesDoNotSearchTmdb(string filename)
+    {
+        var resolver = Resolver(new Video { Path = filename },
+            (_, _, _) => throw new Exception("No title search expected"));
+        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default)).TmdbId);
+    }
+
     [Fact]
     public async Task YearlessMovieUsesTmdbRankingWithLocalizedTitles()
     {

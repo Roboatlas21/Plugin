@@ -234,6 +234,12 @@ public sealed partial class CinemaMediaResolver
         }
 
         title = title.Replace('.', ' ').Replace('_', ' ').Trim(' ', '-', '–', ':', '|');
+        // Promotional labels alone don't identify a movie or series.
+        if (Regex.IsMatch(NormalizeTitle(title),
+            @"\A(?:(?:OFFICIAL|FINAL|THEATRICAL)?(?:TEASERTRAILER|TRAILER|TEASER)|OFFICIAL|FINAL|THEATRICAL|INTRO|PREROLL" +
+            @"|COMINGSOON|FIRSTLOOK|SPECIALLOOK|NOWPLAYING|WATCHNOW|AVAILABLENOW|NOWSTREAMING|STREAMINGNOW" +
+            @"|DIGITALRELEASE|ONDIGITAL|WATCHATHOME|INTHEATERS|ONLYINTHEATERS)\d{0,2}\z"))
+            return null;
         if (year is < 1900 || year > DateTime.UtcNow.Year + 3) year = null;
         if (title.Length == 0 || title.Length > 200 || NormalizeTitle(title).Length == 0
             || Regex.IsMatch(title, @"\A[0-9a-f]{32,64}\z", RegexOptions.IgnoreCase)) return null;

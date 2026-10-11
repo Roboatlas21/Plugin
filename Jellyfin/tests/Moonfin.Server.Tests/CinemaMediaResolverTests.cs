@@ -3,6 +3,7 @@ using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
 using Moonfin.Server.Services;
 using Xunit;
@@ -84,6 +85,38 @@ public sealed class CinemaMediaResolverTests
         intro.ProviderIds.Clear();
         library.ItemForUserHandler = (id, _) => id == intro.Id ? intro : null;
         Assert.Null((await resolver.ResolveMediaAsync(intro.Id, user, "movie", default)).TmdbId);
+    }
+
+    [Theory]
+    [InlineData(false, false, "movie")]
+    [InlineData(true, true, "tv")]
+    public async Task PrivateTrailersUseOnlyUnambiguousAttachedOwners(bool hasId, bool ambiguous, string expectedType)
+    {
+        var user = Guid.NewGuid();
+        const string path = "/movies/12 Strong (2018)/Trailer.mp4";
+        var intro = new Video { Id = Guid.NewGuid(), Path = path };
+        if (hasId) intro.ProviderIds["Tmdb"] = "42";
+        var movie = new Movie { Id = Guid.NewGuid(), ProviderIds = new() { ["Tmdb"] = "42" } };
+        var attached = new Trailer { Id = Guid.NewGuid(), OwnerId = movie.Id, Path = path, ExtraType = ExtraType.Trailer };
+        var other = new Trailer { Id = Guid.NewGuid(), OwnerId = Guid.NewGuid(), Path = path, ExtraType = ExtraType.Trailer };
+        var library = new FakeLibraryManager
+        {
+            ItemForUserHandler = (id, uid) =>
+            {
+                Assert.Equal(user, uid);
+                return id == intro.Id ? intro : id == attached.Id ? attached : id == other.Id ? other : id == movie.Id ? movie : null;
+            },
+            ItemsResultHandler = query =>
+            {
+                Assert.Equal(path, query.Path);
+                Assert.Equal(true, query.HasOwnerId);
+                Assert.False(query.GroupByPresentationUniqueKey);
+                return ambiguous ? [attached, other] : [attached];
+            },
+        };
+        var resolver = new CinemaMediaResolver(library, null!);
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, expectedType),
+            await resolver.ResolveMediaAsync(intro.Id, user, "tv", default));
     }
 
     [Fact]

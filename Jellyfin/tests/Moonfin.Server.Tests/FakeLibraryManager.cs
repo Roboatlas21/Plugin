@@ -386,7 +386,7 @@ internal sealed class FakeLibraryManager : ILibraryManager
 
     System.Collections.Generic.List<MediaBrowser.Controller.Entities.BaseItem> ILibraryManager.GetItemList(MediaBrowser.Controller.Entities.InternalItemsQuery query)
     {
-        throw new NotImplementedException();
+        return ItemsResultHandler?.Invoke(query) ?? [];
     }
 
     System.Collections.Generic.List<MediaBrowser.Controller.Entities.BaseItem> ILibraryManager.GetItemList(MediaBrowser.Controller.Entities.InternalItemsQuery query, System.Boolean allowExternalContent)

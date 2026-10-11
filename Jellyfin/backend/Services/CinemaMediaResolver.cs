@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,6 +9,7 @@ using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
 
 namespace Moonfin.Server.Services;
@@ -35,10 +37,31 @@ public sealed partial class CinemaMediaResolver
         var item = _library.GetItemById<Video>(itemId, userId);
         if (item == null || item is Episode) return new(null);
 
-        BaseItem? owner = null;
-        if (item.OwnerId != Guid.Empty)
+        var ownerId = item.OwnerId;
+        if (ownerId == Guid.Empty && !string.IsNullOrWhiteSpace(item.Path))
         {
-            owner = _library.GetItemById<BaseItem>(item.OwnerId, userId);
+            // Other intro providers may register the same trailer file as a separate Video.
+            var ownerIds = _library.GetItemList(new InternalItemsQuery
+            {
+                Path = item.Path,
+                HasOwnerId = true,
+                GroupByPresentationUniqueKey = false,
+            })
+            .Where(extra => extra.ExtraType == ExtraType.Trailer)
+            .Select(extra => _library.GetItemById<Video>(extra.Id, userId))
+            .OfType<Video>()
+            .Select(extra => extra.OwnerId)
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .Take(2)
+            .ToArray();
+            if (ownerIds.Length == 1) ownerId = ownerIds[0];
+        }
+
+        BaseItem? owner = null;
+        if (ownerId != Guid.Empty)
+        {
+            owner = _library.GetItemById<BaseItem>(ownerId, userId);
             if (owner == null) return new(null);
             var seriesId = OwnerSeriesId(owner);
             if (seriesId != Guid.Empty)

@@ -224,7 +224,8 @@ public sealed class CinemaMediaResolverTests
         var intro = new Trailer { Id = Guid.NewGuid(), OwnerId = owner.Id, Path = "Trailer.mp4" };
         var library = new FakeLibraryManager
         {
-            ItemForUserHandler = (id, _) => id == intro.Id ? intro : id == owner.Id ? owner : null,
+            ItemForUserHandler = (id, _) => id == intro.Id ? intro : null,
+            ItemByIdHandler = id => id == owner.Id ? owner : null,
         };
         var provider = DispatchProxy.Create<IProviderManager, SearchProvider>();
         ((SearchProvider)(object)provider).Search = (kind, name, year) =>

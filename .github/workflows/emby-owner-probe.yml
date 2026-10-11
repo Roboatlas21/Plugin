@@ -1,0 +1,56 @@
+name: Verify Emby owner / parent API
+
+on:
+  push:
+    branches:
+      - ci/emby-owner-api-verification-20261011
+    paths-ignore:
+      - 'ci-results/**'
+
+permissions:
+  contents: write
+
+jobs:
+  ownership:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Inspect Emby SDK parent and owner APIs
+        shell: bash
+        run: |
+          mkdir -p ci-results
+          {
+            echo "Isolated Emby owner API verification; feature code unchanged"
+            echo "Date (UTC): $(date -u +'%Y-%m-%d %H:%M:%S')"
+            for version in 4.9.1.90 4.10.0.24-beta2 4.11.0.5-beta6; do
+              echo
+              echo "#####################################################"
+              echo "MediaBrowser.Server.Core version: $version"
+              echo "#####################################################"
+              work="$RUNNER_TEMP/emby-owner-$version"
+              dotnet new console --framework net8.0 --output "$work" --name OwnerProbe --no-restore || echo "project create FAILED"
+              cp ci/probes/EmbyOwnerProbe.cs "$work/Program.cs"
+              dotnet add "$work/OwnerProbe.csproj" package MediaBrowser.Server.Core --version "$version" || echo "package restore FAILED"
+              dotnet run --project "$work/OwnerProbe.csproj" --configuration Release || echo "PROBE BUILD/RUN FAILED"
+            done
+          } > ci-results/emby-owner-probe.txt 2>&1
+          cat ci-results/emby-owner-probe.txt
+      - name: Save verification results to isolated CI branch
+        if: always()
+        shell: bash
+        run: |
+          if [ ! -f ci-results/emby-owner-probe.txt ]; then
+            mkdir -p ci-results
+            echo "Verification failed before producing output" > ci-results/emby-owner-probe.txt
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci-results/emby-owner-probe.txt
+          git commit -m "ci: Record Emby owner API verification results" || true
+          git push origin HEAD:ci/emby-owner-api-verification-20261011

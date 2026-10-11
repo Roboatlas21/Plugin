@@ -22,6 +22,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Verify exact source checkout and that release does not exist
         shell: bash

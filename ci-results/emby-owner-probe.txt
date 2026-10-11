@@ -1,5 +1,5 @@
 Isolated Emby owner API verification; feature code unchanged
-Date (UTC): 2026-10-11 12:58:52
+Date (UTC): 2026-10-11 13:00:32
 
 #####################################################
 MediaBrowser.Server.Core version: 4.9.1.90
@@ -11,38 +11,52 @@ info : X.509 certificate chain validation will use the fallback certificate bund
 info : Adding PackageReference for package 'MediaBrowser.Server.Core' into project '/home/runner/work/_temp/emby-owner-4.9.1.90/OwnerProbe.csproj'.
 info : Restoring packages for /home/runner/work/_temp/emby-owner-4.9.1.90/OwnerProbe.csproj...
 info :   GET https://api.nuget.org/v3-flatcontainer/mediabrowser.server.core/index.json
-info :   OK https://api.nuget.org/v3-flatcontainer/mediabrowser.server.core/index.json 31ms
+info :   OK https://api.nuget.org/v3-flatcontainer/mediabrowser.server.core/index.json 28ms
 info :   GET https://api.nuget.org/v3-flatcontainer/mediabrowser.server.core/4.9.1.90/mediabrowser.server.core.4.9.1.90.nupkg
-info :   OK https://api.nuget.org/v3-flatcontainer/mediabrowser.server.core/4.9.1.90/mediabrowser.server.core.4.9.1.90.nupkg 23ms
+info :   OK https://api.nuget.org/v3-flatcontainer/mediabrowser.server.core/4.9.1.90/mediabrowser.server.core.4.9.1.90.nupkg 5ms
 info :   GET https://api.nuget.org/v3-flatcontainer/mediabrowser.common/index.json
-info :   OK https://api.nuget.org/v3-flatcontainer/mediabrowser.common/index.json 33ms
+info :   OK https://api.nuget.org/v3-flatcontainer/mediabrowser.common/index.json 25ms
 info :   GET https://api.nuget.org/v3-flatcontainer/mediabrowser.common/4.9.1.90/mediabrowser.common.4.9.1.90.nupkg
-info :   OK https://api.nuget.org/v3-flatcontainer/mediabrowser.common/4.9.1.90/mediabrowser.common.4.9.1.90.nupkg 26ms
-info : Installed MediaBrowser.Common 4.9.1.90 from https://api.nuget.org/v3/index.json to /home/runner/.nuget/packages/mediabrowser.common/4.9.1.90 with content hash QzXFYh7TPskAtctdCguJxep9aMSfIrsT4F+xUrdAVh4pj2KAD3DzwkY1DDPIUUD6M+Lgwag/NesBgd1pgLffbQ==.
+info :   OK https://api.nuget.org/v3-flatcontainer/mediabrowser.common/4.9.1.90/mediabrowser.common.4.9.1.90.nupkg 5ms
 info : Installed MediaBrowser.Server.Core 4.9.1.90 from https://api.nuget.org/v3/index.json to /home/runner/.nuget/packages/mediabrowser.server.core/4.9.1.90 with content hash lyThQ7kXhzLNisMfqzSoxrhG/7gnK9/lJyNfV/TCo10c30oKiTR2n5nG+ognv6hCNz9jmcPpAt3561Oj7EIVwQ==.
+info : Installed MediaBrowser.Common 4.9.1.90 from https://api.nuget.org/v3/index.json to /home/runner/.nuget/packages/mediabrowser.common/4.9.1.90 with content hash QzXFYh7TPskAtctdCguJxep9aMSfIrsT4F+xUrdAVh4pj2KAD3DzwkY1DDPIUUD6M+Lgwag/NesBgd1pgLffbQ==.
 info :   GET https://api.nuget.org/v3/vulnerabilities/index.json
-info :   OK https://api.nuget.org/v3/vulnerabilities/index.json 4ms
+info :   OK https://api.nuget.org/v3/vulnerabilities/index.json 3ms
 info :   GET https://api.nuget.org/v3-vulnerabilities/2026.10.06.23.47.38/vulnerability.base.json
-info :   GET https://api.nuget.org/v3-vulnerabilities/2026.10.06.23.47.38/2026.10.11.05.48.19/vulnerability.update.json
-info :   OK https://api.nuget.org/v3-vulnerabilities/2026.10.06.23.47.38/vulnerability.base.json 6ms
-info :   OK https://api.nuget.org/v3-vulnerabilities/2026.10.06.23.47.38/2026.10.11.05.48.19/vulnerability.update.json 11ms
+info :   GET https://api.nuget.org/v3-vulnerabilities/2026.10.06.23.47.38/2026.10.10.23.48.16/vulnerability.update.json
+info :   OK https://api.nuget.org/v3-vulnerabilities/2026.10.06.23.47.38/vulnerability.base.json 3ms
+info :   OK https://api.nuget.org/v3-vulnerabilities/2026.10.06.23.47.38/2026.10.10.23.48.16/vulnerability.update.json 7ms
 info : Package 'MediaBrowser.Server.Core' is compatible with all the specified frameworks in project '/home/runner/work/_temp/emby-owner-4.9.1.90/OwnerProbe.csproj'.
 info : PackageReference for package 'MediaBrowser.Server.Core' version '4.9.1.90' added to file '/home/runner/work/_temp/emby-owner-4.9.1.90/OwnerProbe.csproj'.
 info : Generating MSBuild file /home/runner/work/_temp/emby-owner-4.9.1.90/obj/OwnerProbe.csproj.nuget.g.props.
 info : Generating MSBuild file /home/runner/work/_temp/emby-owner-4.9.1.90/obj/OwnerProbe.csproj.nuget.g.targets.
 info : Writing assets file to disk. Path: /home/runner/work/_temp/emby-owner-4.9.1.90/obj/project.assets.json
-log  : Restored /home/runner/work/_temp/emby-owner-4.9.1.90/OwnerProbe.csproj (in 737 ms).
+log  : Restored /home/runner/work/_temp/emby-owner-4.9.1.90/OwnerProbe.csproj (in 782 ms).
 === Emby owner / parent relationship probe ===
 MediaBrowser.Controller assembly: MediaBrowser.Controller, Version=4.9.1.90, Culture=neutral, PublicKeyToken=null
 BaseItem: MediaBrowser.Controller.Entities.BaseItem
 OwnerId property: (not found)
 ParentId property: System.Int64 / writable=True
 ExtraType property: System.Nullable`1[[MediaBrowser.Model.Entities.ExtraType, MediaBrowser.Model, Version=4.9.1.90, Culture=neutral, PublicKeyToken=null]] / writable=True
+Owner-related BaseItem and Video members:
 GetParents method: System.Collections.Generic.IEnumerable`1[MediaBrowser.Controller.Entities.BaseItem] GetParents()
 GetParent method: MediaBrowser.Controller.Entities.BaseItem GetParent()
 GetOwner method: (not found)
-IL calls from BaseItem.GetParents (or its iterator MoveNext):
+All GetParents overloads and IL calls:
+  OVERLOAD: System.Collections.Generic.IEnumerable`1[MediaBrowser.Controller.Entities.BaseItem] GetParents()
   calls BaseItem.GetParents
+  OVERLOAD: System.Collections.Generic.IEnumerable`1[MediaBrowser.Controller.Entities.BaseItem] GetParents(MediaBrowser.Model.Data.IDataContext)
+  iterator type: MediaBrowser.Controller.Entities.BaseItem+<GetParents>d__479
+  calls BaseItem.GetParent
+All GetParent overloads and IL calls:
+  OVERLOAD: MediaBrowser.Controller.Entities.BaseItem GetParent()
+  calls BaseItem.GetParent
+  OVERLOAD: MediaBrowser.Controller.Entities.BaseItem GetParent(MediaBrowser.Model.Data.IDataContext)
+  calls BaseItem.get_ParentId
+  calls Int64.Equals
+  calls BaseItem.get_LibraryManager
+  calls ILibraryManager.GetItemById
+  calls BaseItem.SetCachedParent
 IL calls from BaseItem.GetParent:
   calls BaseItem.GetParent
 IL calls from BaseItem.GetOwner:
@@ -76,32 +90,46 @@ info : Adding PackageReference for package 'MediaBrowser.Server.Core' into proje
 info : Restoring packages for /home/runner/work/_temp/emby-owner-4.10.0.24-beta2/OwnerProbe.csproj...
 info :   CACHE https://api.nuget.org/v3-flatcontainer/mediabrowser.server.core/index.json
 info :   GET https://api.nuget.org/v3-flatcontainer/mediabrowser.server.core/4.10.0.24-beta2/mediabrowser.server.core.4.10.0.24-beta2.nupkg
-info :   OK https://api.nuget.org/v3-flatcontainer/mediabrowser.server.core/4.10.0.24-beta2/mediabrowser.server.core.4.10.0.24-beta2.nupkg 152ms
+info :   OK https://api.nuget.org/v3-flatcontainer/mediabrowser.server.core/4.10.0.24-beta2/mediabrowser.server.core.4.10.0.24-beta2.nupkg 90ms
 info :   CACHE https://api.nuget.org/v3-flatcontainer/mediabrowser.common/index.json
 info :   GET https://api.nuget.org/v3-flatcontainer/mediabrowser.common/4.10.0.24-beta2/mediabrowser.common.4.10.0.24-beta2.nupkg
-info :   OK https://api.nuget.org/v3-flatcontainer/mediabrowser.common/4.10.0.24-beta2/mediabrowser.common.4.10.0.24-beta2.nupkg 20ms
-info : Installed MediaBrowser.Server.Core 4.10.0.24-beta2 from https://api.nuget.org/v3/index.json to /home/runner/.nuget/packages/mediabrowser.server.core/4.10.0.24-beta2 with content hash 6bkdAKdDsDACFVYaIqdhbvCd8Ek9z6wY5KVkNWZjW8sxmFrbfL1ieuxZn4AoDuqXDN+/WtILhLPEItvJIh0xTw==.
+info :   OK https://api.nuget.org/v3-flatcontainer/mediabrowser.common/4.10.0.24-beta2/mediabrowser.common.4.10.0.24-beta2.nupkg 9ms
 info : Installed MediaBrowser.Common 4.10.0.24-beta2 from https://api.nuget.org/v3/index.json to /home/runner/.nuget/packages/mediabrowser.common/4.10.0.24-beta2 with content hash I2PWkmrclq0idYIvWY0plCn6AdxdIJG2gY5nVXTFdC1Z2dtb+cIP/7nDTH0pjsBK9bh/tgDwvbge9w0zq3xVgg==.
+info : Installed MediaBrowser.Server.Core 4.10.0.24-beta2 from https://api.nuget.org/v3/index.json to /home/runner/.nuget/packages/mediabrowser.server.core/4.10.0.24-beta2 with content hash 6bkdAKdDsDACFVYaIqdhbvCd8Ek9z6wY5KVkNWZjW8sxmFrbfL1ieuxZn4AoDuqXDN+/WtILhLPEItvJIh0xTw==.
 info :   CACHE https://api.nuget.org/v3/vulnerabilities/index.json
 info :   CACHE https://api.nuget.org/v3-vulnerabilities/2026.10.06.23.47.38/vulnerability.base.json
-info :   CACHE https://api.nuget.org/v3-vulnerabilities/2026.10.06.23.47.38/2026.10.11.05.48.19/vulnerability.update.json
+info :   CACHE https://api.nuget.org/v3-vulnerabilities/2026.10.06.23.47.38/2026.10.10.23.48.16/vulnerability.update.json
 info : Package 'MediaBrowser.Server.Core' is compatible with all the specified frameworks in project '/home/runner/work/_temp/emby-owner-4.10.0.24-beta2/OwnerProbe.csproj'.
 info : PackageReference for package 'MediaBrowser.Server.Core' version '4.10.0.24-beta2' added to file '/home/runner/work/_temp/emby-owner-4.10.0.24-beta2/OwnerProbe.csproj'.
 info : Generating MSBuild file /home/runner/work/_temp/emby-owner-4.10.0.24-beta2/obj/OwnerProbe.csproj.nuget.g.props.
 info : Generating MSBuild file /home/runner/work/_temp/emby-owner-4.10.0.24-beta2/obj/OwnerProbe.csproj.nuget.g.targets.
 info : Writing assets file to disk. Path: /home/runner/work/_temp/emby-owner-4.10.0.24-beta2/obj/project.assets.json
-log  : Restored /home/runner/work/_temp/emby-owner-4.10.0.24-beta2/OwnerProbe.csproj (in 576 ms).
+log  : Restored /home/runner/work/_temp/emby-owner-4.10.0.24-beta2/OwnerProbe.csproj (in 356 ms).
 === Emby owner / parent relationship probe ===
 MediaBrowser.Controller assembly: MediaBrowser.Controller, Version=4.10.0.24, Culture=neutral, PublicKeyToken=null
 BaseItem: MediaBrowser.Controller.Entities.BaseItem
 OwnerId property: (not found)
 ParentId property: System.Int64 / writable=True
 ExtraType property: System.Nullable`1[[MediaBrowser.Model.Entities.ExtraType, MediaBrowser.Model, Version=4.10.0.24, Culture=neutral, PublicKeyToken=null]] / writable=True
+Owner-related BaseItem and Video members:
 GetParents method: System.Collections.Generic.IEnumerable`1[MediaBrowser.Controller.Entities.BaseItem] GetParents()
 GetParent method: MediaBrowser.Controller.Entities.BaseItem GetParent()
 GetOwner method: (not found)
-IL calls from BaseItem.GetParents (or its iterator MoveNext):
+All GetParents overloads and IL calls:
+  OVERLOAD: System.Collections.Generic.IEnumerable`1[MediaBrowser.Controller.Entities.BaseItem] GetParents()
   calls BaseItem.GetParents
+  OVERLOAD: System.Collections.Generic.IEnumerable`1[MediaBrowser.Controller.Entities.BaseItem] GetParents(MediaBrowser.Model.Data.IDataContext)
+  iterator type: MediaBrowser.Controller.Entities.BaseItem+<GetParents>d__484
+  calls BaseItem.GetParent
+All GetParent overloads and IL calls:
+  OVERLOAD: MediaBrowser.Controller.Entities.BaseItem GetParent()
+  calls BaseItem.GetParent
+  OVERLOAD: MediaBrowser.Controller.Entities.BaseItem GetParent(MediaBrowser.Model.Data.IDataContext)
+  calls BaseItem.get_ParentId
+  calls Int64.Equals
+  calls BaseItem.get_LibraryManager
+  calls ILibraryManager.GetItemById
+  calls BaseItem.SetCachedParent
 IL calls from BaseItem.GetParent:
   calls BaseItem.GetParent
 IL calls from BaseItem.GetOwner:
@@ -135,32 +163,46 @@ info : Adding PackageReference for package 'MediaBrowser.Server.Core' into proje
 info : Restoring packages for /home/runner/work/_temp/emby-owner-4.11.0.5-beta6/OwnerProbe.csproj...
 info :   CACHE https://api.nuget.org/v3-flatcontainer/mediabrowser.server.core/index.json
 info :   GET https://api.nuget.org/v3-flatcontainer/mediabrowser.server.core/4.11.0.5-beta6/mediabrowser.server.core.4.11.0.5-beta6.nupkg
-info :   OK https://api.nuget.org/v3-flatcontainer/mediabrowser.server.core/4.11.0.5-beta6/mediabrowser.server.core.4.11.0.5-beta6.nupkg 163ms
+info :   OK https://api.nuget.org/v3-flatcontainer/mediabrowser.server.core/4.11.0.5-beta6/mediabrowser.server.core.4.11.0.5-beta6.nupkg 123ms
 info :   CACHE https://api.nuget.org/v3-flatcontainer/mediabrowser.common/index.json
 info :   GET https://api.nuget.org/v3-flatcontainer/mediabrowser.common/4.11.0.5-beta6/mediabrowser.common.4.11.0.5-beta6.nupkg
-info :   OK https://api.nuget.org/v3-flatcontainer/mediabrowser.common/4.11.0.5-beta6/mediabrowser.common.4.11.0.5-beta6.nupkg 19ms
+info :   OK https://api.nuget.org/v3-flatcontainer/mediabrowser.common/4.11.0.5-beta6/mediabrowser.common.4.11.0.5-beta6.nupkg 12ms
 info : Installed MediaBrowser.Server.Core 4.11.0.5-beta6 from https://api.nuget.org/v3/index.json to /home/runner/.nuget/packages/mediabrowser.server.core/4.11.0.5-beta6 with content hash TxTnMFl8UzeKwo1ZQ2tesp2kLfplygrjq1vfDGyZHzkrw/c598o2P4OP5mCzGpNoxwY0oDYndV0eurJoxPhGQQ==.
 info : Installed MediaBrowser.Common 4.11.0.5-beta6 from https://api.nuget.org/v3/index.json to /home/runner/.nuget/packages/mediabrowser.common/4.11.0.5-beta6 with content hash nX+ShO1+JLJwZP+ya83EOtwJIxVOnstw3qeA+m6vV/9/3TNLXV4NGSCvjfeqBnWRXwSPDWPwL1dYhuyIYNfuDQ==.
 info :   CACHE https://api.nuget.org/v3/vulnerabilities/index.json
 info :   CACHE https://api.nuget.org/v3-vulnerabilities/2026.10.06.23.47.38/vulnerability.base.json
-info :   CACHE https://api.nuget.org/v3-vulnerabilities/2026.10.06.23.47.38/2026.10.11.05.48.19/vulnerability.update.json
+info :   CACHE https://api.nuget.org/v3-vulnerabilities/2026.10.06.23.47.38/2026.10.10.23.48.16/vulnerability.update.json
 info : Package 'MediaBrowser.Server.Core' is compatible with all the specified frameworks in project '/home/runner/work/_temp/emby-owner-4.11.0.5-beta6/OwnerProbe.csproj'.
 info : PackageReference for package 'MediaBrowser.Server.Core' version '4.11.0.5-beta6' added to file '/home/runner/work/_temp/emby-owner-4.11.0.5-beta6/OwnerProbe.csproj'.
 info : Generating MSBuild file /home/runner/work/_temp/emby-owner-4.11.0.5-beta6/obj/OwnerProbe.csproj.nuget.g.props.
 info : Generating MSBuild file /home/runner/work/_temp/emby-owner-4.11.0.5-beta6/obj/OwnerProbe.csproj.nuget.g.targets.
 info : Writing assets file to disk. Path: /home/runner/work/_temp/emby-owner-4.11.0.5-beta6/obj/project.assets.json
-log  : Restored /home/runner/work/_temp/emby-owner-4.11.0.5-beta6/OwnerProbe.csproj (in 595 ms).
+log  : Restored /home/runner/work/_temp/emby-owner-4.11.0.5-beta6/OwnerProbe.csproj (in 432 ms).
 === Emby owner / parent relationship probe ===
 MediaBrowser.Controller assembly: MediaBrowser.Controller, Version=4.11.0.5, Culture=neutral, PublicKeyToken=null
 BaseItem: MediaBrowser.Controller.Entities.BaseItem
 OwnerId property: (not found)
 ParentId property: System.Int64 / writable=True
 ExtraType property: System.Nullable`1[[MediaBrowser.Model.Entities.ExtraType, MediaBrowser.Model, Version=4.11.0.5, Culture=neutral, PublicKeyToken=null]] / writable=True
+Owner-related BaseItem and Video members:
 GetParents method: System.Collections.Generic.IEnumerable`1[MediaBrowser.Controller.Entities.BaseItem] GetParents()
 GetParent method: MediaBrowser.Controller.Entities.BaseItem GetParent()
 GetOwner method: (not found)
-IL calls from BaseItem.GetParents (or its iterator MoveNext):
+All GetParents overloads and IL calls:
+  OVERLOAD: System.Collections.Generic.IEnumerable`1[MediaBrowser.Controller.Entities.BaseItem] GetParents()
   calls BaseItem.GetParents
+  OVERLOAD: System.Collections.Generic.IEnumerable`1[MediaBrowser.Controller.Entities.BaseItem] GetParents(MediaBrowser.Model.Data.IDataContext)
+  iterator type: MediaBrowser.Controller.Entities.BaseItem+<GetParents>d__484
+  calls BaseItem.GetParent
+All GetParent overloads and IL calls:
+  OVERLOAD: MediaBrowser.Controller.Entities.BaseItem GetParent()
+  calls BaseItem.GetParent
+  OVERLOAD: MediaBrowser.Controller.Entities.BaseItem GetParent(MediaBrowser.Model.Data.IDataContext)
+  calls BaseItem.get_ParentId
+  calls Int64.Equals
+  calls BaseItem.get_LibraryManager
+  calls ILibraryManager.GetItemById
+  calls BaseItem.SetCachedParent
 IL calls from BaseItem.GetParent:
   calls BaseItem.GetParent
 IL calls from BaseItem.GetOwner:

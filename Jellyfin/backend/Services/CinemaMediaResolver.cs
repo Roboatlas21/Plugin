@@ -11,6 +11,7 @@ using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
+using Microsoft.Extensions.Logging;
 
 namespace Moonfin.Server.Services;
 
@@ -31,21 +32,27 @@ public sealed partial class CinemaMediaResolver
         [property: JsonPropertyName("mediaType")] string? MediaType = null);
 
     public async Task<Resolution> ResolveMediaAsync(Guid itemId, string? expectedMediaType,
-        CancellationToken cancellationToken, bool allowFilenameSearch = false)
+        CancellationToken cancellationToken, bool allowFilenameSearch = false, ILogger? diagnostics = null)
     {
-        var item = _library.GetItemById(itemId) as Video;
+        var libraryItem = _library.GetItemById(itemId);
+        var item = libraryItem as Video;
+        diagnostics?.LogInformation(
+            "[CinemaDiag] Item {ItemId}: Type={ItemType}, Name={Name}, Path={Path}, OwnerId={OwnerId}, ExtraType={ExtraType}, Tmdb={Tmdb}, TmdbMediaType={TmdbMediaType}",
+            itemId, libraryItem?.GetType().Name ?? "missing", item?.Name, item?.Path, item?.OwnerId,
+            item?.ExtraType, ProviderValue(item?.ProviderIds, "Tmdb"), ProviderValue(item?.ProviderIds, "TmdbMediaType"));
         if (item == null || item is Episode) return new(null);
 
         var ownerId = item.OwnerId;
         if (ownerId == Guid.Empty && !string.IsNullOrWhiteSpace(item.Path))
         {
             // Other intro providers may register the same trailer file as a separate Video.
-            var ownerIds = _library.GetItemList(new InternalItemsQuery
+            var matches = _library.GetItemList(new InternalItemsQuery
             {
                 Path = item.Path,
                 HasOwnerId = true,
                 GroupByPresentationUniqueKey = false,
-            })
+            });
+            var ownerIds = matches
             .Where(extra => extra.ExtraType == ExtraType.Trailer)
             .OfType<Video>()
             .Select(extra => extra.OwnerId)
@@ -53,6 +60,11 @@ public sealed partial class CinemaMediaResolver
             .Distinct()
             .Take(2)
             .ToArray();
+            diagnostics?.LogInformation(
+                "[CinemaDiag] Exact-path lookup {ItemId}: Matches={MatchCount}, Items={Items}, UniqueOwnerIds={OwnerIds}",
+                itemId, matches.Count,
+                string.Join("; ", matches.Take(10).Select(m => $"{m.Id} ({m.GetType().Name}, extra={m.ExtraType}, owner={m.OwnerId})")),
+                string.Join(", ", ownerIds));
             if (ownerIds.Length == 1) ownerId = ownerIds[0];
         }
 
@@ -60,15 +72,28 @@ public sealed partial class CinemaMediaResolver
         if (ownerId != Guid.Empty)
         {
             owner = _library.GetItemById(ownerId);
+            diagnostics?.LogInformation(
+                "[CinemaDiag] Owner lookup {ItemId}: OwnerId={OwnerId}, Type={OwnerType}, Title={OwnerTitle}, Tmdb={OwnerTmdb}",
+                itemId, ownerId, owner?.GetType().Name ?? "missing", owner?.Name, ProviderValue(owner?.ProviderIds, "Tmdb"));
             if (owner == null) return new(null);
             var seriesId = OwnerSeriesId(owner);
             if (seriesId != Guid.Empty)
+            {
                 owner = _library.GetItemById(seriesId) as Series;
+                diagnostics?.LogInformation(
+                    "[CinemaDiag] Series lookup {ItemId}: SeriesId={SeriesId}, Title={Title}, Tmdb={Tmdb}",
+                    itemId, seriesId, owner?.Name, ProviderValue(owner?.ProviderIds, "Tmdb"));
+            }
             if (owner is not Movie && owner is not Series) return new(null);
         }
 
-        return await ResolveItemAsync(item, owner, expectedMediaType, _library.ParseName,
+        var resolution = await ResolveItemAsync(item, owner, expectedMediaType, _library.ParseName,
             cancellationToken, allowFilenameSearch).ConfigureAwait(false);
+        diagnostics?.LogInformation(
+            "[CinemaDiag] Resolved {ItemId}: OwnerId={OwnerId}, OwnerType={OwnerType}, OwnerTmdb={OwnerTmdb}, TmdbId={TmdbId}, MediaType={MediaType}",
+            itemId, ownerId, owner?.GetType().Name, ProviderValue(owner?.ProviderIds, "Tmdb"),
+            resolution.TmdbId, resolution.MediaType);
+        return resolution;
     }
 
     // An extra attached to a season or episode advertises its series.

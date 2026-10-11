@@ -21,15 +21,25 @@ public sealed class CinemaController(CinemaMediaResolver resolver, ILogger<Cinem
         timeout.CancelAfter(TimeSpan.FromSeconds(8));
         try
         {
-            return Ok(await resolver.ResolveMediaAsync(itemId, expectedMediaType, timeout.Token,
-                MoonfinPlugin.Instance?.Configuration.CinemaFilenameSearchEnabled == true).ConfigureAwait(false));
+            var allowFilenameSearch = MoonfinPlugin.Instance?.Configuration.CinemaFilenameSearchEnabled == true;
+            logger.LogInformation(
+                "[CinemaDiag] Request {ItemId}: ExpectedMediaType={ExpectedMediaType}, FilenameSearchEnabled={FilenameSearchEnabled}",
+                itemId, expectedMediaType, allowFilenameSearch);
+            var resolution = await resolver.ResolveMediaAsync(itemId, expectedMediaType, timeout.Token,
+                allowFilenameSearch, logger).ConfigureAwait(false);
+            logger.LogInformation(
+                "[CinemaDiag] Response {ItemId}: TmdbId={TmdbId}, MediaType={MediaType}",
+                itemId, resolution.TmdbId, resolution.MediaType);
+            return Ok(resolution);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            logger.LogInformation("[CinemaDiag] Timeout resolving {ItemId}", itemId);
             return Ok(new CinemaMediaResolver.Resolution(null, null));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            logger.LogInformation(ex, "[CinemaDiag] Error resolving {ItemId}", itemId);
             logger.LogDebug(ex, "Cinema media resolution failed for {ItemId}", itemId);
             return Ok(new CinemaMediaResolver.Resolution(null, null));
         }

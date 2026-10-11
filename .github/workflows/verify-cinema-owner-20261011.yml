@@ -1,0 +1,31 @@
+name: Verify Cinema owner identification
+
+on:
+  push:
+    branches:
+      - ci/cinema-owner-visibility-tests-20261011
+
+permissions:
+  contents: read
+
+jobs:
+  jellyfin:
+    name: Jellyfin Cinema Mode regression tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Run Jellyfin Cinema Media Resolver tests
+        run: dotnet test Jellyfin/tests/Moonfin.Server.Tests/Moonfin.Server.Tests.csproj --configuration Release --filter "FullyQualifiedName~CinemaMediaResolver"
+  emby:
+    name: Emby full test suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Run Emby tests
+        run: dotnet test Emby/tests/Emby.Plugins.Moonfin.Tests/Emby.Plugins.Moonfin.Tests.csproj --configuration Release

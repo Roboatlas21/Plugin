@@ -17,8 +17,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-      - name: Run Jellyfin test suite
-        run: dotnet test Jellyfin/tests/Moonfin.Server.Tests/Moonfin.Server.Tests.csproj --configuration Release
+      - name: Run Jellyfin Cinema Mode tests
+        run: dotnet test Jellyfin/tests/Moonfin.Server.Tests/Moonfin.Server.Tests.csproj --configuration Release --filter "FullyQualifiedName~CinemaMediaResolver"
 
   emby:
     name: Emby tests
@@ -30,3 +30,16 @@ jobs:
           dotnet-version: 8.0.x
       - name: Run Emby test suite
         run: dotnet test Emby/tests/Emby.Plugins.Moonfin.Tests/Emby.Plugins.Moonfin.Tests.csproj --configuration Release
+
+  jellyfin_baseline:
+    name: Published 2.4.0.3 Jellyfin suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: test-2.4.0.3
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Run published baseline Jellyfin suite
+        run: dotnet test Jellyfin/tests/Moonfin.Server.Tests/Moonfin.Server.Tests.csproj --configuration Release

@@ -30,11 +30,10 @@ public sealed partial class CinemaMediaResolver
         [property: JsonPropertyName("tmdbId")] int? TmdbId,
         [property: JsonPropertyName("mediaType")] string? MediaType = null);
 
-    public async Task<Resolution> ResolveMediaAsync(Guid itemId, Guid userId, string? expectedMediaType,
+    public async Task<Resolution> ResolveMediaAsync(Guid itemId, string? expectedMediaType,
         CancellationToken cancellationToken, bool allowFilenameSearch = false)
     {
-        // Check access to the played video; owner metadata only identifies the advertised title.
-        var item = _library.GetItemById<Video>(itemId, userId);
+        var item = _library.GetItemById(itemId) as Video;
         if (item == null || item is Episode) return new(null);
 
         var ownerId = item.OwnerId;

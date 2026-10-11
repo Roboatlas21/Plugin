@@ -21,7 +21,7 @@ public sealed class CinemaController(CinemaMediaResolver resolver, ILogger<Cinem
         timeout.CancelAfter(TimeSpan.FromSeconds(8));
         try
         {
-            return Ok(await resolver.ResolveMediaAsync(itemId, userId.Value, expectedMediaType, timeout.Token,
+            return Ok(await resolver.ResolveMediaAsync(itemId, expectedMediaType, timeout.Token,
                 MoonfinPlugin.Instance?.Configuration.CinemaFilenameSearchEnabled == true).ConfigureAwait(false));
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)

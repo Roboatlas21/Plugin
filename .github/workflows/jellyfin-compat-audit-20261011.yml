@@ -1,0 +1,55 @@
+name: Audit Jellyfin 10.10 and 12.2 compatibility
+
+on:
+  push:
+    branches:
+      - ci/jellyfin-compat-audit-20261011
+    paths:
+      - .github/workflows/jellyfin-compat-audit-20261011.yml
+
+permissions:
+  contents: read
+
+jobs:
+  compile-original:
+    name: Compile on Jellyfin 10.10 / .NET 8
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Build original compile target
+        run: dotnet build Jellyfin/backend/Moonfin.Server.csproj -c Release
+      - name: Run focused Cinema Mode tests
+        run: dotnet test Jellyfin/tests/Moonfin.Server.Tests/Moonfin.Server.Tests.csproj -c Release --filter 'FullyQualifiedName~CinemaMediaResolver'
+      - name: Run complete Jellyfin test suite
+        continue-on-error: true
+        run: dotnet test Jellyfin/tests/Moonfin.Server.Tests/Moonfin.Server.Tests.csproj -c Release --no-restore
+  compile-modern:
+    name: API source compile on Jellyfin 12.2 / .NET 10
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Adjust API references in CI working tree only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('Jellyfin/backend/Moonfin.Server.csproj')
+          text = path.read_text()
+          assert '<TargetFramework>net8.0</TargetFramework>' in text
+          assert text.count('Version="10.10.0"') == 2
+          text = text.replace('<TargetFramework>net8.0</TargetFramework>', '<TargetFramework>net10.0</TargetFramework>')
+          text = text.replace('Version="10.10.0"', 'Version="12.2.0"')
+          path.write_text(text)
+          print('CI-only build references Jellyfin.Controller 12.2.0, Jellyfin.Model 12.2.0, net10.0')
+          PY
+      - name: Compile all Moonbase Jellyfin production source against 12.2
+        run: dotnet build Jellyfin/backend/Moonfin.Server.csproj -c Release

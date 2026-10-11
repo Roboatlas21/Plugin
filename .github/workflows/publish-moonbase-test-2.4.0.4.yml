@@ -1,11 +1,11 @@
-name: Publish Moonbase 2.4.0.4 test release
+name: Publish Moonbase 2.4.0.5 test release
 
 on:
   push:
     branches:
-      - ci/moonbase-test-release-2.4.0.4-20261011
+      - ci/moonbase-test-release-2.4.0.5-20261011
     paths:
-      - '.github/workflows/publish-moonbase-test-2.4.0.4.yml'
+      - '.github/workflows/publish-moonbase-test-2.4.0.5.yml'
 
 permissions:
   contents: write
@@ -16,21 +16,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      SOURCE_SHA: 681a7e291b8189f1f05d6805ed89d3141f0c40df
-      VERSION: 2.4.0.4
-      RELEASE_TAG: test-2.4.0.4
+      SOURCE_SHA: 043bb2791b8688dda53f096ece679dceeaf20603
+      VERSION: 2.4.0.5
+      RELEASE_TAG: test-2.4.0.5
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: 043bb2791b8688dda53f096ece679dceeaf20603
           fetch-depth: 0
 
       - name: Verify exact source checkout and that release does not exist
         shell: bash
         run: |
           set -euo pipefail
-          git merge-base --is-ancestor "$SOURCE_SHA" HEAD
-          test "$(git diff --name-only "$SOURCE_SHA" HEAD)" = ".github/workflows/publish-moonbase-test-2.4.0.4.yml"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           test ! -e "Jellyfin/Moonfin.Server-$VERSION.zip"
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             echo "::error::Release $RELEASE_TAG already exists; refusing to overwrite"
@@ -58,13 +58,13 @@ jobs:
           set -euo pipefail
           dotnet test Emby/tests/Emby.Plugins.Moonfin.Tests/Emby.Plugins.Moonfin.Tests.csproj -c Release
 
-      - name: Build and package Jellyfin 2.4.0.4
+      - name: Build and package Jellyfin 2.4.0.5
         shell: bash
         run: |
           set -euo pipefail
           SKIP_MANIFEST_UPDATE=1 bash Jellyfin/build.sh "$VERSION" 10.10.0
 
-      - name: Build and package Emby 2.4.0.4
+      - name: Build and package Emby 2.4.0.5
         shell: bash
         run: |
           set -euo pipefail
@@ -107,16 +107,18 @@ jobs:
 
           ### Cinema Mode / Seerr
           - Identify separately registered private videos through attached trailers sharing the exact same file path, recovering the owning movie or series on Jellyfin and Emby.
+          - Remove Jellyfin's user-scoped lookups of the played private video, matching attached trailer, and owning movie or series. Trailer identification uses the library metadata directly while the API remains authenticated and Seerr enforces request permissions.
           - Add an optional server-wide filename-title lookup fallback, **Off by default**, on both platforms. Metadata, attached owner details, and IDs embedded in trailer filenames continue to work without enabling it.
           - Ignore generic promotional-only filenames such as \`Trailer.mp4\` and \`Official Trailer.mp4\`.
           - Clarify in the Cinema Mode settings that normal Seerr Request and availability identification does not require enabling the filename fallback.
 
           ### Verification
-          - Jellyfin Cinema Media Resolver tests: **54 passed**.
+          - Jellyfin Cinema Media Resolver tests: **55 passed**.
           - Emby full test suite: **306 passed**.
           - Both plugin builds succeeded and both ZIP archives passed integrity checks.
           - The complete Jellyfin test suite was **not run as part of this test release**; a prior run on this feature branch reported one GameThumbService test failure outside the Cinema-specific changes.
           - The new Emby exact-path recovery still requires real-server playback verification.
+          - Exact-path trailer recovery needs a real Jellyfin playback retest using the private Trailer.mp4 registration.
 
           ### Checksums
           - Jellyfin ZIP MD5: \`$JF_MD5\`

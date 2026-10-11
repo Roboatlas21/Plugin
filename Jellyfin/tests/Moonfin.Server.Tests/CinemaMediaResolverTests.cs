@@ -130,6 +130,7 @@ public sealed class CinemaMediaResolverTests
 
         Assert.Equal(new CinemaMediaResolver.Resolution(42, "movie"),
             await resolver.ResolveMediaAsync(intro.Id, "tv", default));
+        Assert.Equal(0, library.GetItemListCallCount);
     }
 
     [Fact]

@@ -1,0 +1,24 @@
+name: Verify temporary Cinema diagnostics
+
+on:
+  push:
+    branches:
+      - ci/cinema-diagnostics-verification-20261011
+    paths:
+      - .github/workflows/verify-cinema-diagnostics-20261011.yml
+
+permissions:
+  contents: read
+
+jobs:
+  jellyfin:
+    name: Jellyfin Cinema Mode tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Run Jellyfin Cinema Mode tests
+        run: dotnet test Jellyfin/tests/Moonfin.Server.Tests/Moonfin.Server.Tests.csproj -c Release --filter "FullyQualifiedName~CinemaMediaResolver"

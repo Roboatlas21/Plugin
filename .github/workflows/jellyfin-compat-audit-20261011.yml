@@ -51,5 +51,34 @@ jobs:
           path.write_text(text)
           print('CI-only build references Jellyfin.Controller 12.2.0, Jellyfin.Model 12.2.0, net10.0')
           PY
-      - name: Compile all Moonbase Jellyfin production source against 12.2
+      - name: Apply existing trigger compatibility helper in CI checkout only
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('Jellyfin/backend/Services/CustomRowsSyncTask.cs')
+          source = path.read_text()
+          before = '''    public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
+    {
+        yield return new TaskTriggerInfo
+        {
+            Type = TaskTriggerInfo.TriggerStartup
+        };
+
+        yield return new TaskTriggerInfo
+        {
+            Type = TaskTriggerInfo.TriggerDaily,
+            TimeOfDayTicks = TimeSpan.FromHours(4).Ticks
+        };
+    }'''
+          after = '''    public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
+    {
+        yield return Moonfin.Server.Helpers.TaskTriggers.Startup();
+        yield return Moonfin.Server.Helpers.TaskTriggers.Daily(TimeSpan.FromHours(4));
+    }'''
+          assert source.count(before) == 1
+          path.write_text(source.replace(before, after))
+          print('Applied existing compatible TaskTriggers helper in runner checkout only')
+          PY
+      - name: Compile all Moonbase Jellyfin production source against 12.2 with trigger shim
         run: dotnet build Jellyfin/backend/Moonfin.Server.csproj -c Release

@@ -1,0 +1,61 @@
+name: Moonbase 2.4.0.3 test release
+
+on:
+  push:
+    branches:
+      - build/moonbase-test-2.4.0.3
+    paths:
+      - .github/workflows/moonbase-test-2.4.0.3.yml
+
+permissions:
+  contents: write
+
+jobs:
+  test-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      SOURCE_SHA: c2b522a807de5ac35b1fca32741f94c68dbb7c07
+      VERSION: 2.4.0.3
+    steps:
+      - name: Check out final Moonbase source
+        uses: actions/checkout@v4
+        with:
+          ref: c2b522a807de5ac35b1fca32741f94c68dbb7c07
+      - name: Verify source revision
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build Jellyfin test package
+        env:
+          SKIP_MANIFEST_UPDATE: '1'
+        run: bash Jellyfin/build.sh "$VERSION" 10.10.0
+      - name: Build Emby test package
+        run: cd Emby && bash build.sh "$VERSION"
+      - name: Run Jellyfin tests
+        run: dotnet test Jellyfin/tests/Moonfin.Server.Tests/Moonfin.Server.Tests.csproj -c Release
+      - name: Run Jellyfin salvage checks
+        run: dotnet run --project Jellyfin/tools/salvage-tests -c Release
+      - name: Run Emby tests
+        run: dotnet test Emby/tests/Emby.Plugins.Moonfin.Tests/Emby.Plugins.Moonfin.Tests.csproj -c Release
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: moonbase-test-2.4.0.3
+          path: |
+            Jellyfin/Moonfin.Server-2.4.0.3.zip
+            Emby/Moonfin.Emby-2.4.0.3.zip
+      - name: Publish test release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          JELLYFIN_MD5=$(md5sum "Jellyfin/Moonfin.Server-${VERSION}.zip" | cut -d' ' -f1 | tr '[:lower:]' '[:upper:]')
+          NOTES=$(printf 'Test build from feat/cinema-mode-skip-trailer-settings-final (%s).\nJellyfin MD5: %s\n' "$SOURCE_SHA" "$JELLYFIN_MD5")
+          gh release create "test-${VERSION}" \
+            "Jellyfin/Moonfin.Server-${VERSION}.zip" \
+            "Emby/Moonfin.Emby-${VERSION}.zip" \
+            --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" \
+            --title "Moonbase ${VERSION} (test build)" \
+            --notes "$NOTES" --prerelease

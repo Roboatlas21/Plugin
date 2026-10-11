@@ -1,0 +1,145 @@
+name: Publish Moonbase 2.4.0.7 test release
+
+on:
+  push:
+    branches:
+      - ci/moonbase-test-release-2.4.0.7-20261011
+    paths:
+      - '.github/workflows/publish-moonbase-test-2.4.0.7.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Build, test and publish both Moonbase plugins
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SOURCE_SHA: 285ff722e720f6db7f7bfe39b62204df81019944
+      VERSION: 2.4.0.7
+      RELEASE_TAG: test-2.4.0.7
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 285ff722e720f6db7f7bfe39b62204df81019944
+          fetch-depth: 0
+
+      - name: Verify exact source checkout and that release does not exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test ! -e "Jellyfin/Moonfin.Server-$VERSION.zip"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::error::Release $RELEASE_TAG already exists; refusing to overwrite"
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null; then
+            echo "::error::Tag $RELEASE_TAG already exists; refusing to overwrite"
+            exit 1
+          fi
+          echo "Building exact production source $SOURCE_SHA from isolated CI branch"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Run Jellyfin Cinema Mode tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet test Jellyfin/tests/Moonfin.Server.Tests/Moonfin.Server.Tests.csproj -c Release --filter "FullyQualifiedName~CinemaMediaResolver"
+
+      - name: Run full Emby tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet test Emby/tests/Emby.Plugins.Moonfin.Tests/Emby.Plugins.Moonfin.Tests.csproj -c Release
+
+      - name: Build and package Jellyfin 2.4.0.7
+        shell: bash
+        run: |
+          set -euo pipefail
+          SKIP_MANIFEST_UPDATE=1 bash Jellyfin/build.sh "$VERSION" 10.10.0
+
+      - name: Build and package Emby 2.4.0.7
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd Emby && bash build.sh "$VERSION")
+
+      - name: Validate packages and compute checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          JF="Jellyfin/Moonfin.Server-$VERSION.zip"
+          EMBY="Emby/Moonfin.Emby-$VERSION.zip"
+          test -s "$JF"
+          test -s "$EMBY"
+          unzip -t "$JF" >/dev/null
+          unzip -t "$EMBY" >/dev/null
+          unzip -p "$JF" meta.json | jq -e --arg v "$VERSION" '.version == $v and .targetAbi == "10.10.0.0" and .guid == "8c5d0e91-4f2a-4b6d-9e3f-1a7c8d9e0f2b"' >/dev/null
+          unzip -Z -1 "$JF" | grep -Eq '(^|/)Moonfin.Server.dll$'
+          unzip -Z -1 "$JF" | grep -Eq '(^|/)SharpCompress.dll$'
+          unzip -Z -1 "$EMBY" | grep -Eq '(^|/)Emby.Plugins.Moonfin.dll$'
+          unzip -Z -1 "$EMBY" | grep -Eq '(^|/)SharpCompress.dll$'
+          echo "Jellyfin:"
+          sha256sum "$JF"
+          md5sum "$JF"
+          echo "Emby:"
+          sha256sum "$EMBY"
+          md5sum "$EMBY"
+
+      - name: Publish test release to exact feature commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          JF="Jellyfin/Moonfin.Server-$VERSION.zip"
+          EMBY="Emby/Moonfin.Emby-$VERSION.zip"
+          JF_MD5=$(md5sum "$JF" | awk '{print toupper($1)}')
+          JF_SHA256=$(sha256sum "$JF" | awk '{print $1}')
+          EMBY_SHA256=$(sha256sum "$EMBY" | awk '{print $1}')
+
+          cat > "$RUNNER_TEMP/moonbase-release-notes.md" <<EOF
+          Test release from \`feat/cinema-mode-skip-trailer-settings-final\` at commit \`$SOURCE_SHA\` (not merged into master).
+
+          ### Cinema Mode / Seerr
+          - Fix Jellyfin 10.11+ runtime MissingMethodException when looking up attached trailers by the private video's exact file path.
+          - Use GetItemsResult(query).Items instead of GetItemList(query), whose return type changed after Jellyfin 10.10.
+          - Keep the exact-path and unambiguous-owner checks, with no new fallback or settings.
+          - Keep temporary [CinemaDiag] logs in their own prior commit for the upcoming server-side retest.
+          - Add a regression test verifying the legacy GetItemList call is not used.
+          ### Verification
+          - Jellyfin Cinema Media Resolver tests: 55 passed.
+          - Emby full test suite: 306 passed.
+          - Both plugin builds and ZIP validation succeed before publishing.
+          - The complete Jellyfin test suite is not run in this test workflow.
+          - The original MissingMethodException is confirmed by the server logs; the new fix still requires a real-server retest.
+          ### Checksums
+          - Jellyfin ZIP MD5: \`$JF_MD5\`
+          - Jellyfin ZIP SHA-256: \`$JF_SHA256\`
+          - Emby ZIP SHA-256: \`$EMBY_SHA256\`
+
+          These ZIPs are test artifacts and do not update the main branch or the Jellyfin plugin catalog.
+          EOF
+
+          gh release create "$RELEASE_TAG" "$JF" "$EMBY" \
+            --target "$SOURCE_SHA" \
+            --title "Moonbase $VERSION (test)" \
+            --notes-file "$RUNNER_TEMP/moonbase-release-notes.md" \
+            --prerelease --latest=false
+
+      - name: Verify published release and both assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" --json tagName,isPrerelease,assets,url,targetCommitish | tee "$RUNNER_TEMP/published-release.json"
+          jq -e --arg tag "$RELEASE_TAG" --arg sha "$SOURCE_SHA" --arg v "$VERSION" '
+            .tagName == $tag and .isPrerelease == true
+            and .targetCommitish == $sha
+            and ([.assets[].name] | index("Moonfin.Server-" + $v + ".zip") != null)
+            and ([.assets[].name] | index("Moonfin.Emby-" + $v + ".zip") != null)
+          ' "$RUNNER_TEMP/published-release.json" > /dev/null
+          echo "Published: https://github.com/Roboatlas21/Plugin/releases/tag/$RELEASE_TAG"

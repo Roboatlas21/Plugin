@@ -75,6 +75,7 @@ jobs:
           PY
       - name: Compile all Moonbase Jellyfin production source against 12.2 with trigger shim
         run: dotnet build Jellyfin/backend/Moonfin.Server.csproj -c Release
+      # ABI types and fields check enabled
       - name: Compare original compiled method references against Jellyfin 12.2 assemblies
         shell: bash
         run: dotnet run --project .github/compatibility-audit/AbiCheck.csproj -c Release -- "$RUNNER_TEMP/Moonfin.Server.10.10.dll"

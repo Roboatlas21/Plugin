@@ -78,7 +78,7 @@ public sealed class CinemaMediaResolverTests
         intro.ProviderIds["Tmdb"] = "99";
         Assert.Null((await resolver.ResolveMediaAsync(intro.Id, "movie", default)).TmdbId);
         intro.ProviderIds.Clear();
-        library.ItemByIdHandler = _ => null;
+        library.ItemByIdHandler = id => id == intro.Id ? intro : null;
         Assert.Null((await resolver.ResolveMediaAsync(intro.Id, "movie", default)).TmdbId);
     }
 

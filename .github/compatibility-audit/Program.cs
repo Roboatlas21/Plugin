@@ -59,6 +59,30 @@ foreach (var mr in apiRefs)
     var candidates = td.Methods.Where(md => md.Name == mr.Name).Select(md => md.FullName).Take(4).ToArray();
     missing.Add($"MISSING_METHOD [{assembly}] {mr.FullName}\n  12.2 candidates: {string.Join(" | ", candidates)}");
 }
+var fieldRefs = plugin.MainModule.GetMemberReferences().OfType<FieldReference>()
+    .Where(r => TargetAssembly(r.DeclaringType) is { } name && definitions.ContainsKey(name))
+    .DistinctBy(f => f.FullName + "@" + TargetAssembly(f.DeclaringType)).ToArray();
+var missingFields = new List<string>();
+foreach (var f in fieldRefs)
+{
+    var owner = f.DeclaringType.GetElementType().FullName;
+    var assembly = TargetAssembly(f.DeclaringType)!;
+    if (!definitions[assembly].TryGetValue(owner, out var td))
+    {
+        missingFields.Add($"MISSING_FIELD_TYPE [{assembly}] {owner}::{f.Name}");
+        continue;
+    }
+    if (!td.Fields.Any(df => df.Name == f.Name && df.FieldType.FullName == f.FieldType.FullName))
+        missingFields.Add($"MISSING_FIELD [{assembly}] {f.FullName}");
+}
+var typeRefs = plugin.MainModule.GetTypeReferences()
+    .Where(t => TargetAssembly(t) is { } name && definitions.ContainsKey(name))
+    .DistinctBy(t => t.FullName + "@" + TargetAssembly(t)).ToArray();
+var missingTypes = typeRefs.Where(t => !definitions[TargetAssembly(t)!].ContainsKey(t.FullName))
+    .Select(t => $"MISSING_TYPE [{TargetAssembly(t)}] {t.FullName}").ToArray();
 foreach (var s in missing) Console.WriteLine(s);
-Console.WriteLine($"ABI_CHECK_DONE: {apiRefs.Length} method references scanned, {missing.Count} missing or changed");
+foreach (var s in missingFields) Console.WriteLine(s);
+foreach (var s in missingTypes) Console.WriteLine(s);
+Console.WriteLine($"ABI_CHECK_DONE: {apiRefs.Length} methods ({missing.Count} mismatched), {fieldRefs.Length} fields ({missingFields.Count} mismatched), {typeRefs.Length} types ({missingTypes.Length} missing)");
+Console.WriteLine("HOST_ASSEMBLY_REFERENCES: " + string.Join(", ", plugin.MainModule.AssemblyReferences.Where(a => a.Name.StartsWith("MediaBrowser") || a.Name.StartsWith("Jellyfin") || a.Name.StartsWith("Emby")).Select(a => a.FullName)));
 return 0;

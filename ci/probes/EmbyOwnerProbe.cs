@@ -22,7 +22,7 @@ internal static class EmbyOwnershipProbe
         Console.WriteLine("MediaBrowser.Controller assembly: " + typeof(BaseItem).Assembly.GetName().FullName);
         Console.WriteLine("BaseItem: " + typeof(BaseItem).FullName);
 
-        var ownerProp = PrintProperty("OwnerId");
+        var ownerProp = PrintProperty("OwnerId", typeof(Video));
         var parentProp = PrintProperty("ParentId");
         PrintProperty("ExtraType");
 
@@ -31,12 +31,12 @@ internal static class EmbyOwnershipProbe
         PrintMethod("GetOwner");
 
         Console.WriteLine("IL calls from BaseItem.GetParents (or its iterator MoveNext):");
-        PrintCalls(typeof(BaseItem).GetMethod("GetParents", Flags));
+        PrintCalls(FindMethod("GetParents"));
 
         Console.WriteLine("IL calls from BaseItem.GetParent:");
-        PrintCalls(typeof(BaseItem).GetMethod("GetParent", Flags));
+        PrintCalls(FindMethod("GetParent"));
         Console.WriteLine("IL calls from BaseItem.GetOwner:");
-        PrintCalls(typeof(BaseItem).GetMethod("GetOwner", Flags));
+        PrintCalls(FindMethod("GetOwner"));
 
         Console.WriteLine("ILibraryManager.GetItemById overloads:");
         foreach (var m in typeof(ILibraryManager).GetMethods().Where(x => x.Name == "GetItemById"))
@@ -70,16 +70,20 @@ internal static class EmbyOwnershipProbe
         catch (Exception ex) { Console.WriteLine("Instance probe exception: " + ex); }
     }
 
-    private static PropertyInfo? PrintProperty(string name)
+    private static PropertyInfo? PrintProperty(string name, Type? declaringType = null)
     {
-        var p = typeof(BaseItem).GetProperty(name, Flags);
+        var p = (declaringType ?? typeof(BaseItem)).GetProperty(name, Flags);
         Console.WriteLine(name + " property: " + (p == null ? "(not found)" : p.PropertyType.FullName + " / writable=" + p.CanWrite));
         return p;
     }
 
+    private static MethodInfo? FindMethod(string name) => typeof(BaseItem).GetMethods(Flags)
+        .Where(method => method.Name == name && method.GetParameters().Length == 0)
+        .OrderBy(method => method.IsGenericMethod ? 1 : 0).FirstOrDefault();
+
     private static void PrintMethod(string name)
     {
-        var m = typeof(BaseItem).GetMethod(name, Flags);
+        var m = FindMethod(name);
         Console.WriteLine(name + " method: " + (m?.ToString() ?? "(not found)"));
     }
 

@@ -14,7 +14,7 @@ using MediaBrowser.Model.Providers;
 
 namespace Moonfin.Server.Services;
 
-/// <summary>Looks up trailers and their owners using Jellyfin's access checks.</summary>
+/// <summary>Finds the movie or series advertised by a trailer.</summary>
 public sealed partial class CinemaMediaResolver
 {
     private readonly ILibraryManager _library;
@@ -33,7 +33,7 @@ public sealed partial class CinemaMediaResolver
     public async Task<Resolution> ResolveMediaAsync(Guid itemId, Guid userId, string? expectedMediaType,
         CancellationToken cancellationToken, bool allowFilenameSearch = false)
     {
-        // Use the user's access permissions for both the trailer and its owner.
+        // Check access to the played video; owner metadata only identifies the advertised title.
         var item = _library.GetItemById<Video>(itemId, userId);
         if (item == null || item is Episode) return new(null);
 
@@ -48,7 +48,6 @@ public sealed partial class CinemaMediaResolver
                 GroupByPresentationUniqueKey = false,
             })
             .Where(extra => extra.ExtraType == ExtraType.Trailer)
-            .Select(extra => _library.GetItemById<Video>(extra.Id, userId))
             .OfType<Video>()
             .Select(extra => extra.OwnerId)
             .Where(id => id != Guid.Empty)
@@ -61,11 +60,11 @@ public sealed partial class CinemaMediaResolver
         BaseItem? owner = null;
         if (ownerId != Guid.Empty)
         {
-            owner = _library.GetItemById<BaseItem>(ownerId, userId);
+            owner = _library.GetItemById(ownerId);
             if (owner == null) return new(null);
             var seriesId = OwnerSeriesId(owner);
             if (seriesId != Guid.Empty)
-                owner = _library.GetItemById<Series>(seriesId, userId);
+                owner = _library.GetItemById(seriesId) as Series;
             if (owner is not Movie && owner is not Series) return new(null);
         }
 

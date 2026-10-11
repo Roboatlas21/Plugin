@@ -36,6 +36,7 @@ internal sealed class FakeLibraryManager : ILibraryManager
     }
 
     internal Func<MediaBrowser.Controller.Entities.InternalItemsQuery, List<MediaBrowser.Controller.Entities.BaseItem>>? ItemsResultHandler { get; set; }
+    internal int GetItemListCallCount { get; private set; }
 
     internal Func<MediaBrowser.Controller.Entities.BaseItem, List<MediaBrowser.Controller.Entities.PersonInfo>>? PeopleHandler { get; set; }
 
@@ -388,6 +389,7 @@ internal sealed class FakeLibraryManager : ILibraryManager
 
     System.Collections.Generic.List<MediaBrowser.Controller.Entities.BaseItem> ILibraryManager.GetItemList(MediaBrowser.Controller.Entities.InternalItemsQuery query)
     {
+        GetItemListCallCount++;
         return ItemsResultHandler?.Invoke(query) ?? [];
     }
 

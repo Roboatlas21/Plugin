@@ -9,6 +9,15 @@
     "imageUrl": "https://raw.githubusercontent.com/Roboatlas21/Plugin/43e94211c7a56b6167758fedc81906fea400fa76/Jellyfin/backend/assets/logo.png",
     "versions": [
       {
+        "version": "2.4.0.6",
+        "targetAbi": "10.10.0.0",
+        "sourceUrl": "https://github.com/Roboatlas21/Plugin/releases/download/test-2.4.0.6/Moonfin.Server-2.4.0.6.zip",
+        "checksum": "44FC00B00A29CA91C20C5C7EB06E8818",
+        "changelog": "Diagnostic test build from feat/cinema-mode-skip-trailer-settings-final (75576f9f3007b91a003b1ec7d5fb0ab1422fd62b).\n\n- Add temporary [CinemaDiag] information-level logs to trace the Cinema Mode identity lookup for private intro videos.\n- Log incoming requests, played video ID/path, attached trailer exact-path matches and OwnerIds, owner/series TMDB metadata, and final response.\n- No changes to Cinema Mode identification, access, or settings. The diagnostic code is in one removable commit.\n- After installing this version, replay the test Trailer.mp4 before an episode, then check Jellyfin Dashboard > Logs for [CinemaDiag] entries.",
+        "timestamp": "2026-10-11T16:17:50Z",
+        "dependencies": []
+      },
+      {
         "version": "2.4.0.5",
         "targetAbi": "10.10.0.0",
         "sourceUrl": "https://github.com/Roboatlas21/Plugin/releases/download/test-2.4.0.5/Moonfin.Server-2.4.0.5.zip",

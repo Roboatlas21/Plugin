@@ -57,7 +57,8 @@ namespace Emby.Plugins.Moonfin.Api
                     request.ItemId,
                     user,
                     expected,
-                    timeout.Token).ConfigureAwait(false);
+                    timeout.Token,
+                    Plugin.Instance?.Configuration.CinemaFilenameSearchEnabled == true).ConfigureAwait(false);
 
                 return Json(new
                 {

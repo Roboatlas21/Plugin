@@ -153,7 +153,7 @@ public sealed class CinemaMediaResolverTests
                 ? [Result(42, "Silo")] : [],
             _ => { lookedUp = true; return []; });
         Assert.Equal(new CinemaMediaResolver.Resolution(42, "tv"),
-            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default));
+            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default, allowFilenameSearch: true));
     }
 
     [Theory]
@@ -172,7 +172,40 @@ public sealed class CinemaMediaResolverTests
     {
         var resolver = Resolver(new Video { Path = filename },
             (_, _, _) => throw new Exception("No title search expected"));
-        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default)).TmdbId);
+        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default, allowFilenameSearch: true)).TmdbId);
+    }
+
+    [Theory]
+    [InlineData("Dune Trailer.mp4", "movie")]
+    [InlineData("Silo Season 2 Trailer.mp4", "tv")]
+    public async Task FilenameTitleSearchIsDisabledByDefault(string path, string context)
+    {
+        var resolver = Resolver(new Video { Path = path },
+            (_, _, _) => throw new Exception("No title search expected"));
+        Assert.Null((await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), context, default)).TmdbId);
+    }
+
+    [Fact]
+    public async Task OwnerTitleSearchStillWorksWithFilenameSearchDisabled()
+    {
+        var user = Guid.NewGuid();
+        var owner = new Movie { Id = Guid.NewGuid(), Name = "Dune", ProductionYear = 2021 };
+        var intro = new Trailer { Id = Guid.NewGuid(), OwnerId = owner.Id, Path = "Trailer.mp4" };
+        var library = new FakeLibraryManager
+        {
+            ItemForUserHandler = (id, _) => id == intro.Id ? intro : id == owner.Id ? owner : null,
+        };
+        var provider = DispatchProxy.Create<IProviderManager, SearchProvider>();
+        ((SearchProvider)(object)provider).Search = (kind, name, year) =>
+        {
+            Assert.Equal("movie", kind);
+            Assert.Equal("Dune", name);
+            Assert.Equal(2021, year);
+            return [Result(438631, "Dune", 2021)];
+        };
+        var resolver = new CinemaMediaResolver(library, provider);
+        Assert.Equal(new CinemaMediaResolver.Resolution(438631, "movie"),
+            await resolver.ResolveMediaAsync(intro.Id, user, "tv", default));
     }
 
     [Fact]
@@ -185,9 +218,9 @@ public sealed class CinemaMediaResolverTests
                 Assert.Equal("Dune", title);
                 return matches;
             });
-        Assert.Equal(43, (await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
+        Assert.Equal(43, (await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default, allowFilenameSearch: true)).TmdbId);
         matches = [Result(42, "Dune", 1984), Result(43, "Duna", 2021)];
-        Assert.Equal(42, (await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default)).TmdbId);
+        Assert.Equal(42, (await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "movie", default, allowFilenameSearch: true)).TmdbId);
     }
 
     [Theory]
@@ -209,7 +242,7 @@ public sealed class CinemaMediaResolverTests
             return [newer, older];
         });
         Assert.Equal(new CinemaMediaResolver.Resolution(expectedId, "tv"),
-            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default));
+            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), "tv", default, allowFilenameSearch: true));
     }
 
     [Theory]
@@ -243,7 +276,7 @@ public sealed class CinemaMediaResolverTests
                 ? [Result(42, title, year)] : [Result(99, "Unrelated")];
         });
         Assert.Equal(new CinemaMediaResolver.Resolution(42, type),
-            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), type, default));
+            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), type, default, allowFilenameSearch: true));
         Assert.Equal(new[] { title }, searches);
     }
 

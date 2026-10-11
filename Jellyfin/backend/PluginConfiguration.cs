@@ -19,6 +19,9 @@ public class PluginConfiguration : BasePluginConfiguration
     /// </summary>
     public bool SeerrEnabled { get; set; } = false;
 
+    /// <summary>Allow last-resort TMDB searches using an unlinked trailer's title or filename.</summary>
+    public bool CinemaFilenameSearchEnabled { get; set; } = false;
+
     /// <summary>
     /// Seerr server URL for server-to-server communication from Jellyfin.
     /// Example: http://seerr:5055 or http://192.168.50.20:5055

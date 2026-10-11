@@ -31,7 +31,7 @@ public sealed partial class CinemaMediaResolver
         [property: JsonPropertyName("mediaType")] string? MediaType = null);
 
     public async Task<Resolution> ResolveMediaAsync(Guid itemId, Guid userId, string? expectedMediaType,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool allowFilenameSearch = false)
     {
         // Use the user's access permissions for both the trailer and its owner.
         var item = _library.GetItemById<Video>(itemId, userId);
@@ -69,8 +69,8 @@ public sealed partial class CinemaMediaResolver
             if (owner is not Movie && owner is not Series) return new(null);
         }
 
-        return await ResolveItemAsync(item, owner, expectedMediaType, _library.ParseName, cancellationToken)
-            .ConfigureAwait(false);
+        return await ResolveItemAsync(item, owner, expectedMediaType, _library.ParseName,
+            cancellationToken, allowFilenameSearch).ConfigureAwait(false);
     }
 
     // An extra attached to a season or episode advertises its series.

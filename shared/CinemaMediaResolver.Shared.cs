@@ -25,7 +25,7 @@ public sealed partial class CinemaMediaResolver
 
     private async Task<Resolution> ResolveItemAsync(Video item, BaseItem? owner,
         string? expectedMediaType, Func<string, ItemLookupInfo> parseStandard,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool allowFilenameSearch)
     {
         // Check the trailer and its owner before falling back to playback context.
         var explicitType = ProviderValue(item.ProviderIds, "TmdbMediaType");
@@ -107,6 +107,9 @@ public sealed partial class CinemaMediaResolver
                 return new(mappedId.Value, "tv");
             }
         }
+        // Filename-only title searches are optional; owner titles remain trusted.
+        if (owner == null && !allowFilenameSearch) return new(null);
+
         // For attached trailers, search for the owning movie or series.
         if (owner != null && (string.IsNullOrWhiteSpace(owner.Name) ||
             owner.Name.Length > 200 || NormalizeTitle(owner.Name).Length == 0)) return new(null);

@@ -27,7 +27,7 @@ namespace Emby.Plugins.Moonfin.Services
         public sealed record Resolution(int? TmdbId, string? MediaType = null);
 
         public async Task<Resolution> ResolveMediaAsync(string itemId, User user,
-            string? expectedMediaType, CancellationToken cancellationToken)
+            string? expectedMediaType, CancellationToken cancellationToken, bool allowFilenameSearch = false)
         {
             var item = _library.GetItemById(itemId) as Video;
             if (item == null || item is Episode || !item.IsVisibleStandalone(user)) return new(null);
@@ -44,7 +44,8 @@ namespace Emby.Plugins.Moonfin.Services
             if (owner != null && !owner.IsVisibleStandalone(user)) return new(null);
 
             return await ResolveItemAsync(item, owner, expectedMediaType,
-                name => _library.ParseName(name.AsSpan()), cancellationToken).ConfigureAwait(false);
+                name => _library.ParseName(name.AsSpan()), cancellationToken, allowFilenameSearch)
+                .ConfigureAwait(false);
         }
 
         private static Task<IEnumerable<RemoteSearchResult>> AwaitSearch(

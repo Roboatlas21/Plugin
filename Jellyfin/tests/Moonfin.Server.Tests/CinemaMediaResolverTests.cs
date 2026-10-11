@@ -39,9 +39,23 @@ public sealed class CinemaMediaResolverTests
 
     [Theory]
     [InlineData("movie")]
-    [InlineData("season")]
-    [InlineData("episode")]
-    public async Task OwnedTrailersUseAccessibleMovieOrSeries(string ownerKind)
+    [InlineData("tv")]
+    public async Task UntypedTmdbIdsUsePlaybackContextWithoutSearching(string context)
+    {
+        var intro = new Video { Name = "Unrelated Trailer", ProviderIds = new() { ["Tmdb"] = "42" } };
+        var resolver = Resolver(intro, (_, _, _) => throw new Exception("No search expected"));
+        Assert.Equal(new CinemaMediaResolver.Resolution(42, context),
+            await resolver.ResolveMediaAsync(Guid.NewGuid(), Guid.NewGuid(), context, default));
+    }
+
+    [Theory]
+    [InlineData("movie", false)]
+    [InlineData("movie", true)]
+    [InlineData("season", false)]
+    [InlineData("season", true)]
+    [InlineData("episode", false)]
+    [InlineData("episode", true)]
+    public async Task OwnedTrailersUseAccessibleMovieOrSeries(string ownerKind, bool hasTrailerId)
     {
         var user = Guid.NewGuid();
         var series = new Series { Id = Guid.NewGuid(), ProviderIds = new() { ["Tmdb"] = "42" } };
@@ -52,6 +66,7 @@ public sealed class CinemaMediaResolverTests
             _ => new Episode { Id = Guid.NewGuid(), SeriesId = series.Id },
         };
         var intro = new Video { Id = Guid.NewGuid(), OwnerId = owner.Id, Path = "Wrong Title Trailer.mp4" };
+        if (hasTrailerId) intro.ProviderIds["Tmdb"] = "42";
         var library = new FakeLibraryManager
         {
             ItemForUserHandler = (id, uid) =>
@@ -62,7 +77,7 @@ public sealed class CinemaMediaResolverTests
         };
         var resolver = new CinemaMediaResolver(library, null!);
         Assert.Equal(new CinemaMediaResolver.Resolution(42, ownerKind == "movie" ? "movie" : "tv"),
-            await resolver.ResolveMediaAsync(intro.Id, user, "movie", default));
+            await resolver.ResolveMediaAsync(intro.Id, user, ownerKind == "movie" ? "tv" : "movie", default));
 
         intro.ProviderIds["Tmdb"] = "99";
         Assert.Null((await resolver.ResolveMediaAsync(intro.Id, user, "movie", default)).TmdbId);

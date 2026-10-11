@@ -19,16 +19,16 @@ public sealed class CinemaMediaResolverCompatibilityTests
     }
 
     [Fact]
-    public async Task InaccessibleItemsAndEpisodesCannotResolve()
+    public async Task MissingItemsAndEpisodesCannotResolve()
     {
         var video = new Video { Id = Guid.NewGuid(), ProviderIds = new() { ["Tmdb"] = "42", ["TmdbMediaType"] = "movie" } };
-        var library = new FakeLibraryManager { ItemForUserHandler = (_, _) => video };
+        var library = new FakeLibraryManager { ItemByIdHandler = _ => video };
         var resolver = new CinemaMediaResolver(library, null!);
-        Assert.Equal(42, (await resolver.ResolveMediaAsync(video.Id, Guid.NewGuid(), "movie", default)).TmdbId);
-        library.ItemForUserHandler = (_, _) => null;
-        Assert.Null((await resolver.ResolveMediaAsync(video.Id, Guid.NewGuid(), "movie", default)).TmdbId);
-        library.ItemForUserHandler = (_, _) => new Episode();
-        Assert.Null((await resolver.ResolveMediaAsync(video.Id, Guid.NewGuid(), "movie", default)).TmdbId);
+        Assert.Equal(42, (await resolver.ResolveMediaAsync(video.Id, "movie", default)).TmdbId);
+        library.ItemByIdHandler = _ => null;
+        Assert.Null((await resolver.ResolveMediaAsync(video.Id, "movie", default)).TmdbId);
+        library.ItemByIdHandler = _ => new Episode();
+        Assert.Null((await resolver.ResolveMediaAsync(video.Id, "movie", default)).TmdbId);
     }
 
     [Fact]

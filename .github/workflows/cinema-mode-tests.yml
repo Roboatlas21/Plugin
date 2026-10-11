@@ -1,0 +1,32 @@
+name: Cinema Mode test verification
+
+on:
+  push:
+    branches:
+      - ci/cinema-mode-tests-20261011
+
+permissions:
+  contents: read
+
+jobs:
+  jellyfin:
+    name: Jellyfin tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Run Jellyfin test suite
+        run: dotnet test Jellyfin/tests/Moonfin.Server.Tests/Moonfin.Server.Tests.csproj --configuration Release
+
+  emby:
+    name: Emby tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Run Emby test suite
+        run: dotnet test Emby/tests/Emby.Plugins.Moonfin.Tests/Emby.Plugins.Moonfin.Tests.csproj --configuration Release

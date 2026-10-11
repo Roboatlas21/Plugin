@@ -25,13 +25,29 @@ internal static class EmbyOwnershipProbe
         var ownerProp = PrintProperty("OwnerId", typeof(Video));
         var parentProp = PrintProperty("ParentId");
         PrintProperty("ExtraType");
+        Console.WriteLine("Owner-related BaseItem and Video members:");
+        foreach (var t in new[] { typeof(BaseItem), typeof(Video), typeof(Movie) })
+        {
+            foreach (var m in t.GetMembers(Flags).Where(m => m.Name.Contains("owner", StringComparison.OrdinalIgnoreCase)))
+                Console.WriteLine("  " + t.Name + ": " + m.MemberType + " " + m);
+        }
 
         PrintMethod("GetParents");
         PrintMethod("GetParent");
         PrintMethod("GetOwner");
 
-        Console.WriteLine("IL calls from BaseItem.GetParents (or its iterator MoveNext):");
-        PrintCalls(FindMethod("GetParents"));
+        Console.WriteLine("All GetParents overloads and IL calls:");
+        foreach (var m in typeof(BaseItem).GetMethods(Flags).Where(m => m.Name == "GetParents"))
+        {
+            Console.WriteLine("  OVERLOAD: " + m);
+            PrintCalls(m);
+        }
+        Console.WriteLine("All GetParent overloads and IL calls:");
+        foreach (var m in typeof(BaseItem).GetMethods(Flags).Where(m => m.Name == "GetParent"))
+        {
+            Console.WriteLine("  OVERLOAD: " + m);
+            PrintCalls(m);
+        }
 
         Console.WriteLine("IL calls from BaseItem.GetParent:");
         PrintCalls(FindMethod("GetParent"));

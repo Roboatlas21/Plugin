@@ -1,6 +1,8 @@
 using System.Reflection;
 using Emby.Plugins.Moonfin.Api;
 using Emby.Plugins.Moonfin.Services;
+using MediaBrowser.Controller.Entities.Movies;
+using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Net;
 using MediaBrowser.Model.Providers;
 using Xunit;
@@ -36,6 +38,15 @@ public sealed class CinemaMediaResolverTests
             ProviderIds = new() { ["Tvdb"] = "403245", ["Tmdb"] = "42" },
         };
         Assert.Equal(42, CinemaMediaResolver.UniqueTvdbTmdbId(403245, [result]));
+    }
+
+    [Fact]
+    public void MatchingExtraOwnersMustBeUnambiguous()
+    {
+        var movie = new Movie { Id = Guid.NewGuid() };
+        Assert.Same(movie, CinemaMediaResolver.SingleOwner([movie, new Movie { Id = movie.Id }]));
+        Assert.Null(CinemaMediaResolver.SingleOwner([movie, new Series { Id = Guid.NewGuid() }]));
+        Assert.Null(CinemaMediaResolver.SingleOwner([]));
     }
 
     [Fact]

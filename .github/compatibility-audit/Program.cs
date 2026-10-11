@@ -3,7 +3,7 @@ using Mono.Cecil;
 if (args.Length != 1) { Console.Error.WriteLine("Usage: AbiCheck <plugin.dll>"); return 2; }
 var packageRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".nuget", "packages");
 var target = new Dictionary<string, AssemblyDefinition>(StringComparer.OrdinalIgnoreCase);
-foreach (var pkg in new[] { "jellyfin.controller", "jellyfin.model", "jellyfin.common", "jellyfin.naming" })
+foreach (var pkg in new[] { "jellyfin.controller", "jellyfin.model", "jellyfin.common", "jellyfin.naming", "jellyfin.data" })
 {
     var dir = Path.Combine(packageRoot, pkg, "12.2.0", "lib", "net10.0");
     if (!Directory.Exists(dir)) continue;

@@ -9,6 +9,15 @@
     "imageUrl": "https://raw.githubusercontent.com/Roboatlas21/Plugin/43e94211c7a56b6167758fedc81906fea400fa76/Jellyfin/backend/assets/logo.png",
     "versions": [
       {
+        "version": "2.4.0.8",
+        "targetAbi": "10.10.0.0",
+        "sourceUrl": "https://github.com/Roboatlas21/Plugin/releases/download/test-2.4.0.8/Moonfin.Server-2.4.0.8.zip",
+        "checksum": "29C6161F0B82478A6F09AD6C9DC332D8",
+        "changelog": "Test release from feat/cinema-mode-skip-trailer-settings-final2 (96359475a91de1631c7ee983a0fb1f5551df1114).\n\n- Include all Cinema Mode changes from the clean six-commit PR branch and the latest upstream Moonbase changes.\n- Remove temporary CinemaDiag logging while preserving the Jellyfin item-query compatibility fix.\n- Retain metadata, attached-owner recovery, provider-ID mapping, and the optional filename-title fallback.\n- Full Jellyfin and Emby test suites, salvage tests, builds, and package checks passed.\n- The PR branch and its version files are unchanged.",
+        "timestamp": "2026-10-12T20:01:11Z",
+        "dependencies": []
+      },
+      {
         "version": "2.4.0.7",
         "targetAbi": "10.10.0.0",
         "sourceUrl": "https://github.com/Roboatlas21/Plugin/releases/download/test-2.4.0.7/Moonfin.Server-2.4.0.7.zip",

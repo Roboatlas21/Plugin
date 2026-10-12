@@ -97,7 +97,6 @@ public sealed class CinemaMediaResolverTests
         var other = new Trailer { Id = Guid.NewGuid(), OwnerId = Guid.NewGuid(), Path = path, ExtraType = ExtraType.Trailer };
         var library = new FakeLibraryManager
         {
-            ItemForUserHandler = (_, _) => throw new InvalidOperationException("User-scoped lookup is not expected."),
             ItemByIdHandler = id => id == intro.Id ? intro : id == movie.Id ? movie : null,
             ItemsResultHandler = query =>
             {
@@ -111,7 +110,6 @@ public sealed class CinemaMediaResolverTests
         Assert.Equal(new CinemaMediaResolver.Resolution(
             resolvedType == null ? null : 42, resolvedType),
             await resolver.ResolveMediaAsync(intro.Id, "tv", default));
-        Assert.Equal(0, library.GetItemListCallCount);
     }
 
     [Fact]

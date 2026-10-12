@@ -18,7 +18,6 @@ internal sealed class FakeLibraryManager : ILibraryManager
 {
     private static readonly Emby.Naming.Common.NamingOptions NamingOptions = new();
 
-    internal Func<Guid, Guid, MediaBrowser.Controller.Entities.BaseItem?>? ItemForUserHandler { get; set; }
     internal Func<Guid, MediaBrowser.Controller.Entities.BaseItem?>? ItemByIdHandler { get; set; }
 
     private readonly List<VirtualFolderInfo> _folders;
@@ -36,7 +35,6 @@ internal sealed class FakeLibraryManager : ILibraryManager
     }
 
     internal Func<MediaBrowser.Controller.Entities.InternalItemsQuery, List<MediaBrowser.Controller.Entities.BaseItem>>? ItemsResultHandler { get; set; }
-    internal int GetItemListCallCount { get; private set; }
 
     internal Func<MediaBrowser.Controller.Entities.BaseItem, List<MediaBrowser.Controller.Entities.PersonInfo>>? PeopleHandler { get; set; }
 
@@ -163,8 +161,7 @@ internal sealed class FakeLibraryManager : ILibraryManager
 
     T ILibraryManager.GetItemById<T>(System.Guid id, System.Guid userId) where T : class
     {
-        if (ItemForUserHandler == null) throw new NotImplementedException();
-        return (ItemForUserHandler(id, userId) as T)!;
+        throw new NotImplementedException();
     }
 
     T ILibraryManager.GetItemById<T>(System.Guid id, Jellyfin.Data.Entities.User? user)
@@ -389,8 +386,7 @@ internal sealed class FakeLibraryManager : ILibraryManager
 
     System.Collections.Generic.List<MediaBrowser.Controller.Entities.BaseItem> ILibraryManager.GetItemList(MediaBrowser.Controller.Entities.InternalItemsQuery query)
     {
-        GetItemListCallCount++;
-        return ItemsResultHandler?.Invoke(query) ?? [];
+        throw new NotImplementedException();
     }
 
     System.Collections.Generic.List<MediaBrowser.Controller.Entities.BaseItem> ILibraryManager.GetItemList(MediaBrowser.Controller.Entities.InternalItemsQuery query, System.Boolean allowExternalContent)

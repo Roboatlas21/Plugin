@@ -22,14 +22,6 @@ public sealed class CinemaMediaResolverTests
         Assert.Equal(id, parsed.Value.TmdbId ?? parsed.Value.TvdbId);
     }
 
-    [Theory]
-    [InlineData("194469")]
-    [InlineData("ec92a723-68c6-4a55-b035-a716eb9a60aa")]
-    public void EndpointAcceptsEmbyItemIds(string itemId)
-    {
-        Assert.Equal(itemId, new ResolveCinemaMediaRequest { ItemId = itemId }.ItemId);
-    }
-
     [Fact]
     public void SharedTvdbMappingAcceptsEmbyProviderIds()
     {

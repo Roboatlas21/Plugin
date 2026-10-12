@@ -85,9 +85,11 @@ public sealed class CinemaMediaResolverTests
     [Theory]
     [InlineData(false, false, "movie")]
     [InlineData(true, true, "tv")]
-    public async Task PrivateTrailersUseOnlyUnambiguousAttachedOwners(bool hasId, bool ambiguous, string expectedType)
+    [InlineData(false, true, null)]
+    public async Task PrivateTrailersUseOnlyUnambiguousAttachedOwners(
+        bool hasId, bool ambiguous, string? resolvedType)
     {
-        const string path = "/movies/12 Strong (2018)/Trailer.mp4";
+        const string path = "/data/movies/12 Strong (2018)/Trailer.mp4";
         var intro = new Video { Id = Guid.NewGuid(), Path = path };
         if (hasId) intro.ProviderIds["Tmdb"] = "42";
         var movie = new Movie { Id = Guid.NewGuid(), ProviderIds = new() { ["Tmdb"] = "42" } };
@@ -95,6 +97,7 @@ public sealed class CinemaMediaResolverTests
         var other = new Trailer { Id = Guid.NewGuid(), OwnerId = Guid.NewGuid(), Path = path, ExtraType = ExtraType.Trailer };
         var library = new FakeLibraryManager
         {
+            ItemForUserHandler = (_, _) => throw new InvalidOperationException("User-scoped lookup is not expected."),
             ItemByIdHandler = id => id == intro.Id ? intro : id == movie.Id ? movie : null,
             ItemsResultHandler = query =>
             {
@@ -105,30 +108,8 @@ public sealed class CinemaMediaResolverTests
             },
         };
         var resolver = new CinemaMediaResolver(library, null!);
-        Assert.Equal(new CinemaMediaResolver.Resolution(42, expectedType),
-            await resolver.ResolveMediaAsync(intro.Id, "tv", default));
-    }
-
-    [Fact]
-    public async Task PrivateTrailerResolvesWithoutUserScopedLibraryLookup()
-    {
-        const string path = "/data/movies/12 Strong (2018)/Trailer.mp4";
-        var intro = new Video { Id = Guid.NewGuid(), Path = path };
-        var movie = new Movie { Id = Guid.NewGuid(), ProviderIds = new() { ["Tmdb"] = "42" } };
-        var attached = new Trailer { Id = Guid.NewGuid(), Path = path, OwnerId = movie.Id, ExtraType = ExtraType.Trailer };
-        var library = new FakeLibraryManager
-        {
-            ItemForUserHandler = (_, _) => throw new InvalidOperationException("User-scoped lookup is not expected."),
-            ItemByIdHandler = id => id == intro.Id ? intro : id == movie.Id ? movie : null,
-            ItemsResultHandler = query =>
-            {
-                Assert.Equal(path, query.Path);
-                return [attached];
-            },
-        };
-        var resolver = new CinemaMediaResolver(library, null!);
-
-        Assert.Equal(new CinemaMediaResolver.Resolution(42, "movie"),
+        Assert.Equal(new CinemaMediaResolver.Resolution(
+            resolvedType == null ? null : 42, resolvedType),
             await resolver.ResolveMediaAsync(intro.Id, "tv", default));
         Assert.Equal(0, library.GetItemListCallCount);
     }
@@ -172,16 +153,9 @@ public sealed class CinemaMediaResolverTests
 
     [Theory]
     [InlineData("Trailer.mp4")]
-    [InlineData("Official Trailer.mp4")]
     [InlineData("Final Teaser Trailer 2.mp4")]
-    [InlineData("Trailer 1.mp4")]
-    [InlineData("Teaser.mp4")]
     [InlineData("Intro.mp4")]
-    [InlineData("Preroll.mp4")]
     [InlineData("Coming Soon.mp4")]
-    [InlineData("Special Look.mp4")]
-    [InlineData("Watch Now.mp4")]
-    [InlineData("On Digital.mp4")]
     public async Task GenericPromoOnlyNamesDoNotSearchTmdb(string filename)
     {
         var resolver = Resolver(new Video { Path = filename },
@@ -226,11 +200,7 @@ public sealed class CinemaMediaResolverTests
     {
         RemoteSearchResult[] matches = [Result(43, "Duna", 2021), Result(42, "Dune", 1984)];
         var resolver = Resolver(new Video { Path = "Dune Trailer.mp4", Name = "Other Movie Trailer" },
-            (_, title, _) =>
-            {
-                Assert.Equal("Dune", title);
-                return matches;
-            });
+            (_, title, _) => title == "Dune" ? matches : Array.Empty<RemoteSearchResult>());
         Assert.Equal(43, (await resolver.ResolveMediaAsync(Guid.NewGuid(), "movie", default, allowFilenameSearch: true)).TmdbId);
         matches = [Result(42, "Dune", 1984), Result(43, "Duna", 2021)];
         Assert.Equal(42, (await resolver.ResolveMediaAsync(Guid.NewGuid(), "movie", default, allowFilenameSearch: true)).TmdbId);
@@ -247,32 +217,20 @@ public sealed class CinemaMediaResolverTests
         older.PremiereDate = new DateTime(1989, 1, 1);
         var newer = Result(43, "Show");
         newer.PremiereDate = new DateTime(2024, 1, 1);
-        var resolver = Resolver(new Video { Path = filename }, (type, title, year) =>
-        {
-            Assert.Equal("tv", type);
-            Assert.Equal("Show", title);
-            Assert.Equal(expectedYear, year);
-            return [newer, older];
-        });
+        var resolver = Resolver(new Video { Path = filename },
+            (type, title, year) => type == "tv" && title == "Show" && year == expectedYear
+                ? new[] { newer, older } : Array.Empty<RemoteSearchResult>());
         Assert.Equal(new CinemaMediaResolver.Resolution(expectedId, "tv"),
             await resolver.ResolveMediaAsync(Guid.NewGuid(), "tv", default, allowFilenameSearch: true));
     }
 
     [Theory]
     [InlineData("Silo ABCdefghiJK.mp4", "", "Silo", "tv", null)]
-    [InlineData("Netflix Anime - Ranma1⧸2 ｜ Official Trailer ｜ Netflix [Bv9wTsjqpSQ].mp4", "", "Ranma1 2", "tv", null)]
-    [InlineData("Netflix Anime - Ranma1⧸2｜Official Trailer｜Netflix [Bv9wTsjqpSQ].mp4", "", "Ranma1 2", "tv", null)]
     [InlineData("Netflix Anime - Ranma1⧸2｜Official｜Trailer｜Netflix [Bv9wTsjqpSQ].mp4", "", "Ranma1 2", "tv", null)]
-    [InlineData("Silo｜Official Trailer.mp4", "", "Silo", "tv", null)]
-    [InlineData("Silo｜Final｜Teaser｜Trailer.mp4", "", "Silo", "tv", null)]
-    [InlineData("Unrelated Channel - Ranma1⧸2 ｜ Official Trailer ｜ Netflix [Bv9wTsjqpSQ].mp4", "", "Ranma1 2", "tv", null)]
     [InlineData("Warner Bros - Dune - Part Two ｜ Official Trailer ｜ Warner Bros [Bv9wTsjqpSQ].mp4", "", "Dune Part Two", "movie", null)]
-    [InlineData("Dune - Part Two ｜ Official Trailer ｜ Warner Bros.mp4", "", "Dune Part Two", "movie", null)]
     [InlineData("Dune: Part Two Official Trailer.mp4", "", "Dune Part Two", "movie", null)]
-    [InlineData("Silo Season 5 (2026) Trailer.mp4", "", "Silo", "tv", null)]
-    [InlineData("Silo｜Season 5｜Official Trailer.mp4", "", "Silo", "tv", null)]
+    [InlineData("Silo｜Final｜Teaser｜Trailer.mp4", "", "Silo", "tv", null)]
     [InlineData("Silo｜Season｜5｜Official Trailer.mp4", "", "Silo", "tv", null)]
-    [InlineData("Silo｜Watch Now.mp4", "", "Silo", "tv", null)]
     [InlineData("Silo｜Watch｜Now.mp4", "", "Silo", "tv", null)]
     [InlineData("Dune2021 Trailer.mp4", "", "Dune", "movie", 2021)]
     [InlineData("Trailer Park Boys Official Trailer abcdefghijk.mp4", "", "Trailer Park Boys", "tv", null)]

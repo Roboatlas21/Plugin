@@ -39,7 +39,7 @@ public sealed partial class CinemaMediaResolver
         var ownerId = item.OwnerId;
         if (ownerId == Guid.Empty && !string.IsNullOrWhiteSpace(item.Path))
         {
-            // Other intro providers may register the same trailer file as a separate Video.
+            // Another plugin may register the same trailer file as a separate video.
             var matches = _library.GetItemsResult(new InternalItemsQuery
             {
                 Path = item.Path,
@@ -74,7 +74,7 @@ public sealed partial class CinemaMediaResolver
             cancellationToken, allowFilenameSearch).ConfigureAwait(false);
     }
 
-    // An extra attached to a season or episode advertises its series.
+    // For trailers attached to a season or episode, use the parent series.
     private static Guid OwnerSeriesId(BaseItem owner) => owner switch
     {
         Season season => season.SeriesId,

@@ -19,7 +19,7 @@ public class PluginConfiguration : BasePluginConfiguration
     /// </summary>
     public bool SeerrEnabled { get; set; } = false;
 
-    /// <summary>Allow last-resort TMDB searches using an unlinked trailer's title or filename.</summary>
+    /// <summary>Allow TMDB filename searches for trailers without an attached movie or series.</summary>
     public bool CinemaFilenameSearchEnabled { get; set; } = false;
 
     /// <summary>

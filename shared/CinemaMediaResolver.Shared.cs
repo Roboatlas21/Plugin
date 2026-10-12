@@ -18,7 +18,7 @@ namespace Moonfin.Server.Services;
 namespace Emby.Plugins.Moonfin.Services;
 #endif
 
-// Both plugins compile this file; each handles its own access checks and cancellation.
+// Jellyfin and Emby share this lookup logic, but handle access checks and cancellation separately.
 public sealed partial class CinemaMediaResolver
 {
     public sealed record MediaName(string Title, int? Year);
@@ -40,8 +40,7 @@ public sealed partial class CinemaMediaResolver
         if (direct.HasValue && owned.HasValue && direct != owned) return new(null);
         var hasDirectId = ProviderValue(item.ProviderIds, "Tmdb") != null;
         if (hasDirectId && !direct.HasValue) return new(null);
-        // Untyped trailer pools must play movie trailers before movies
-        // and series trailers before episodes.
+        // When a trailer has no media type, use the type of the movie or episode being played.
         var directType = type ?? expectedMediaType;
         if ((direct ?? owned) is int id && directType is "movie" or "tv")
         {
@@ -76,7 +75,7 @@ public sealed partial class CinemaMediaResolver
             return new(movieId, "movie");
         }
 
-        // Known metadata and filename IDs take priority over playback context.
+        // For searches, use the media type from metadata or the filename before falling back to playback context.
         var searchType = type ?? filenameIdentity?.MediaType ?? (tvdbId.HasValue ? "tv" : expectedMediaType);
         if (searchType is not ("movie" or "tv") || (tvdbId.HasValue && searchType != "tv"))
             return new(null);
@@ -107,10 +106,10 @@ public sealed partial class CinemaMediaResolver
                 return new(mappedId.Value, "tv");
             }
         }
-        // Filename-only title searches are optional; owner titles remain trusted.
+        // Filename searches are optional. Attached trailers can still use their owner's title.
         if (owner == null && !allowFilenameSearch) return new(null);
 
-        // For attached trailers, search for the owning movie or series.
+        // When a trailer is attached, search using its owner's title.
         if (owner != null && (string.IsNullOrWhiteSpace(owner.Name) ||
             owner.Name.Length > 200 || NormalizeTitle(owner.Name).Length == 0)) return new(null);
         MediaName?[] candidates;
@@ -121,7 +120,7 @@ public sealed partial class CinemaMediaResolver
         else
             candidates = new[] { ParseName(item.Path, parseStandard), ParseName(item.Name, parseStandard, isPath: false) };
         var names = candidates.OfType<MediaName>().ToArray();
-        // Try the title without a generated suffix before searching the full name.
+        // Try removing a trailing video ID before searching the full title.
         var ordered = owner == null && filenameIdentity == null
             ? names.SelectMany(OrderedNames)
             : names;
@@ -129,7 +128,7 @@ public sealed partial class CinemaMediaResolver
             .GroupBy(n => (NormalizeTitle(n.Title), n.Year))
             .Select(group => group.First()))
         {
-            // Jellyfin's remote search skips this TMDB punctuation cleanup.
+            // Clean up punctuation before searching TMDB.
             var searchName = Regex.Replace(name.Title, @"[\W_-[·]]+", " ");
             IEnumerable<RemoteSearchResult> results;
             if (searchType == "movie")
@@ -150,7 +149,7 @@ public sealed partial class CinemaMediaResolver
                     IncludeDisabledProviders = false,
                 }, cancellationToken), cancellationToken).ConfigureAwait(false);
             }
-            // Keep TMDB's result order and filter by year when we have one.
+            // Keep the provider's result order, but require a matching year when one is available.
             var first = results.FirstOrDefault(r => !name.Year.HasValue ||
                 (r.ProductionYear ?? r.PremiereDate?.Year) == name.Year);
             var matchId = PositiveTmdb(first?.ProviderIds);
@@ -172,7 +171,7 @@ public sealed partial class CinemaMediaResolver
 
     public static int? PositiveTmdb(IDictionary<string, string>? ids) => PositiveId(ids, "Tmdb");
 
-    /// <summary>Only accept one TMDB ID from the TVDB lookup.</summary>
+    /// <summary>Use the TMDB ID only when the TVDB lookup results agree.</summary>
     public static int? UniqueTvdbTmdbId(int tvdbId, IEnumerable<RemoteSearchResult> results)
     {
         int? found = null;
@@ -203,8 +202,7 @@ public sealed partial class CinemaMediaResolver
         var title = parsed.Name ?? "";
         var year = parsed.Year;
 
-        // Trim the last Trailer or Teaser label and everything after it.
-        // Using the last label preserves those words when they are part of the title.
+        // Use the last Trailer or Teaser label so those words aren't removed when they're part of the title.
         var trailerLabels = Regex.Matches(title,
             @"[\s._:|-]+(?:(?:official|final|theatrical)[\s._:|-]+)?(?:teaser[\s._:|-]+trailer|trailer|teaser)(?![\p{L}\p{N}])",
             RegexOptions.IgnoreCase);

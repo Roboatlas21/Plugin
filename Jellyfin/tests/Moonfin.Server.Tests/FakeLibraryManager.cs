@@ -12,7 +12,6 @@ namespace Moonfin.Server.Tests;
 /// GamesService never reaches them from this path; a test that somehow does exercise one will fail
 /// loudly rather than silently returning bogus data. The similar items tests opt two of those
 /// members back in by setting <see cref="ItemsResultHandler"/> and <see cref="PeopleHandler"/>.
-/// Cinema tests use Jellyfin's naming library through ParseName.
 /// </summary>
 internal sealed class FakeLibraryManager : ILibraryManager
 {
@@ -301,7 +300,7 @@ internal sealed class FakeLibraryManager : ILibraryManager
 
     MediaBrowser.Controller.Providers.ItemLookupInfo ILibraryManager.ParseName(System.String name)
     {
-        // Follow Jellyfin 10.10's ParseName with the same naming library.
+        // Use Jellyfin's naming helpers so filename tests behave like the server.
         var info = Emby.Naming.Video.VideoResolver.CleanDateTime(name, NamingOptions);
         var title = Emby.Naming.Video.VideoResolver.TryCleanString(info.Name, NamingOptions, out var cleaned)
             ? cleaned : info.Name;

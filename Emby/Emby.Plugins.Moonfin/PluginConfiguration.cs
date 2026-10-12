@@ -13,7 +13,7 @@ namespace Emby.Plugins.Moonfin
 
         public bool SeerrEnabled { get; set; } = false;
 
-        /// <summary>Allow last-resort TMDB searches using an unlinked trailer's title or filename.</summary>
+        /// <summary>Allow TMDB filename searches for trailers without an attached movie or series.</summary>
         public bool CinemaFilenameSearchEnabled { get; set; } = false;
 
         /// <summary>Seerr server URL for server-to-server calls. Example: http://seerr:5055</summary>

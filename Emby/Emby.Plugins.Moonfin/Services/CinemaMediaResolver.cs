@@ -13,7 +13,7 @@ using MediaBrowser.Model.Providers;
 
 namespace Emby.Plugins.Moonfin.Services
 {
-    /// <summary>Looks up trailers and their owners using Emby's access checks.</summary>
+    /// <summary>Finds the movie or series behind a trailer the user can access.</summary>
     public sealed partial class CinemaMediaResolver
     {
         private readonly ILibraryManager _library;
@@ -38,7 +38,7 @@ namespace Emby.Plugins.Moonfin.Services
                 .FirstOrDefault(parent => parent is Movie or Series or Season or Episode);
             if (owner == null && !string.IsNullOrWhiteSpace(item.Path))
             {
-                // Intro providers may register an attached trailer as a separate video.
+                // Another plugin may register the same trailer file as a separate video.
                 owner = SingleOwner(_library.GetItemList(new InternalItemsQuery
                 {
                     Path = item.Path,

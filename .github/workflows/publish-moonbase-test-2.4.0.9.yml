@@ -1,0 +1,151 @@
+name: Publish Moonbase 2.4.0.9 test release
+
+on:
+  push:
+    branches:
+      - ci/moonbase-test-release-2.4.0.9-20261012
+    paths:
+      - '.github/workflows/publish-moonbase-test-2.4.0.9.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Build, test and publish both Moonbase plugins
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SOURCE_SHA: c69b1abf9ca656f38005c6047af6300bc14bd2a3
+      VERSION: 2.4.0.9
+      RELEASE_TAG: test-2.4.0.9
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: c69b1abf9ca656f38005c6047af6300bc14bd2a3
+          fetch-depth: 0
+
+      - name: Verify exact source checkout and that release does not exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test ! -e "Jellyfin/Moonfin.Server-$VERSION.zip"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::error::Release $RELEASE_TAG already exists; refusing to overwrite"
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null; then
+            echo "::error::Tag $RELEASE_TAG already exists; refusing to overwrite"
+            exit 1
+          fi
+          echo "Building exact production source $SOURCE_SHA from isolated CI branch"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Run full Jellyfin tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet test Jellyfin/tests/Moonfin.Server.Tests/Moonfin.Server.Tests.csproj -c Release
+
+      - name: Run full Emby tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet test Emby/tests/Emby.Plugins.Moonfin.Tests/Emby.Plugins.Moonfin.Tests.csproj -c Release
+
+      - name: Run salvage tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet run --project Jellyfin/tools/salvage-tests -c Release
+
+      - name: Build and package Jellyfin 2.4.0.9
+        shell: bash
+        run: |
+          set -euo pipefail
+          SKIP_MANIFEST_UPDATE=1 bash Jellyfin/build.sh "$VERSION" 10.10.0
+
+      - name: Build and package Emby 2.4.0.9
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd Emby && bash build.sh "$VERSION")
+
+      - name: Validate packages and compute checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          JF="Jellyfin/Moonfin.Server-$VERSION.zip"
+          EMBY="Emby/Moonfin.Emby-$VERSION.zip"
+          test -s "$JF"
+          test -s "$EMBY"
+          unzip -t "$JF" >/dev/null
+          unzip -t "$EMBY" >/dev/null
+          unzip -p "$JF" meta.json | jq -e --arg v "$VERSION" '.version == $v and .targetAbi == "10.10.0.0" and .guid == "8c5d0e91-4f2a-4b6d-9e3f-1a7c8d9e0f2b"' >/dev/null
+          unzip -Z -1 "$JF" | grep -Eq '(^|/)Moonfin.Server.dll$'
+          unzip -Z -1 "$JF" | grep -Eq '(^|/)SharpCompress.dll$'
+          unzip -Z -1 "$EMBY" | grep -Eq '(^|/)Emby.Plugins.Moonfin.dll$'
+          unzip -Z -1 "$EMBY" | grep -Eq '(^|/)SharpCompress.dll$'
+          echo "Jellyfin:"
+          sha256sum "$JF"
+          md5sum "$JF"
+          echo "Emby:"
+          sha256sum "$EMBY"
+          md5sum "$EMBY"
+
+      - name: Publish test release to exact feature commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          JF="Jellyfin/Moonfin.Server-$VERSION.zip"
+          EMBY="Emby/Moonfin.Emby-$VERSION.zip"
+          JF_MD5=$(md5sum "$JF" | awk '{print toupper($1)}')
+          JF_SHA256=$(sha256sum "$JF" | awk '{print $1}')
+          EMBY_SHA256=$(sha256sum "$EMBY" | awk '{print $1}')
+
+          cat > "$RUNNER_TEMP/moonbase-release-notes.md" <<EOF
+          Test release built from \`feat/cinema-mode-skip-trailer-settings-final2\` at commit \`$SOURCE_SHA\`.
+          
+          ### What's included in this test build
+          - Includes the updated Jellyfin and Emby administrator text for filename-based trailer identification.
+          - Explains that movie-trailer and TV-trailer pairing is required only when relying on title-only filename fallback.
+          - Preserves the Cinema Mode resolver and Emby test updates already in the final2 PR branch.
+          - Intended for capturing screenshots; no changes have been made to the PR branch.
+          
+          ### Verification
+          - Full Jellyfin and Emby test suites and salvage tests passed before packaging.
+          - Both plugin builds and ZIP integrity checks passed before publishing.
+          - Package versions are supplied only to the build scripts; the PR branch and its version files are unchanged.
+          
+          ### Checksums
+          - Jellyfin ZIP MD5: \`$JF_MD5\`
+          - Jellyfin ZIP SHA-256: \`$JF_SHA256\`
+          - Emby ZIP SHA-256: \`$EMBY_SHA256\`
+          
+          Download the Jellyfin ZIP below for a manual test installation. The private catalog is not modified by this release.
+          The final2 PR branch remains unchanged; this isolated workflow is committed only on a temporary CI branch.
+          EOF
+
+          gh release create "$RELEASE_TAG" "$JF" "$EMBY" \
+            --target "$SOURCE_SHA" \
+            --title "Moonbase $VERSION (test)" \
+            --notes-file "$RUNNER_TEMP/moonbase-release-notes.md" \
+            --prerelease --latest=false
+
+      - name: Verify published release and both assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" --json tagName,isPrerelease,assets,url,targetCommitish | tee "$RUNNER_TEMP/published-release.json"
+          jq -e --arg tag "$RELEASE_TAG" --arg sha "$SOURCE_SHA" --arg v "$VERSION" '
+            .tagName == $tag and .isPrerelease == true
+            and .targetCommitish == $sha
+            and ([.assets[].name] | index("Moonfin.Server-" + $v + ".zip") != null)
+            and ([.assets[].name] | index("Moonfin.Emby-" + $v + ".zip") != null)
+          ' "$RUNNER_TEMP/published-release.json" > /dev/null
+          echo "Published: https://github.com/Roboatlas21/Plugin/releases/tag/$RELEASE_TAG"

@@ -1,0 +1,145 @@
+name: Publish Moonbase Cinema Skip sync test release
+
+on:
+  push:
+    branches:
+      - release/moonbase-2.4.0.10-cinema-skip-sync
+    paths:
+      - '.github/workflows/publish-cinema-skip-sync.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SOURCE_SHA: ce0e5cfe096c5dceb5fd1fc42483b0e7194b9256
+      VERSION: 2.4.0.10
+      RELEASE_TAG: test-2.4.0.10
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ce0e5cfe096c5dceb5fd1fc42483b0e7194b9256
+          fetch-depth: 0
+
+      - name: Verify source and unused release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::error::Release already exists; refusing to overwrite"
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null; then
+            echo "::error::Tag already exists; refusing to overwrite"
+            exit 1
+          fi
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Run Jellyfin tests
+        run: dotnet test Jellyfin/tests/Moonfin.Server.Tests/Moonfin.Server.Tests.csproj -c Release --nologo
+
+      - name: Run Emby tests
+        run: dotnet test Emby/tests/Emby.Plugins.Moonfin.Tests/Emby.Plugins.Moonfin.Tests.csproj -c Release --nologo
+
+      - name: Run salvage tests
+        run: dotnet run --project Jellyfin/tools/salvage-tests -c Release
+
+      - name: Build versioned plugin packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          SKIP_MANIFEST_UPDATE=1 bash Jellyfin/build.sh "$VERSION" 10.10.0
+          (cd Emby && bash build.sh "$VERSION")
+
+      - name: Validate archives and write install catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          JF="Jellyfin/Moonfin.Server-$VERSION.zip"
+          EMBY="Emby/Moonfin.Emby-$VERSION.zip"
+          unzip -t "$JF" >/dev/null
+          unzip -t "$EMBY" >/dev/null
+          unzip -p "$JF" meta.json | jq -e --arg v "$VERSION" '.version == $v and .targetAbi == "10.10.0.0" and .guid == "8c5d0e91-4f2a-4b6d-9e3f-1a7c8d9e0f2b"' >/dev/null
+          unzip -Z -1 "$JF" | grep -Fx 'Moonfin.Server.dll'
+          unzip -Z -1 "$JF" | grep -Fx 'SharpCompress.dll'
+          unzip -Z -1 "$EMBY" | grep -Fx 'Emby.Plugins.Moonfin.dll'
+          unzip -Z -1 "$EMBY" | grep -Fx 'SharpCompress.dll'
+          python3 - <<'PY'
+          import datetime, hashlib, json, os
+          from pathlib import Path
+          version = os.environ["VERSION"]
+          tag = os.environ["RELEASE_TAG"]
+          source = os.environ["SOURCE_SHA"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          package = Path("Jellyfin") / f"Moonfin.Server-{version}.zip"
+          catalog = json.loads(Path("Jellyfin/manifest.json").read_text())
+          plugin = catalog[0]
+          plugin["owner"] = "Roboatlas21"
+          plugin["imageUrl"] = f"https://raw.githubusercontent.com/{repo}/{source}/Jellyfin/backend/assets/logo.png"
+          plugin["versions"] = [{
+              "version": version,
+              "changelog": "Add Cinema Mode Skip Button sync and admin defaults for Moonfin-Core #1945. Built from upstream Moonbase plus the Skip sync branch; older experimental trailer-identification features are not included. Normal Apply Defaults and full overwrite retain their existing behavior. Requires a Moonfin client with the Cinema Mode Skip feature.",
+              "targetAbi": "10.10.0.0",
+              "sourceUrl": f"https://github.com/{repo}/releases/download/{tag}/{package.name}",
+              "checksum": hashlib.md5(package.read_bytes()).hexdigest().upper(),
+              "timestamp": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "dependencies": []
+          }]
+          Path("cinema-skip-sync-manifest.json").write_text(json.dumps([plugin], indent=2) + "\n")
+          checksums = []
+          for path in (package, Path("Emby") / f"Moonfin.Emby-{version}.zip"):
+              checksums.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}")
+          Path("SHA256SUMS.txt").write_text("\n".join(checksums) + "\n")
+          PY
+
+      - name: Publish release
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
+          Built from feature commit ce0e5cfe096c5dceb5fd1fc42483b0e7194b9256 on feat/cinema-mode-skip-sync.
+
+          Changes:
+          - Sync cinemaModeSkipEnabled for Jellyfin and Emby.
+          - Add Cinema Mode Skip Button to administrator defaults with Not set / Yes / No.
+          - Keep the existing Apply Defaults and full overwrite behavior.
+
+          Installation:
+          Add the cinema-skip-sync-manifest.json release asset URL as a Jellyfin plugin repository, install Moonbase 2.4.0.10, and restart Jellyfin. A compatible Moonfin client containing the merged Cinema Mode Skip feature is required.
+
+          This is upstream Moonbase plus the Skip sync change. It does not include the older experimental trailer-identification/Seerr resolver feature branch. The ZIPs contain the server plugins; they do not bundle the Flutter web client. Hosted-relay mobile push needs the official relay key; no private relay key is included in this fork build.
+
+          Validation:
+          Full Jellyfin and Emby unit suites, salvage tests, plugin builds, assembly verification, and ZIP integrity checks passed before publication.
+
+          Release packaging is isolated on a separate release branch. The feature branch, its version files, master, and the existing test catalog are unchanged.
+          NOTES
+          gh release create "$RELEASE_TAG" \
+            "Jellyfin/Moonfin.Server-$VERSION.zip" \
+            "Emby/Moonfin.Emby-$VERSION.zip" \
+            cinema-skip-sync-manifest.json SHA256SUMS.txt \
+            --target "$SOURCE_SHA" \
+            --title "Moonbase $VERSION - Cinema Mode Skip sync (test)" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --prerelease --latest=false
+
+      - name: Verify release and feature branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" --json tagName,isPrerelease,assets,targetCommitish > "$RUNNER_TEMP/release.json"
+          jq -e --arg tag "$RELEASE_TAG" --arg sha "$SOURCE_SHA" --arg v "$VERSION" '
+            .tagName == $tag and .isPrerelease == true and .targetCommitish == $sha
+            and ([.assets[].name] | index("Moonfin.Server-" + $v + ".zip") != null)
+            and ([.assets[].name] | index("Moonfin.Emby-" + $v + ".zip") != null)
+            and ([.assets[].name] | index("cinema-skip-sync-manifest.json") != null)
+          ' "$RUNNER_TEMP/release.json" >/dev/null
+          test "$(git ls-remote origin refs/heads/feat/cinema-mode-skip-sync | cut -f1)" = "$SOURCE_SHA"

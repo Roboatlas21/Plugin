@@ -491,6 +491,9 @@ public class MoonfinSettingsProfile
     [JsonPropertyName("defaultSubtitleLanguage")]
     public string? DefaultSubtitleLanguage { get; set; }
 
+    [JsonPropertyName("preferredSecondarySubtitleLanguage")]
+    public string? PreferredSecondarySubtitleLanguage { get; set; }
+
     [JsonPropertyName("fallbackSubtitleLanguage")]
     public string? FallbackSubtitleLanguage { get; set; }
 

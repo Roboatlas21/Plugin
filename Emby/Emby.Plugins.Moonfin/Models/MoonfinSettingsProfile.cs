@@ -172,6 +172,7 @@ namespace Emby.Plugins.Moonfin.Models
         // clients that store a CSS colour can both round-trip them without loss.
         [JsonPropertyName("subtitleMode")] public string? SubtitleMode { get; set; }
         [JsonPropertyName("defaultSubtitleLanguage")] public string? DefaultSubtitleLanguage { get; set; }
+        [JsonPropertyName("preferredSecondarySubtitleLanguage")] public string? PreferredSecondarySubtitleLanguage { get; set; }
         [JsonPropertyName("fallbackSubtitleLanguage")] public string? FallbackSubtitleLanguage { get; set; }
         [JsonPropertyName("preferSdhSubtitles")] public bool? PreferSdhSubtitles { get; set; }
         [JsonPropertyName("preferTextSubtitles")] public bool? PreferTextSubtitles { get; set; }

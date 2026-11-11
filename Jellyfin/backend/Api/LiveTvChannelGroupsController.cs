@@ -11,10 +11,11 @@ namespace Moonfin.Server.Api;
 public sealed class LiveTvChannelGroupsController(LiveTvChannelGroupsService groups) : ControllerBase
 {
     [HttpGet]
-    public async Task<IActionResult> Get(CancellationToken cancellationToken)
+    public async Task<IActionResult> Get(CancellationToken cancellationToken, [FromQuery] bool guideRevisionOnly = false)
     {
         var userId = this.GetUserIdFromClaims();
         if (!userId.HasValue || userId == Guid.Empty) return Unauthorized();
+        if (guideRevisionOnly) return Ok(new { guideRevision = groups.GetGuideRevision() });
         return Ok(await groups.GetAsync(userId.Value, cancellationToken));
     }
 }

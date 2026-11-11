@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -17,18 +18,26 @@ namespace Moonfin.LiveTv
         public Dictionary<string, string[]> Groups { get; } = new Dictionary<string, string[]>(StringComparer.Ordinal);
         [JsonPropertyName("programmeCategories"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string[]? ProgrammeCategories { get; private set; }
+        [JsonPropertyName("guideRevision")] public string GuideRevision { get; private set; } = "pending";
 
-        public void ReadProgrammeCategories(ITaskManager tasks, Func<string[]> read)
+        public static string GetGuideRevision(ITaskManager tasks)
         {
             var refresh = tasks.ScheduledTasks.FirstOrDefault(t => t.ScheduledTask.Key == "RefreshGuide");
             var last = refresh?.LastExecutionResult;
             if (refresh == null || refresh.State != TaskState.Idle ||
-                (last != null && last.Status != TaskCompletionStatus.Completed)) return;
+                (last != null && last.Status != TaskCompletionStatus.Completed)) return "pending";
+            return last == null ? "0" : last.EndTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture);
+        }
 
+        public void ReadProgrammeCategories(ITaskManager tasks, Func<string[]> read)
+        {
+            var revision = GetGuideRevision(tasks);
+            if (revision == "pending") return;
             var categories = read();
             // Discard a lookup that overlapped an import, including one that has already finished.
-            if (refresh.State == TaskState.Idle && refresh.LastExecutionResult?.EndTimeUtc == last?.EndTimeUtc)
-                ProgrammeCategories = categories;
+            if (GetGuideRevision(tasks) != revision) return;
+            ProgrammeCategories = categories;
+            GuideRevision = revision;
         }
     }
 

@@ -45,6 +45,9 @@ namespace Emby.Plugins.Moonfin.Api
                 return MoonfinJson.Result(Request, ResultFactory, null);
             }
 
+            if (request.GuideRevisionOnly)
+                return MoonfinJson.Result(Request, ResultFactory, new { guideRevision = ChannelGroupResult.GetGuideRevision(_tasks) });
+
             var token = Request.CancellationToken;
             var snapshot = await Cache.GetAsync(ReadTunersAsync, token).ConfigureAwait(false);
             var query = new InternalItemsQuery(user) { EnableTotalRecordCount = false };

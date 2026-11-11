@@ -16,6 +16,8 @@ public sealed class LiveTvChannelGroupsService(
 {
     private readonly ChannelGroupCache _cache = new();
 
+    internal string GetGuideRevision() => ChannelGroupResult.GetGuideRevision(tasks);
+
     internal async Task<ChannelGroupResult> GetAsync(Guid userId, CancellationToken token)
     {
         var snapshot = await _cache.GetAsync(ReadTunersAsync, token);

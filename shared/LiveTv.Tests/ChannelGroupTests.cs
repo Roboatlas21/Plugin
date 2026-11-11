@@ -1,14 +1,67 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Moonfin.LiveTv;
+using MediaBrowser.Model.Tasks;
 using Xunit;
 
 namespace Moonfin.Tests
 {
     public class ChannelGroupTests
     {
+        [Fact]
+        public void OnlyAStableGuideSuppliesCategoriesAndARevision()
+        {
+            var task = TaskStub.Create<IScheduledTask>(new() { ["get_Key"] = "RefreshGuide" });
+            var state = new Dictionary<string, object?> {
+                ["get_ScheduledTask"] = task, ["get_State"] = TaskState.Idle, ["get_LastExecutionResult"] = null
+            };
+            var worker = TaskStub.Create<IScheduledTaskWorker>(state);
+            var manager = TaskStub.Create<ITaskManager>(new() { ["get_ScheduledTasks"] = new[] { worker } });
+            var empty = new ChannelGroupResult();
+            empty.ReadProgrammeCategories(manager, () => Array.Empty<string>());
+            Assert.Empty(empty.ProgrammeCategories!);
+            Assert.Equal("0", empty.GuideRevision);
+
+            state["get_State"] = TaskState.Running;
+            var pending = new ChannelGroupResult();
+            pending.ReadProgrammeCategories(manager, () => throw new Exception("queried an incomplete guide"));
+            Assert.Null(pending.ProgrammeCategories);
+            Assert.Equal("pending", pending.GuideRevision);
+
+            state["get_State"] = TaskState.Idle;
+            var completed = new TaskResult { EndTimeUtc = DateTime.UtcNow, Status = TaskCompletionStatus.Completed };
+            state["get_LastExecutionResult"] = completed;
+            var stable = new ChannelGroupResult();
+            stable.ReadProgrammeCategories(manager, () => new[] { "movies" });
+            Assert.Equal(new[] { "movies" }, stable.ProgrammeCategories);
+            Assert.Equal(ChannelGroupResult.GetGuideRevision(manager), stable.GuideRevision);
+            Assert.NotEqual(empty.GuideRevision, stable.GuideRevision);
+
+            var overlapping = new ChannelGroupResult();
+            overlapping.ReadProgrammeCategories(manager, () => {
+                completed.EndTimeUtc = completed.EndTimeUtc.AddMinutes(1);
+                return new[] { "sports" };
+            });
+            Assert.Null(overlapping.ProgrammeCategories);
+            Assert.Equal("pending", overlapping.GuideRevision);
+        }
+
+        public class TaskStub : DispatchProxy
+        {
+            private Dictionary<string, object?> _values = new();
+            public static T Create<T>(Dictionary<string, object?> values) where T : class
+            {
+                var proxy = DispatchProxy.Create<T, TaskStub>();
+                ((TaskStub)(object)proxy)._values = values;
+                return proxy;
+            }
+            protected override object? Invoke(MethodInfo? method, object?[]? args) => _values[method!.Name];
+        }
+
         [Fact]
         public void VisibleIdsKeepOriginalNamesAndNeverIncludeOtherUsersChannels()
         {

@@ -54,6 +54,7 @@ namespace Emby.Plugins.Moonfin.Api
             var query = new InternalItemsQuery(user) { EnableTotalRecordCount = false };
             var channels = _manager.GetInternalChannels(query, false, null, token).Items;
             var result = snapshot.ForVisibleChannels(channels.Select(c => (c.GetClientId(), c.ExternalId)));
+            if (result.Partial) Cache.Invalidate(snapshot);
             try
             {
                 result.ReadProgrammeCategories(_tasks, revision, () => ReadCategories(user, channels.Select(c => c.InternalId).ToArray(), token));

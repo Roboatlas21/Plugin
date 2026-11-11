@@ -28,7 +28,7 @@ public sealed class LiveTvChannelGroupsService(
         // Registered tuners feed Jellyfin's DefaultLiveTvService, whose service name is "Emby".
         var result = snapshot.ForVisibleChannels(visible.OfType<LiveTvChannel>()
             .Where(c => c.ServiceName == "Emby")
-            .Select(c => (c.Id.ToString("N"), c.ExternalId)), expectTunerChannel: true);
+            .Select(c => (c.Id.ToString("N"), c.ExternalId)));
         if (result.Partial) _cache.Invalidate(snapshot);
         try
         {

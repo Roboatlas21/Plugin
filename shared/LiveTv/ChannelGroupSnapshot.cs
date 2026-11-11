@@ -16,6 +16,10 @@ namespace Moonfin.LiveTv
         [JsonPropertyName("partial")] public bool Partial { get; set; }
         [JsonPropertyName("groupsByChannelId")]
         public Dictionary<string, string[]> Groups { get; } = new Dictionary<string, string[]>(StringComparer.Ordinal);
+        // Only returned for a partial, stable lineup. Other visible IDs were resolved,
+        // including channels that the tuner confirmed have no group.
+        [JsonPropertyName("unresolvedChannelIds"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public List<string>? UnresolvedChannelIds { get; set; }
         [JsonPropertyName("programmeCategories"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string[]? ProgrammeCategories { get; private set; }
         [JsonPropertyName("guideRevision")] public string GuideRevision { get; private set; } = "pending";
@@ -35,6 +39,7 @@ namespace Moonfin.LiveTv
             if (revision == "pending" || GetGuideRevision(tasks) != revision)
             {
                 Partial = true;
+                UnresolvedChannelIds = null;
                 return;
             }
 
@@ -42,6 +47,7 @@ namespace Moonfin.LiveTv
             if (GetGuideRevision(tasks) != revision)
             {
                 Partial = true;
+                UnresolvedChannelIds = null;
                 return;
             }
             ProgrammeCategories = categories;
@@ -90,7 +96,7 @@ namespace Moonfin.LiveTv
             }
         }
 
-        public ChannelGroupResult ForVisibleChannels(IEnumerable<(string ClientId, string ExternalId)> channels, bool expectTunerChannel = false)
+        public ChannelGroupResult ForVisibleChannels(IEnumerable<(string ClientId, string ExternalId)> channels)
         {
             var result = new ChannelGroupResult { Partial = Partial };
             foreach (var channel in channels)
@@ -98,13 +104,15 @@ namespace Moonfin.LiveTv
                 if (string.IsNullOrEmpty(channel.ExternalId) ||
                     !_channels.TryGetValue(channel.ExternalId, out var source) || source.ExternalId != channel.ExternalId)
                 {
-                    // Jellyfin can return an empty tuner list when the playlist is offline.
-                    if (expectTunerChannel) result.Partial = true;
+                    // Either server can return an empty tuner list after losing its cache.
+                    result.Partial = true;
+                    (result.UnresolvedChannelIds ??= new List<string>()).Add(channel.ClientId);
                     continue;
                 }
                 if (source.Groups.Count > 0)
                     result.Groups[channel.ClientId] = source.Groups.OrderBy(x => x, StringComparer.Ordinal).ToArray();
             }
+            if (result.Partial) result.UnresolvedChannelIds ??= new List<string>();
             return result;
         }
     }

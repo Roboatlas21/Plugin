@@ -101,10 +101,13 @@ namespace Moonfin.Tests
         {
             var snapshot = new ChannelGroupSnapshot();
             snapshot.Add(0, "tuner", "ungrouped", null);
-            var known = snapshot.ForVisibleChannels(new[] { ("id", "ungrouped") }, expectTunerChannel: true);
+            var known = snapshot.ForVisibleChannels(new[] { ("id", "ungrouped") });
             Assert.False(known.Partial);
             Assert.Empty(known.Groups);
-            Assert.True(snapshot.ForVisibleChannels(new[] { ("id", "offline") }, expectTunerChannel: true).Partial);
+            var mixed = snapshot.ForVisibleChannels(new[] { ("healthy", "ungrouped"), ("lost", "offline") });
+            Assert.True(mixed.Partial);
+            Assert.Equal(new[] { "lost" }, mixed.UnresolvedChannelIds);
+            Assert.Empty(mixed.Groups);
         }
 
         [Fact]

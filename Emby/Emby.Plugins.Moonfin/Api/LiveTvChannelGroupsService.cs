@@ -107,7 +107,7 @@ namespace Emby.Plugins.Moonfin.Api
                     token.ThrowIfCancellationRequested();
                     try
                     {
-                        var channels = await tuner.GetChannels(host, token).ConfigureAwait(false);
+                        var channels = await EmbyTunerGroupReader.GetChannelsAsync(tuner, host, token).ConfigureAwait(false);
                         foreach (var channel in channels)
                             result.Add(index, host.Id, channel.Id, channel.Tags);
                     }

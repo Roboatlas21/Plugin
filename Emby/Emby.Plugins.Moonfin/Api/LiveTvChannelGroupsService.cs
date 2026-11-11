@@ -5,10 +5,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Common;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LiveTv;
 using MediaBrowser.Controller.Net;
 using MediaBrowser.Model.Logging;
 using MediaBrowser.Model.Services;
+using MediaBrowser.Model.Tasks;
 using Moonfin.LiveTv;
 
 namespace Emby.Plugins.Moonfin.Api
@@ -17,6 +19,8 @@ namespace Emby.Plugins.Moonfin.Api
     {
         private static readonly ChannelGroupCache Cache = new ChannelGroupCache();
         private readonly ILiveTvManager _manager;
+        private readonly ILibraryManager _library;
+        private readonly ITaskManager _tasks;
         private readonly IAuthorizationContext _auth;
         private readonly ILogger _logger;
         public IRequest Request { get; set; } = null!;
@@ -25,6 +29,8 @@ namespace Emby.Plugins.Moonfin.Api
         public LiveTvChannelGroupsService(IApplicationHost appHost)
         {
             _manager = appHost.Resolve<ILiveTvManager>();
+            _library = appHost.Resolve<ILibraryManager>();
+            _tasks = appHost.Resolve<ITaskManager>();
             _auth = appHost.Resolve<IAuthorizationContext>();
             _logger = appHost.Resolve<ILogManager>().GetLogger("Moonfin");
             ResultFactory = appHost.Resolve<IHttpResultFactory>();
@@ -44,7 +50,42 @@ namespace Emby.Plugins.Moonfin.Api
             var query = new InternalItemsQuery(user) { EnableTotalRecordCount = false };
             var channels = _manager.GetInternalChannels(query, false, null, token).Items;
             var result = snapshot.ForVisibleChannels(channels.Select(c => (c.GetClientId(), c.ExternalId)));
+            try
+            {
+                result.ReadProgrammeCategories(_tasks, () => ReadCategories(user, channels.Select(c => c.InternalId).ToArray(), token));
+            }
+            catch (Exception) when (!token.IsCancellationRequested)
+            {
+                _logger.Warn("Could not read guide programme categories");
+            }
             return MoonfinJson.Result(Request, ResultFactory, result);
+        }
+
+        private string[] ReadCategories(User user, long[] channelIds, CancellationToken token)
+        {
+            if (channelIds.Length == 0) return Array.Empty<string>();
+            var found = new List<string>();
+            Check("movies", q => q.IsMovie = true);
+            Check("series", q => q.IsSeries = true);
+            Check("sports", q => q.IsSports = true);
+            Check("news", q => q.IsNews = true);
+            Check("kids", q => q.IsKids = true);
+            Check("premiere", q => q.IsPremiere = true);
+            return found.ToArray();
+
+            void Check(string key, Action<InternalItemsQuery> applyFilter)
+            {
+                var query = new InternalItemsQuery(user)
+                {
+                    IncludeItemTypes = new[] { nameof(LiveTvProgram) },
+                    ParentIds = channelIds,
+                    SkipAncestorNormalization = true,
+                    Limit = 1,
+                    EnableTotalRecordCount = false
+                };
+                applyFilter(query);
+                if (_library.GetInternalItemIds(query, token).Length != 0) found.Add(key);
+            }
         }
 
         private async Task<ChannelGroupSnapshot> ReadTunersAsync(CancellationToken token)

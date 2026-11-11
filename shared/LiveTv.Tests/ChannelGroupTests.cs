@@ -22,13 +22,13 @@ namespace Moonfin.Tests
             var worker = TaskStub.Create<IScheduledTaskWorker>(state);
             var manager = TaskStub.Create<ITaskManager>(new() { ["get_ScheduledTasks"] = new[] { worker } });
             var empty = new ChannelGroupResult();
-            empty.ReadProgrammeCategories(manager, () => Array.Empty<string>());
+            empty.ReadProgrammeCategories(manager, ChannelGroupResult.GetGuideRevision(manager), () => Array.Empty<string>());
             Assert.Empty(empty.ProgrammeCategories!);
             Assert.Equal("0", empty.GuideRevision);
 
             state["get_State"] = TaskState.Running;
             var pending = new ChannelGroupResult();
-            pending.ReadProgrammeCategories(manager, () => throw new Exception("queried an incomplete guide"));
+            pending.ReadProgrammeCategories(manager, ChannelGroupResult.GetGuideRevision(manager), () => throw new Exception("queried an incomplete guide"));
             Assert.Null(pending.ProgrammeCategories);
             Assert.Equal("pending", pending.GuideRevision);
 
@@ -36,18 +36,24 @@ namespace Moonfin.Tests
             var completed = new TaskResult { EndTimeUtc = DateTime.UtcNow, Status = TaskCompletionStatus.Completed };
             state["get_LastExecutionResult"] = completed;
             var stable = new ChannelGroupResult();
-            stable.ReadProgrammeCategories(manager, () => new[] { "movies" });
+            stable.ReadProgrammeCategories(manager, ChannelGroupResult.GetGuideRevision(manager), () => new[] { "movies" });
             Assert.Equal(new[] { "movies" }, stable.ProgrammeCategories);
             Assert.Equal(ChannelGroupResult.GetGuideRevision(manager), stable.GuideRevision);
             Assert.NotEqual(empty.GuideRevision, stable.GuideRevision);
 
             var overlapping = new ChannelGroupResult();
-            overlapping.ReadProgrammeCategories(manager, () => {
+            overlapping.ReadProgrammeCategories(manager, ChannelGroupResult.GetGuideRevision(manager), () => {
                 completed.EndTimeUtc = completed.EndTimeUtc.AddMinutes(1);
                 return new[] { "sports" };
             });
+            Assert.True(overlapping.Partial);
             Assert.Null(overlapping.ProgrammeCategories);
             Assert.Equal("pending", overlapping.GuideRevision);
+
+            var oldTuners = new ChannelGroupResult();
+            oldTuners.ReadProgrammeCategories(manager, stable.GuideRevision, () => throw new Exception("read after revision changed"));
+            Assert.True(oldTuners.Partial);
+            Assert.Equal("pending", oldTuners.GuideRevision);
         }
 
         public class TaskStub : DispatchProxy
@@ -91,19 +97,46 @@ namespace Moonfin.Tests
         }
 
         [Fact]
+        public void MissingTunerChannelAndChannelWithNoGroupHaveDifferentResults()
+        {
+            var snapshot = new ChannelGroupSnapshot();
+            snapshot.Add(0, "tuner", "ungrouped", null);
+            var known = snapshot.ForVisibleChannels(new[] { ("id", "ungrouped") }, expectTunerChannel: true);
+            Assert.False(known.Partial);
+            Assert.Empty(known.Groups);
+            Assert.True(snapshot.ForVisibleChannels(new[] { ("id", "offline") }, expectTunerChannel: true).Partial);
+        }
+
+        [Fact]
+        public async Task NewRevisionAndIncompleteReadsBypassTheCachedSnapshot()
+        {
+            var cache = new ChannelGroupCache();
+            var token = CancellationToken.None;
+            Task<ChannelGroupSnapshot> Read(CancellationToken _) => Task.FromResult(new ChannelGroupSnapshot());
+            var first = await cache.GetAsync("1", Read, token);
+            var next = await cache.GetAsync("2", Read, token);
+            Assert.NotSame(first, next);
+            cache.Invalidate(first);
+            Assert.Same(next, await cache.GetAsync("2", Read, token));
+            cache.Invalidate(next);
+            var partial = await cache.GetAsync("2", _ => Task.FromResult(new ChannelGroupSnapshot { Partial = true }), token);
+            Assert.NotSame(partial, await cache.GetAsync("2", Read, token));
+        }
+
+        [Fact]
         public async Task CacheCoalescesReadersAndDoesNotKeepFailedReads()
         {
             var cache = new ChannelGroupCache();
             var callbacks = 0;
             var gate = new TaskCompletionSource<ChannelGroupSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
             Task<ChannelGroupSnapshot> Read(CancellationToken _) { callbacks++; return gate.Task; }
-            await Assert.ThrowsAsync<InvalidOperationException>(() => cache.GetAsync(
+            await Assert.ThrowsAsync<InvalidOperationException>(() => cache.GetAsync("1",
                 _ => throw new InvalidOperationException(), CancellationToken.None));
-            var first = cache.GetAsync(Read, CancellationToken.None);
-            var second = cache.GetAsync(Read, CancellationToken.None);
+            var first = cache.GetAsync("1", Read, CancellationToken.None);
+            var second = cache.GetAsync("1", Read, CancellationToken.None);
             using var cancelled = new CancellationTokenSource();
             cancelled.Cancel();
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cache.GetAsync(Read, cancelled.Token));
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cache.GetAsync("1", Read, cancelled.Token));
             gate.SetResult(new ChannelGroupSnapshot());
             Assert.Same(await first, await second);
             Assert.Equal(1, callbacks);

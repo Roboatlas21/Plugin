@@ -49,13 +49,14 @@ namespace Emby.Plugins.Moonfin.Api
                 return MoonfinJson.Result(Request, ResultFactory, new { guideRevision = ChannelGroupResult.GetGuideRevision(_tasks) });
 
             var token = Request.CancellationToken;
-            var snapshot = await Cache.GetAsync(ReadTunersAsync, token).ConfigureAwait(false);
+            var revision = ChannelGroupResult.GetGuideRevision(_tasks);
+            var snapshot = await Cache.GetAsync(revision, ReadTunersAsync, token).ConfigureAwait(false);
             var query = new InternalItemsQuery(user) { EnableTotalRecordCount = false };
             var channels = _manager.GetInternalChannels(query, false, null, token).Items;
             var result = snapshot.ForVisibleChannels(channels.Select(c => (c.GetClientId(), c.ExternalId)));
             try
             {
-                result.ReadProgrammeCategories(_tasks, () => ReadCategories(user, channels.Select(c => c.InternalId).ToArray(), token));
+                result.ReadProgrammeCategories(_tasks, revision, () => ReadCategories(user, channels.Select(c => c.InternalId).ToArray(), token));
             }
             catch (Exception) when (!token.IsCancellationRequested)
             {

@@ -29,13 +29,21 @@ namespace Moonfin.LiveTv
             return last == null ? "0" : last.EndTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture);
         }
 
-        public void ReadProgrammeCategories(ITaskManager tasks, Func<string[]> read)
+        public void ReadProgrammeCategories(ITaskManager tasks, string revision, Func<string[]> read)
         {
-            var revision = GetGuideRevision(tasks);
-            if (revision == "pending") return;
+            // The revision was sampled before reading the tuners and visible channels.
+            if (revision == "pending" || GetGuideRevision(tasks) != revision)
+            {
+                Partial = true;
+                return;
+            }
+
             var categories = read();
-            // Discard a lookup that overlapped an import, including one that has already finished.
-            if (GetGuideRevision(tasks) != revision) return;
+            if (GetGuideRevision(tasks) != revision)
+            {
+                Partial = true;
+                return;
+            }
             ProgrammeCategories = categories;
             GuideRevision = revision;
         }
@@ -82,16 +90,20 @@ namespace Moonfin.LiveTv
             }
         }
 
-        public ChannelGroupResult ForVisibleChannels(IEnumerable<(string ClientId, string ExternalId)> channels)
+        public ChannelGroupResult ForVisibleChannels(IEnumerable<(string ClientId, string ExternalId)> channels, bool expectTunerChannel = false)
         {
             var result = new ChannelGroupResult { Partial = Partial };
             foreach (var channel in channels)
             {
-                if (!string.IsNullOrEmpty(channel.ExternalId) &&
-                    _channels.TryGetValue(channel.ExternalId, out var source) && source.ExternalId == channel.ExternalId && source.Groups.Count > 0)
+                if (string.IsNullOrEmpty(channel.ExternalId) ||
+                    !_channels.TryGetValue(channel.ExternalId, out var source) || source.ExternalId != channel.ExternalId)
                 {
-                    result.Groups[channel.ClientId] = source.Groups.OrderBy(x => x, StringComparer.Ordinal).ToArray();
+                    // Jellyfin can return an empty tuner list when the playlist is offline.
+                    if (expectTunerChannel) result.Partial = true;
+                    continue;
                 }
+                if (source.Groups.Count > 0)
+                    result.Groups[channel.ClientId] = source.Groups.OrderBy(x => x, StringComparer.Ordinal).ToArray();
             }
             return result;
         }
@@ -102,17 +114,23 @@ namespace Moonfin.LiveTv
         private readonly SemaphoreSlim _gate = new SemaphoreSlim(1);
         private ChannelGroupSnapshot? _snapshot;
         private DateTime _expires;
+        private string? _revision;
+
+        public void Invalidate(ChannelGroupSnapshot snapshot) =>
+            Interlocked.CompareExchange(ref _snapshot, null, snapshot);
 
         public async Task<ChannelGroupSnapshot> GetAsync(
-            Func<CancellationToken, Task<ChannelGroupSnapshot>> read, CancellationToken token)
+            string revision, Func<CancellationToken, Task<ChannelGroupSnapshot>> read, CancellationToken token)
         {
             await _gate.WaitAsync(token).ConfigureAwait(false);
             try
             {
-                if (_snapshot != null && DateTime.UtcNow < _expires) return _snapshot;
+                var cached = _snapshot;
+                if (cached != null && revision == _revision && DateTime.UtcNow < _expires) return cached;
                 var fresh = await read(token).ConfigureAwait(false);
                 token.ThrowIfCancellationRequested();
-                _snapshot = fresh;
+                _revision = revision;
+                _snapshot = revision == "pending" || fresh.Partial ? null : fresh;
                 _expires = DateTime.UtcNow.AddMinutes(2);
                 return fresh;
             }

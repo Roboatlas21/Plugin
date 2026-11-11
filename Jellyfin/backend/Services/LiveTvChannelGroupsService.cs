@@ -20,17 +20,19 @@ public sealed class LiveTvChannelGroupsService(
 
     internal async Task<ChannelGroupResult> GetAsync(Guid userId, CancellationToken token)
     {
-        var snapshot = await _cache.GetAsync(ReadTunersAsync, token);
+        var revision = ChannelGroupResult.GetGuideRevision(tasks);
+        var snapshot = await _cache.GetAsync(revision, ReadTunersAsync, token);
         var query = new LiveTvChannelQuery { UserId = userId, AddCurrentProgram = false };
         var options = new DtoOptions(false) { EnableImages = false, EnableUserData = false, AddCurrentProgram = false };
         var visible = liveTv.GetInternalChannels(query, options, token).Items;
         // Registered tuners feed Jellyfin's DefaultLiveTvService, whose service name is "Emby".
         var result = snapshot.ForVisibleChannels(visible.OfType<LiveTvChannel>()
             .Where(c => c.ServiceName == "Emby")
-            .Select(c => (c.Id.ToString("N"), c.ExternalId)));
+            .Select(c => (c.Id.ToString("N"), c.ExternalId)), expectTunerChannel: true);
+        if (result.Partial) _cache.Invalidate(snapshot);
         try
         {
-            result.ReadProgrammeCategories(tasks, () => ReadCategories(userId, visible.Select(c => c.Id).ToArray(), token));
+            result.ReadProgrammeCategories(tasks, revision, () => ReadCategories(userId, visible.Select(c => c.Id).ToArray(), token));
         }
         catch (Exception ex) when (!token.IsCancellationRequested)
         {

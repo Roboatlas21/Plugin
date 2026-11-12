@@ -28,8 +28,7 @@ namespace Moonfin.LiveTv
         {
             var refresh = tasks.ScheduledTasks.FirstOrDefault(t => t.ScheduledTask.Key == "RefreshGuide");
             var last = refresh?.LastExecutionResult;
-            if (refresh == null || refresh.State != TaskState.Idle ||
-                (last != null && last.Status != TaskCompletionStatus.Completed)) return "pending";
+            if (refresh == null || refresh.State != TaskState.Idle) return "pending";
             return last == null ? "0" : last.EndTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture);
         }
 
@@ -43,35 +42,49 @@ namespace Moonfin.LiveTv
                 return;
             }
 
-            var categories = read();
-            if (GetGuideRevision(tasks) != revision)
+            string[]? categories = null;
+            try { categories = read(); }
+            finally
             {
-                Partial = true;
-                UnresolvedChannelIds = null;
-                return;
+                if (GetGuideRevision(tasks) == revision)
+                {
+                    // A category query failure leaves this field unknown. The tuner data is still valid.
+                    ProgrammeCategories = categories;
+                    GuideRevision = revision;
+                }
+                else
+                {
+                    Partial = true;
+                    UnresolvedChannelIds = null;
+                }
             }
-            ProgrammeCategories = categories;
-            GuideRevision = revision;
         }
     }
 
     // Only tuner metadata is cached. Each response joins against a fresh, user-scoped lineup.
     internal sealed class ChannelGroupSnapshot
     {
-        private const int MaxChannels = 100_000;
         private const int MaxGroupsPerChannel = 256;
+        private readonly HashSet<string> _visibleIds;
         private readonly Dictionary<string, (int Adapter, string? HostId, string ExternalId, HashSet<string> Groups)> _channels =
             new Dictionary<string, (int, string?, string, HashSet<string>)>(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _ambiguous = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _incompleteGroups = new HashSet<string>(StringComparer.Ordinal);
         public bool Partial { get; set; }
 
+        public ChannelGroupSnapshot(IEnumerable<string> visibleIds) =>
+            _visibleIds = new HashSet<string>(visibleIds, StringComparer.OrdinalIgnoreCase);
+
+        public bool Covers(IEnumerable<string> visibleIds) => _visibleIds.IsSupersetOf(visibleIds);
+
+        // Large authorized lineups still get a complete response without retaining them between requests.
+        public bool Cacheable => !Partial && _visibleIds.Count <= 100_000;
+
         public void Add(int adapter, string? hostId, string? externalId, IEnumerable<string>? labels, bool incomplete = false)
         {
-            if (string.IsNullOrEmpty(externalId) || _ambiguous.Contains(externalId)) return;
+            if (string.IsNullOrEmpty(externalId) || !_visibleIds.Contains(externalId) || _ambiguous.Contains(externalId)) return;
             if (!_channels.TryGetValue(externalId, out var source))
             {
-                if (_channels.Count + _ambiguous.Count >= MaxChannels) { Partial = true; return; }
                 source = (adapter, hostId, externalId, new HashSet<string>(StringComparer.Ordinal));
                 _channels.Add(externalId, source);
             }
@@ -139,19 +152,22 @@ namespace Moonfin.LiveTv
             Interlocked.CompareExchange(ref _snapshot, null, snapshot);
 
         public async Task<ChannelGroupSnapshot> GetAsync(
-            string revision, Func<CancellationToken, Task<ChannelGroupSnapshot>> read, CancellationToken token)
+            string revision, IEnumerable<string> visibleIds,
+            Func<ChannelGroupSnapshot, CancellationToken, Task> read, CancellationToken token)
         {
             await _gate.WaitAsync(token).ConfigureAwait(false);
             try
             {
                 var epoch = Volatile.Read(ref _epoch);
                 var cached = _snapshot;
-                if (cached != null && epoch == _snapshotEpoch && revision == _revision && DateTime.UtcNow < _expires) return cached;
-                var fresh = await read(token).ConfigureAwait(false);
+                if (cached != null && epoch == _snapshotEpoch && revision == _revision &&
+                    DateTime.UtcNow < _expires && cached.Covers(visibleIds)) return cached;
+                var fresh = new ChannelGroupSnapshot(visibleIds);
+                await read(fresh, token).ConfigureAwait(false);
                 token.ThrowIfCancellationRequested();
                 _snapshotEpoch = epoch;
                 _revision = revision;
-                _snapshot = revision == "pending" || fresh.Partial ? null : fresh;
+                _snapshot = revision != "pending" && fresh.Cacheable ? fresh : null;
                 _expires = DateTime.UtcNow.AddMinutes(2);
                 return fresh;
             }

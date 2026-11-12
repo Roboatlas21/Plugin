@@ -12,8 +12,11 @@ namespace Moonfin.Tests
 {
     public class ChannelGroupTests
     {
-        [Fact]
-        public void OnlyAStableGuideSuppliesCategoriesAndARevision()
+        [Theory]
+        [InlineData(TaskCompletionStatus.Completed)]
+        [InlineData(TaskCompletionStatus.Cancelled)]
+        [InlineData(TaskCompletionStatus.Failed)]
+        public void OnlyAStableGuideSuppliesCategoriesAndARevision(TaskCompletionStatus status)
         {
             var task = TaskStub.Create<IScheduledTask>(new() { ["get_Key"] = "RefreshGuide" });
             var state = new Dictionary<string, object?> {
@@ -33,13 +36,19 @@ namespace Moonfin.Tests
             Assert.Equal("pending", pending.GuideRevision);
 
             state["get_State"] = TaskState.Idle;
-            var completed = new TaskResult { EndTimeUtc = DateTime.UtcNow, Status = TaskCompletionStatus.Completed };
+            var completed = new TaskResult { EndTimeUtc = DateTime.UtcNow, Status = status };
             state["get_LastExecutionResult"] = completed;
             var stable = new ChannelGroupResult();
             stable.ReadProgrammeCategories(manager, ChannelGroupResult.GetGuideRevision(manager), () => new[] { "movies" });
             Assert.Equal(new[] { "movies" }, stable.ProgrammeCategories);
             Assert.Equal(ChannelGroupResult.GetGuideRevision(manager), stable.GuideRevision);
             Assert.NotEqual(empty.GuideRevision, stable.GuideRevision);
+
+            var missingCategories = new ChannelGroupResult();
+            Assert.Throws<TimeoutException>(() => missingCategories.ReadProgrammeCategories(manager, stable.GuideRevision,
+                () => throw new TimeoutException()));
+            Assert.Null(missingCategories.ProgrammeCategories);
+            Assert.Equal(stable.GuideRevision, missingCategories.GuideRevision);
 
             var overlapping = new ChannelGroupResult();
             overlapping.ReadProgrammeCategories(manager, ChannelGroupResult.GetGuideRevision(manager), () => {
@@ -71,7 +80,7 @@ namespace Moonfin.Tests
         [Fact]
         public void VisibleIdsKeepOriginalNamesAndNeverIncludeOtherUsersChannels()
         {
-            var snapshot = new ChannelGroupSnapshot();
+            var snapshot = new ChannelGroupSnapshot(new[] { "external", "private" });
             snapshot.Add(1, "tuner", "external", new[] { "US| SPORTS", "US|SPORTS", "FR | Kids", "音楽", "Kids", "Kids", " " });
             snapshot.Add(1, "tuner", "private", new[] { "Hidden" });
             var visible = snapshot.ForVisibleChannels(new[] { ("guide-id", "external") });
@@ -85,7 +94,7 @@ namespace Moonfin.Tests
         [Fact]
         public void AmbiguousExternalIdRemainsUngroupedEvenWhenSeenAgain()
         {
-            var snapshot = new ChannelGroupSnapshot();
+            var snapshot = new ChannelGroupSnapshot(new[] { "same", "other", "untagged" });
             snapshot.Add(1, "A", "same", new[] { "Sport" });
             snapshot.Add(1, "B", "same", new[] { "News" });
             snapshot.Add(1, "A", "same", new[] { "Sport" });
@@ -99,7 +108,7 @@ namespace Moonfin.Tests
         [Fact]
         public void MissingTunerChannelAndChannelWithNoGroupHaveDifferentResults()
         {
-            var snapshot = new ChannelGroupSnapshot();
+            var snapshot = new ChannelGroupSnapshot(new[] { "ungrouped" });
             snapshot.Add(0, "tuner", "ungrouped", null);
             var known = snapshot.ForVisibleChannels(new[] { ("id", "ungrouped") });
             Assert.False(known.Partial);
@@ -113,7 +122,7 @@ namespace Moonfin.Tests
         [Fact]
         public void OnlyUnresolvedVisibleChannelsMakeTheResponsePartial()
         {
-            var snapshot = new ChannelGroupSnapshot { Partial = true };
+            var snapshot = new ChannelGroupSnapshot(new[] { "healthy", "offline" }) { Partial = true };
             snapshot.Add(1, "tuner", "healthy", new[] { "Kids" });
             snapshot.Add(2, "other", "offline", new[] { "Sports" }, incomplete: true);
             Assert.False(snapshot.ForVisibleChannels(new[] { ("1", "healthy") }).Partial);
@@ -123,14 +132,36 @@ namespace Moonfin.Tests
         }
 
         [Fact]
+        public async Task ARestrictedUserCanSeeTheLastChannelOfALargeTuner()
+        {
+            var cache = new ChannelGroupCache();
+            int reads = 0;
+            Task Read(ChannelGroupSnapshot snapshot, CancellationToken token)
+            {
+                reads++;
+                for (var i = 0; i <= 100_000; i++)
+                    snapshot.Add(0, "tuner", $"c{i}", new[] { "Sports" });
+                return Task.CompletedTask;
+            }
+            var token = CancellationToken.None;
+            await cache.GetAsync("1", new[] { "c0" }, Read, token);
+            var last = await cache.GetAsync("1", new[] { "c100000" }, Read, token);
+            var result = last.ForVisibleChannels(new[] { ("visible", "c100000") });
+            Assert.False(result.Partial);
+            Assert.Equal(new[] { "Sports" }, result.Groups["visible"]);
+            Assert.Same(last, await cache.GetAsync("1", new[] { "c100000" }, Read, token));
+            Assert.Equal(2, reads);
+        }
+
+        [Fact]
         public async Task ChannelEditInvalidatesAnInFlightReadAtTheSameGuideRevision()
         {
             var cache = new ChannelGroupCache();
-            var gate = new TaskCompletionSource<ChannelGroupSnapshot>();
-            var old = cache.GetAsync("1", _ => gate.Task, CancellationToken.None);
+            var gate = new TaskCompletionSource<bool>();
+            var old = cache.GetAsync("1", Array.Empty<string>(), (_, _) => gate.Task, CancellationToken.None);
             cache.Clear();
-            gate.SetResult(new ChannelGroupSnapshot());
-            var fresh = await cache.GetAsync("1", _ => Task.FromResult(new ChannelGroupSnapshot()), CancellationToken.None);
+            gate.SetResult(true);
+            var fresh = await cache.GetAsync("1", Array.Empty<string>(), (_, _) => Task.CompletedTask, CancellationToken.None);
             Assert.NotSame(await old, fresh);
         }
 
@@ -139,15 +170,15 @@ namespace Moonfin.Tests
         {
             var cache = new ChannelGroupCache();
             var token = CancellationToken.None;
-            Task<ChannelGroupSnapshot> Read(CancellationToken _) => Task.FromResult(new ChannelGroupSnapshot());
-            var first = await cache.GetAsync("1", Read, token);
-            var next = await cache.GetAsync("2", Read, token);
+            Task Read(ChannelGroupSnapshot snapshot, CancellationToken token) => Task.CompletedTask;
+            var first = await cache.GetAsync("1", Array.Empty<string>(), Read, token);
+            var next = await cache.GetAsync("2", Array.Empty<string>(), Read, token);
             Assert.NotSame(first, next);
             cache.Invalidate(first);
-            Assert.Same(next, await cache.GetAsync("2", Read, token));
+            Assert.Same(next, await cache.GetAsync("2", Array.Empty<string>(), Read, token));
             cache.Invalidate(next);
-            var partial = await cache.GetAsync("2", _ => Task.FromResult(new ChannelGroupSnapshot { Partial = true }), token);
-            Assert.NotSame(partial, await cache.GetAsync("2", Read, token));
+            var partial = await cache.GetAsync("2", Array.Empty<string>(), (s, _) => { s.Partial = true; return Task.CompletedTask; }, token);
+            Assert.NotSame(partial, await cache.GetAsync("2", Array.Empty<string>(), Read, token));
         }
 
         [Fact]
@@ -155,16 +186,16 @@ namespace Moonfin.Tests
         {
             var cache = new ChannelGroupCache();
             var callbacks = 0;
-            var gate = new TaskCompletionSource<ChannelGroupSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
-            Task<ChannelGroupSnapshot> Read(CancellationToken _) { callbacks++; return gate.Task; }
-            await Assert.ThrowsAsync<InvalidOperationException>(() => cache.GetAsync("1",
-                _ => throw new InvalidOperationException(), CancellationToken.None));
-            var first = cache.GetAsync("1", Read, CancellationToken.None);
-            var second = cache.GetAsync("1", Read, CancellationToken.None);
+            var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            Task Read(ChannelGroupSnapshot snapshot, CancellationToken token) { callbacks++; return gate.Task; }
+            await Assert.ThrowsAsync<InvalidOperationException>(() => cache.GetAsync("1", Array.Empty<string>(),
+                (_, _) => throw new InvalidOperationException(), CancellationToken.None));
+            var first = cache.GetAsync("1", Array.Empty<string>(), Read, CancellationToken.None);
+            var second = cache.GetAsync("1", Array.Empty<string>(), Read, CancellationToken.None);
             using var cancelled = new CancellationTokenSource();
             cancelled.Cancel();
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cache.GetAsync("1", Read, cancelled.Token));
-            gate.SetResult(new ChannelGroupSnapshot());
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cache.GetAsync("1", Array.Empty<string>(), Read, cancelled.Token));
+            gate.SetResult(true);
             Assert.Same(await first, await second);
             Assert.Equal(1, callbacks);
         }

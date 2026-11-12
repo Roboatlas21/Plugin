@@ -39,21 +39,19 @@ namespace Moonfin.LiveTv
             if (args.Item is LiveTvChannel) ChannelChanged();
         }
 
-        public void ChannelChanged() => Schedule(true);
-
         private void OnTaskCompleted(object? sender, TaskCompletionEventArgs args)
         {
             if (args.Result.Key == "RefreshGuide")
-                Schedule(args.Result.Status == TaskCompletionStatus.Completed);
+                ChannelChanged();
         }
 
-        private void Schedule(bool changed)
+        public void ChannelChanged()
         {
             lock (_lock)
             {
                 if (_disposed) return;
-                _pending = changed;
-                _timer.Change(changed ? 500 : Timeout.Infinite, Timeout.Infinite);
+                _pending = true;
+                _timer.Change(500, Timeout.Infinite);
             }
         }
 

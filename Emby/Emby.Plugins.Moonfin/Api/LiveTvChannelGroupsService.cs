@@ -48,9 +48,9 @@ namespace Emby.Plugins.Moonfin.Api
 
             var token = Request.CancellationToken;
             var revision = ChannelGroupResult.GetGuideRevision(_tasks);
-            var snapshot = await Cache.GetAsync(revision, ReadTunersAsync, token).ConfigureAwait(false);
             var query = new InternalItemsQuery(user) { EnableTotalRecordCount = false };
             var channels = _manager.GetInternalChannels(query, false, null, token).Items;
+            var snapshot = await Cache.GetAsync(revision, channels.Select(c => c.ExternalId), ReadTunersAsync, token).ConfigureAwait(false);
             var result = snapshot.ForVisibleChannels(channels.Select(c => (c.GetClientId(), c.ExternalId)));
             if (result.Partial) Cache.Invalidate(snapshot);
             try
@@ -91,15 +91,14 @@ namespace Emby.Plugins.Moonfin.Api
             }
         }
 
-        private async Task<ChannelGroupSnapshot> ReadTunersAsync(CancellationToken token)
+        private async Task ReadTunersAsync(ChannelGroupSnapshot result, CancellationToken token)
         {
-            var result = new ChannelGroupSnapshot();
             // Emby 4.9 exposes the registered instances on the manager implementation only.
             // Creating fresh tuner exports would skip the running tuners' caches and configuration.
             if (!(_manager.GetType().GetProperty("TunerHosts")?.GetValue(_manager) is IEnumerable<ITunerHost> tuners))
             {
                 result.Partial = true;
-                return result;
+                return;
             }
 
             var index = 0;
@@ -123,7 +122,6 @@ namespace Emby.Plugins.Moonfin.Api
                     index++;
                 }
             }
-            return result;
         }
     }
 }

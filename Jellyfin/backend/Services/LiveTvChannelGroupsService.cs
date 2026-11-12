@@ -18,8 +18,6 @@ public sealed class LiveTvChannelGroupsService(
 
     internal void Invalidate() => _cache.Clear();
 
-    internal string GetGuideRevision() => ChannelGroupResult.GetGuideRevision(tasks);
-
     internal async Task<ChannelGroupResult> GetAsync(Guid userId, CancellationToken token)
     {
         var revision = ChannelGroupResult.GetGuideRevision(tasks);

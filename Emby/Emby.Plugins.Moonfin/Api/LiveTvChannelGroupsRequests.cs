@@ -7,6 +7,5 @@ namespace Emby.Plugins.Moonfin.Api
     [Authenticated]
     public class GetLiveTvChannelGroups : IReturn<object>
     {
-        public bool GuideRevisionOnly { get; set; }
     }
 }

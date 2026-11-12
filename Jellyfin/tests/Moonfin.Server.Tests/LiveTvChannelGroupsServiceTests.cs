@@ -1,5 +1,7 @@
 using Jellyfin.Data.Entities;
 using Jellyfin.Data.Enums;
+using MediaBrowser.Controller;
+using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LiveTv;
@@ -13,6 +15,70 @@ namespace Moonfin.Server.Tests;
 
 public class LiveTvChannelGroupsServiceTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GuideReadsImportedM3uGroupsEvenWhenAnotherLineupIsUnavailable(bool corruptLineup)
+    {
+        var cache = Directory.CreateTempSubdirectory();
+        try
+        {
+            var lineup = Path.Combine(cache.FullName, "first_channels");
+            File.WriteAllText(lineup, """[{"Id":"sports","ChannelGroup":"Sports"},{"Id":"hidden","ChannelGroup":"Hidden"}]""");
+            if (corruptLineup)
+                File.WriteAllText(Path.Combine(cache.FullName, "second_channels"), """[{"Id":"news","ChannelGroup":"Incomplete"},""");
+
+            var paths = RecordingHostProxy.Create<IServerApplicationPaths>((_, _) => cache.FullName);
+            var options = new LiveTvOptions { TunerHosts = [
+                new() { Id = "first", Type = "m3u" }, new() { Id = "second", Type = "m3u" },
+                new() { Id = "custom", Type = "plugin" }] };
+            var config = RecordingHostProxy.Create<IServerConfigurationManager>((method, _) => method.Name switch
+            {
+                "get_ApplicationPaths" => paths,
+                "GetConfiguration" => options,
+                _ => throw new NotSupportedException(method.Name)
+            });
+            var playlistCalls = 0;
+            var m3u = RecordingHostProxy.Create<ITunerHost>((method, _) =>
+            {
+                if (method.Name == "get_Type") return "m3u";
+                playlistCalls++;
+                throw new InvalidOperationException("Playlist is offline");
+            });
+            var plugin = RecordingHostProxy.Create<ITunerHost>((method, _) => method.Name switch
+            {
+                "get_Type" => "plugin",
+                "GetChannels" => Task.FromResult(new List<ChannelInfo> { new() { TunerHostId = "custom", Id = "radio", ChannelGroup = "Radio" } }),
+                _ => throw new NotSupportedException(method.Name)
+            });
+            var tuners = RecordingHostProxy.Create<ITunerHostManager>((_, _) => new[] { m3u, plugin });
+            var visible = new[] { "sports", "news", "radio" }.Select(id =>
+                new LiveTvChannel { Id = Guid.NewGuid(), ExternalId = id, ServiceName = "Emby" }).ToArray();
+            var liveTv = RecordingHostProxy.Create<ILiveTvManager>((_, _) => new QueryResult<BaseItem> { Items = visible });
+            var user = new User("viewer", "auth", "reset");
+            var users = RecordingHostProxy.Create<IUserManager>((_, _) => user);
+            var library = RecordingHostProxy.Create<ILibraryManager>((_, _) => new QueryResult<BaseItem>());
+            var tasks = RecordingHostProxy.Create<ITaskManager>((_, _) => Array.Empty<IScheduledTaskWorker>());
+            var service = new LiveTvChannelGroupsService(liveTv, tuners, config, library, users, tasks,
+                new NoOpLogger<LiveTvChannelGroupsService>());
+
+            var result = await service.GetAsync(user.Id, CancellationToken.None);
+            Assert.Equal(2, result.Groups.Count);
+            Assert.Equal("Sports", Assert.Single(result.Groups[visible[0].Id.ToString("N")]));
+            Assert.Equal("Radio", Assert.Single(result.Groups[visible[2].Id.ToString("N")]));
+            Assert.Equal(visible[1].Id.ToString("N"), Assert.Single(result.UnresolvedChannelIds!));
+
+            File.WriteAllText(lineup, """[{"Id":"sports","ChannelGroup":"Hockey"}]""");
+            var reload = await service.GetAsync(user.Id, CancellationToken.None);
+            Assert.Equal("Hockey", Assert.Single(reload.Groups[visible[0].Id.ToString("N")]));
+            Assert.Equal(0, playlistCalls);
+        }
+        finally
+        {
+            cache.Delete(true);
+        }
+    }
+
     [Fact]
     public async Task CategoriesUseTheViewersFullScheduleEvenWithoutTunerGroups()
     {

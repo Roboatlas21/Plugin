@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Jellyfin.Data.Enums;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Dto;
@@ -72,17 +73,46 @@ public sealed class LiveTvChannelGroupsService(
     private async Task ReadTunersAsync(ChannelGroupSnapshot result, CancellationToken token)
     {
         var configured = ((LiveTvOptions)config.GetConfiguration("livetv")).TunerHosts;
-        var index = 0;
-        foreach (var tuner in tuners.TunerHosts)
+        // Jellyfin writes one lineup per M3U host during import. Its tuner API can
+        // fetch the playlist again after a restart, even when asked to use the cache.
+        foreach (var host in configured.Where(host => IsM3u(host.Type)))
         {
             token.ThrowIfCancellationRequested();
             try
             {
+                if (string.IsNullOrEmpty(host.Id) || Path.GetFileName(host.Id) != host.Id)
+                {
+                    result.MissingTuner = true;
+                    continue;
+                }
+                var path = Path.Combine(config.ApplicationPaths.CachePath, host.Id + "_channels");
+                using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                var channels = await JsonSerializer.DeserializeAsync<ImportedM3uChannel[]>(stream, cancellationToken: token)
+                    ?? throw new JsonException("Expected an imported channel list");
+                foreach (var channel in channels)
+                    result.Add(0, host.Id, channel?.Id, channel?.ChannelGroup is { } group ? [group] : null);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+            {
+                result.MissingTuner = true;
+                logger.LogDebug("Could not read the imported M3U lineup for tuner {HostId}", host.Id);
+            }
+        }
+
+        var index = 0;
+        foreach (var tuner in tuners.TunerHosts)
+        {
+            index++;
+            token.ThrowIfCancellationRequested();
+            try
+            {
+                var type = tuner.Type;
+                if (IsM3u(type)) continue;
                 var channels = await tuner.GetChannels(true, token);
                 // Jellyfin can return a partial list when one configured host is offline.
                 // An unused tuner type normally returns no channels at all.
                 var responding = channels.Select(channel => channel.TunerHostId).ToHashSet(StringComparer.OrdinalIgnoreCase);
-                if (configured.Any(host => string.Equals(host.Type, tuner.Type, StringComparison.OrdinalIgnoreCase)
+                if (configured.Any(host => string.Equals(host.Type, type, StringComparison.OrdinalIgnoreCase)
                     && !responding.Contains(host.Id)))
                     result.MissingTuner = true;
                 foreach (var channel in channels)
@@ -93,7 +123,10 @@ public sealed class LiveTvChannelGroupsService(
                 result.MissingTuner = true;
                 logger.LogWarning("Could not read channel groups from tuner {Index}", index);
             }
-            index++;
         }
     }
+
+    private static bool IsM3u(string type) => string.Equals(type, "m3u", StringComparison.OrdinalIgnoreCase);
+
+    private sealed record ImportedM3uChannel(string? Id, string? ChannelGroup);
 }

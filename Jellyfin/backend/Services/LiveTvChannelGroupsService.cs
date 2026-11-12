@@ -26,12 +26,15 @@ public sealed class LiveTvChannelGroupsService(
         var visible = liveTv.GetInternalChannels(query, options, token).Items;
         // Registered tuners feed Jellyfin's DefaultLiveTvService, whose service name is "Emby".
         var channels = visible.OfType<LiveTvChannel>()
-            .Where(c => c.ServiceName == "Emby")
+            .Where(c => c.ServiceName == "Emby" && c.ExternalId is { } id
+                && (id.StartsWith("m3u_", StringComparison.Ordinal) || IsNativeXtreamChannel(id)))
             .Select(c => (ClientId: c.Id.ToString("N"), c.ExternalId)).ToArray();
         var result = new ChannelGroupResult();
         if (channels.Length != 0)
         {
-            var snapshot = await _reader.GetAsync(channels.Select(c => c.ExternalId), ReadTunersAsync, token);
+            var hasXtream = channels.Any(c => IsNativeXtreamChannel(c.ExternalId));
+            var snapshot = await _reader.GetAsync(channels.Select(c => c.ExternalId),
+                (groups, ct) => ReadTunersAsync(groups, hasXtream, ct), token);
             result = snapshot.ForVisibleChannels(channels);
         }
         try
@@ -70,7 +73,7 @@ public sealed class LiveTvChannelGroupsService(
         return found.ToArray();
     }
 
-    private async Task ReadTunersAsync(ChannelGroupSnapshot result, CancellationToken token)
+    private async Task ReadTunersAsync(ChannelGroupSnapshot result, bool hasXtream, CancellationToken token)
     {
         var configured = ((LiveTvOptions)config.GetConfiguration("livetv")).TunerHosts;
         // Jellyfin writes one lineup per M3U host during import. Its tuner API can
@@ -99,34 +102,27 @@ public sealed class LiveTvChannelGroupsService(
             }
         }
 
-        var index = 0;
-        foreach (var tuner in tuners.TunerHosts)
+        if (!hasXtream) return;
+        try
         {
-            index++;
-            token.ThrowIfCancellationRequested();
-            try
-            {
-                var type = tuner.Type;
-                if (IsM3u(type)) continue;
-                var channels = await tuner.GetChannels(true, token);
-                // Jellyfin can return a partial list when one configured host is offline.
-                // An unused tuner type normally returns no channels at all.
-                var responding = channels.Select(channel => channel.TunerHostId).ToHashSet(StringComparer.OrdinalIgnoreCase);
-                if (configured.Any(host => string.Equals(host.Type, type, StringComparison.OrdinalIgnoreCase)
-                    && !responding.Contains(host.Id)))
-                    result.MissingTuner = true;
-                foreach (var channel in channels)
-                    result.Add(index, channel.TunerHostId, channel.Id, new[] { channel.ChannelGroup });
-            }
-            catch (Exception) when (!token.IsCancellationRequested)
+            var xtream = tuners.TunerHosts.FirstOrDefault(t => string.Equals(t.Type, "xtream-library", StringComparison.OrdinalIgnoreCase));
+            if (xtream == null)
             {
                 result.MissingTuner = true;
-                logger.LogWarning("Could not read channel groups from tuner {Index}", index);
+                return;
             }
+            foreach (var channel in await xtream.GetChannels(true, token))
+                result.Add(1, channel.TunerHostId, channel.Id, [channel.ChannelGroup]);
+        }
+        catch (Exception) when (!token.IsCancellationRequested)
+        {
+            result.MissingTuner = true;
+            logger.LogWarning("Could not read channel groups from Xtream Library");
         }
     }
 
     private static bool IsM3u(string type) => string.Equals(type, "m3u", StringComparison.OrdinalIgnoreCase);
+    private static bool IsNativeXtreamChannel(string id) => id.StartsWith("xtream_", StringComparison.Ordinal);
 
     private sealed record ImportedM3uChannel(string? Id, string? ChannelGroup);
 }

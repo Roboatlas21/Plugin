@@ -24,35 +24,38 @@ public class LiveTvChannelGroupsServiceTests
         try
         {
             var lineup = Path.Combine(cache.FullName, "first_channels");
-            File.WriteAllText(lineup, """[{"Id":"sports","ChannelGroup":"Sports"},{"Id":"hidden","ChannelGroup":"Hidden"}]""");
+            File.WriteAllText(lineup, """[{"Id":"m3u_sports","ChannelGroup":"Sports"},{"Id":"m3u_hidden","ChannelGroup":"Hidden"}]""");
             if (corruptLineup)
-                File.WriteAllText(Path.Combine(cache.FullName, "second_channels"), """[{"Id":"news","ChannelGroup":"Incomplete"},""");
+                File.WriteAllText(Path.Combine(cache.FullName, "second_channels"), """[{"Id":"m3u_news","ChannelGroup":"Incomplete"},""");
 
             var paths = RecordingHostProxy.Create<IServerApplicationPaths>((_, _) => cache.FullName);
             var options = new LiveTvOptions { TunerHosts = [
                 new() { Id = "first", Type = "m3u" }, new() { Id = "second", Type = "m3u" },
-                new() { Id = "custom", Type = "plugin" }] };
+                new() { Id = "native", Type = "xtream-library" }] };
             var config = RecordingHostProxy.Create<IServerConfigurationManager>((method, _) => method.Name switch
             {
                 "get_ApplicationPaths" => paths,
                 "GetConfiguration" => options,
                 _ => throw new NotSupportedException(method.Name)
             });
-            var playlistCalls = 0;
-            var m3u = RecordingHostProxy.Create<ITunerHost>((method, _) =>
+            var unrelatedCalls = 0;
+            ITunerHost UnrelatedTuner(string type) => RecordingHostProxy.Create<ITunerHost>((method, _) =>
             {
-                if (method.Name == "get_Type") return "m3u";
-                playlistCalls++;
-                throw new InvalidOperationException("Playlist is offline");
+                if (method.Name == "get_Type") return type;
+                unrelatedCalls++;
+                throw new InvalidOperationException("Tuner is offline");
             });
-            var plugin = RecordingHostProxy.Create<ITunerHost>((method, _) => method.Name switch
+            var xtreamCalls = 0;
+            var xtream = RecordingHostProxy.Create<ITunerHost>((method, args) =>
             {
-                "get_Type" => "plugin",
-                "GetChannels" => Task.FromResult(new List<ChannelInfo> { new() { TunerHostId = "custom", Id = "radio", ChannelGroup = "Radio" } }),
-                _ => throw new NotSupportedException(method.Name)
+                if (method.Name == "get_Type") return "xtream-library";
+                Assert.Equal("GetChannels", method.Name);
+                Assert.Equal(true, args![0]);
+                xtreamCalls++;
+                return Task.FromResult(new List<ChannelInfo> { new() { TunerHostId = "xtream-library", Id = "xtream_42", ChannelGroup = "Radio" } });
             });
-            var tuners = RecordingHostProxy.Create<ITunerHostManager>((_, _) => new[] { m3u, plugin });
-            var visible = new[] { "sports", "news", "radio" }.Select(id =>
+            var tuners = RecordingHostProxy.Create<ITunerHostManager>((_, _) => new[] { UnrelatedTuner("m3u"), UnrelatedTuner("hdhomerun"), xtream });
+            var visible = new[] { "m3u_sports", "m3u_news", "xtream_42", "hdhr_8" }.Select(id =>
                 new LiveTvChannel { Id = Guid.NewGuid(), ExternalId = id, ServiceName = "Emby" }).ToArray();
             var liveTv = RecordingHostProxy.Create<ILiveTvManager>((_, _) => new QueryResult<BaseItem> { Items = visible });
             var user = new User("viewer", "auth", "reset");
@@ -68,10 +71,12 @@ public class LiveTvChannelGroupsServiceTests
             Assert.Equal("Radio", Assert.Single(result.Groups[visible[2].Id.ToString("N")]));
             Assert.Equal(visible[1].Id.ToString("N"), Assert.Single(result.UnresolvedChannelIds!));
 
-            File.WriteAllText(lineup, """[{"Id":"sports","ChannelGroup":"Hockey"}]""");
+            visible = visible.Where(c => c.ExternalId != "xtream_42").ToArray();
+            File.WriteAllText(lineup, """[{"Id":"m3u_sports","ChannelGroup":"Hockey"}]""");
             var reload = await service.GetAsync(user.Id, CancellationToken.None);
             Assert.Equal("Hockey", Assert.Single(reload.Groups[visible[0].Id.ToString("N")]));
-            Assert.Equal(0, playlistCalls);
+            Assert.Equal(1, xtreamCalls);
+            Assert.Equal(0, unrelatedCalls);
         }
         finally
         {

@@ -11,7 +11,6 @@ namespace Moonfin.LiveTv
 {
     internal sealed class ChannelGroupResult
     {
-        [JsonPropertyName("version")] public int Version => 2;
         [JsonPropertyName("supported")] public bool Supported => Groups.Count != 0;
         [JsonPropertyName("partial")] public bool Partial { get; set; }
         [JsonIgnore]

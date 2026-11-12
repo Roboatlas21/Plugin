@@ -52,9 +52,9 @@ namespace Moonfin.LiveTv
 
         // Only an authoritative read can clear a previous conflict. A restricted
         // user can resolve only IDs present in their own lineup.
-        public void UpdateConflicts(HashSet<string> known)
+        public void UpdateConflicts(HashSet<string> known, bool preserveKnown = false)
         {
-            if (MissingTuner)
+            if (MissingTuner || preserveKnown)
                 _ambiguous.UnionWith(known.Where(_visibleIds.Contains));
             else
                 known.ExceptWith(_visibleIds);
@@ -63,6 +63,8 @@ namespace Moonfin.LiveTv
 
         public ChannelGroupSnapshot(IEnumerable<string> visibleIds) =>
             _visibleIds = new HashSet<string>(visibleIds, StringComparer.OrdinalIgnoreCase);
+
+        public bool IsVisible(string id) => _visibleIds.Contains(id);
 
         public bool Covers(IEnumerable<string> visibleIds) => _visibleIds.IsSupersetOf(visibleIds);
 

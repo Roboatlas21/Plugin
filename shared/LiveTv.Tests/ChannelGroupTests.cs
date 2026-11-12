@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -121,6 +122,21 @@ namespace Moonfin.Tests
             Assert.Equal("Movies", duringOutage.Groups["2"].Single());
             otherRemoved = true;
             Assert.Equal("Sports", (await Open()).Groups["1"].Single());
+        }
+
+        [Fact]
+        public void AnOverlappingReadPreservesACollisionUntilTheNextCompleteRead()
+        {
+            var conflicts = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "shared" };
+            ChannelGroupResult Read(bool overlapping)
+            {
+                var snapshot = new ChannelGroupSnapshot(new[] { "shared" });
+                snapshot.Add(0, "A", "shared", new[] { "Sports" });
+                snapshot.UpdateConflicts(conflicts, preserveKnown: overlapping);
+                return snapshot.ForVisibleChannels(new[] { ("1", "shared") });
+            }
+            Assert.Empty(Read(true).Groups);
+            Assert.Equal("Sports", Read(false).Groups["1"].Single());
         }
 
         [Fact]

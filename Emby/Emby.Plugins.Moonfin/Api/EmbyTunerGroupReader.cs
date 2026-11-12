@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -13,7 +14,11 @@ namespace Emby.Plugins.Moonfin.Api
 {
     internal static class EmbyTunerGroupReader
     {
-        public static async Task<List<ChannelInfo>> GetChannelsAsync(ITunerHost tuner, TunerHostInfo host, CancellationToken token, Action<string>? unresolved = null)
+        // A parser that ignores cancellation must finish before this source can be opened again.
+        private static readonly ConcurrentDictionary<(ITunerHost, string), byte> Reading = new();
+
+        public static async Task<List<ChannelInfo>> GetChannelsAsync(ITunerHost tuner, TunerHostInfo host,
+            CancellationToken token, CancellationToken playlistDeadline, Func<string, bool> isVisible, Action<string> unresolved)
         {
             var imported = await tuner.GetChannels(host, token).ConfigureAwait(false);
             if (imported.Count == 0 || tuner.Type != "m3u" || string.IsNullOrWhiteSpace(host.ProviderOptions))
@@ -23,39 +28,31 @@ namespace Emby.Plugins.Moonfin.Api
             var additional = options?["AdditionalTags"]?.Deserialize<string[]>();
             if (additional == null || additional.Length == 0) return imported;
 
-            var playlistOptions = options!.AsObject();
-            playlistOptions.Remove("AdditionalTags");
-            var required = playlistOptions["RequiredTags"]?.Deserialize<string[]>();
-            // Emby accepts a channel matching ANY required tag. A tuner-wide match admitted every entry.
-            if (required != null && required.Intersect(additional, StringComparer.OrdinalIgnoreCase).Any())
-                playlistOptions.Remove("RequiredTags");
-
-            var playlistHost = JsonSerializer.Deserialize<TunerHostInfo>(JsonSerializer.Serialize(host))!;
-            playlistHost.ProviderOptions = playlistOptions.ToJsonString();
-
-            // GetChannels reads the merged tag cache. RefreshChannels would overwrite that cache.
-            // Call the built-in tuner's read-only parser so Emby also handles channel IDs and playlist syntax.
             var comparer = StringComparer.OrdinalIgnoreCase;
             var tunerTags = new HashSet<string>(additional, comparer);
             var playlist = new Dictionary<string, List<string>>(StringComparer.Ordinal);
-            try
+            if (!playlistDeadline.IsCancellationRequested && imported.Any(c =>
+                isVisible(c.Id) && (c.Tags?.Any(tunerTags.Contains) ?? false)))
             {
-                var parser = tuner.GetType().GetMethod("GetChannelsInternal", BindingFlags.Instance | BindingFlags.NonPublic,
-                    null, new[] { typeof(TunerHostInfo), typeof(CancellationToken) }, null)
-                    ?? throw new MissingMethodException(tuner.GetType().Name, "GetChannelsInternal");
-                var read = (Func<TunerHostInfo, CancellationToken, Task<List<ChannelInfo>>>)parser.CreateDelegate(
-                    typeof(Func<TunerHostInfo, CancellationToken, Task<List<ChannelInfo>>>), tuner);
-                foreach (var entry in await read(playlistHost, token).ConfigureAwait(false))
+                var key = (tuner, host.Id ?? host.Url ?? string.Empty);
+                if (Reading.TryAdd(key, 0))
                 {
-                    if (!playlist.TryGetValue(entry.Id, out var labels)) playlist[entry.Id] = labels = new List<string>();
-                    labels.AddRange(entry.Tags ?? Array.Empty<string>());
+                    var pending = Task.Run(() => ReadPlaylistAsync(key, host, options!.AsObject(), tunerTags, playlistDeadline));
+                    var expired = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    using (playlistDeadline.Register(() => expired.TrySetResult(true)))
+                    {
+                        if (await Task.WhenAny(pending, expired.Task).ConfigureAwait(false) == pending)
+                        {
+                            foreach (var entry in await pending.ConfigureAwait(false))
+                            {
+                                if (!playlist.TryGetValue(entry.Id, out var labels)) playlist[entry.Id] = labels = new List<string>();
+                                labels.AddRange(entry.Tags ?? Array.Empty<string>());
+                            }
+                        }
+                    }
                 }
             }
-            catch (Exception) when (!token.IsCancellationRequested)
-            {
-                // The imported lineup still contains every unambiguous group.
-                playlist.Clear();
-            }
+            token.ThrowIfCancellationRequested();
 
             var result = new List<ChannelInfo>(imported.Count);
             foreach (var channel in imported)
@@ -65,10 +62,40 @@ namespace Emby.Plugins.Moonfin.Api
                 if (playlist.TryGetValue(channel.Id, out var labels))
                     groups.AddRange(labels.Where(label => tunerTags.Contains(label) && tags.Contains(label, comparer)));
                 else if (groups.Count != tags.Length)
-                    unresolved?.Invoke(channel.Id);
+                    unresolved(channel.Id);
                 result.Add(new ChannelInfo { Id = channel.Id, Tags = groups.ToArray() });
             }
             return result;
+        }
+
+        private static async Task<List<ChannelInfo>> ReadPlaylistAsync((ITunerHost Tuner, string Id) key,
+            TunerHostInfo host, JsonObject options, HashSet<string> tunerTags, CancellationToken token)
+        {
+            try
+            {
+                token.ThrowIfCancellationRequested();
+                options.Remove("AdditionalTags");
+                // A tuner-wide match admitted every entry even if other tags were required.
+                var required = options["RequiredTags"]?.Deserialize<string[]>();
+                if (required?.Any(tunerTags.Contains) == true) options.Remove("RequiredTags");
+                var playlistHost = JsonSerializer.Deserialize<TunerHostInfo>(JsonSerializer.Serialize(host))!;
+                playlistHost.ProviderOptions = options.ToJsonString();
+
+                // Emby's read-only parser preserves native channel IDs without replacing the imported cache.
+                var tuner = key.Tuner;
+                var parser = tuner.GetType().GetMethod("GetChannelsInternal", BindingFlags.Instance | BindingFlags.NonPublic,
+                    null, new[] { typeof(TunerHostInfo), typeof(CancellationToken) }, null)
+                    ?? throw new MissingMethodException(tuner.GetType().Name, "GetChannelsInternal");
+                var read = (Func<TunerHostInfo, CancellationToken, Task<List<ChannelInfo>>>)parser.CreateDelegate(
+                    typeof(Func<TunerHostInfo, CancellationToken, Task<List<ChannelInfo>>>), tuner);
+                return await read(playlistHost, token).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // Even after timeout, observe parser failures and retain unambiguous imported groups.
+                return new List<ChannelInfo>();
+            }
+            finally { Reading.TryRemove(key, out _); }
         }
     }
 }

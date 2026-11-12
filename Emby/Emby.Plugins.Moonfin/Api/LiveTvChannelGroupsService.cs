@@ -17,7 +17,8 @@ namespace Emby.Plugins.Moonfin.Api
 {
     public sealed class LiveTvChannelGroupsService : IService, IRequiresRequest, IHasResultFactory
     {
-        private static readonly ChannelGroupReader Reader = new ChannelGroupReader();
+        private static readonly HashSet<string> Conflicts = new(StringComparer.OrdinalIgnoreCase);
+        private static int _completedReads;
         private readonly ILiveTvManager _manager;
         private readonly ILibraryManager _library;
         private readonly ITaskManager _tasks;
@@ -52,7 +53,7 @@ namespace Emby.Plugins.Moonfin.Api
             var result = new ChannelGroupResult();
             if (channels.Length != 0)
             {
-                var snapshot = await Reader.GetAsync(channels.Select(c => c.ExternalId), ReadTunersAsync, token).ConfigureAwait(false);
+                var snapshot = await ReadTunersAsync(channels.Select(c => c.ExternalId), token).ConfigureAwait(false);
                 result = snapshot.ForVisibleChannels(channels.Select(c => (c.GetClientId(), c.ExternalId)));
             }
             try
@@ -93,7 +94,22 @@ namespace Emby.Plugins.Moonfin.Api
             }
         }
 
-        private async Task ReadTunersAsync(ChannelGroupSnapshot result, CancellationToken token)
+        internal async Task<ChannelGroupSnapshot> ReadTunersAsync(IEnumerable<string> visibleIds, CancellationToken token)
+        {
+            var revision = Volatile.Read(ref _completedReads);
+            var result = new ChannelGroupSnapshot(visibleIds);
+            await ReadHostsAsync(result, token).ConfigureAwait(false);
+            token.ThrowIfCancellationRequested();
+            lock (Conflicts)
+            {
+                // An older snapshot cannot clear a collision found by an overlapping guide read.
+                result.UpdateConflicts(Conflicts, preserveKnown: revision != _completedReads);
+                _completedReads++;
+            }
+            return result;
+        }
+
+        private async Task ReadHostsAsync(ChannelGroupSnapshot result, CancellationToken token)
         {
             // Emby 4.9 exposes the registered instances on the manager implementation only.
             // Creating fresh tuner exports would skip the running tuners' caches and configuration.
@@ -103,6 +119,8 @@ namespace Emby.Plugins.Moonfin.Api
                 return;
             }
 
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(3));
             var index = 0;
             foreach (var tuner in tuners)
             {
@@ -112,7 +130,8 @@ namespace Emby.Plugins.Moonfin.Api
                     try
                     {
                         var uncertain = new HashSet<string>(StringComparer.Ordinal);
-                        var channels = await EmbyTunerGroupReader.GetChannelsAsync(tuner, host, token, id => uncertain.Add(id)).ConfigureAwait(false);
+                        var channels = await EmbyTunerGroupReader.GetChannelsAsync(
+                            tuner, host, token, deadline.Token, result.IsVisible, id => uncertain.Add(id)).ConfigureAwait(false);
                         if (channels.Count == 0) result.MissingTuner = true;
                         foreach (var channel in channels)
                             result.Add(index, host.Id, channel.Id, channel.Tags, uncertain.Contains(channel.Id));

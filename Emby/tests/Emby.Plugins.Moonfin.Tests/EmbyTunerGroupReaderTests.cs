@@ -24,7 +24,8 @@ public class EmbyTunerGroupReaderTests
         var original = host.ProviderOptions;
         probe.Imported.AddRange(new[] { Channel("1", "Sports", "Household"), Channel("2", "Household"), Channel("3", "Household") });
         probe.Playlist.AddRange(new[] { Channel("1", "Sports"), Channel("2", "Household"), Channel("3"), Channel("new", "News") });
-        var channels = await EmbyTunerGroupReader.GetChannelsAsync(tuner, host, CancellationToken.None);
+        var channels = await EmbyTunerGroupReader.GetChannelsAsync(
+            tuner, host, CancellationToken.None, CancellationToken.None, _ => true, _ => { });
 
         Assert.Equal(new[] { "1", "2", "3" }, channels.Select(c => c.Id));
         Assert.Equal(new[] { "Sports" }, channels[0].Tags);
@@ -53,7 +54,8 @@ public class EmbyTunerGroupReaderTests
         probe.Imported.Add(Channel("1", "Sports"));
         var host = new TunerHostInfo { ProviderOptions = options };
 
-        Assert.Same(probe.Imported, await EmbyTunerGroupReader.GetChannelsAsync(tuner, host, CancellationToken.None));
+        Assert.Same(probe.Imported, await EmbyTunerGroupReader.GetChannelsAsync(
+            tuner, host, CancellationToken.None, CancellationToken.None, _ => true, _ => { }));
         Assert.Null(probe.ReadHost);
     }
 
@@ -66,16 +68,62 @@ public class EmbyTunerGroupReaderTests
         probe.Imported.Add(Channel("1", "Sports", "Household"));
         var unresolved = new List<string>();
         var host = new TunerHostInfo { ProviderOptions = """{"AdditionalTags":["Household"]}""" };
-        var result = await EmbyTunerGroupReader.GetChannelsAsync(tuner, host, CancellationToken.None, unresolved.Add);
+        var result = await EmbyTunerGroupReader.GetChannelsAsync(
+            tuner, host, CancellationToken.None, CancellationToken.None, _ => true, unresolved.Add);
         Assert.Equal(new[] { "Sports" }, result.Single().Tags);
         Assert.Equal(new[] { "1" }, unresolved);
         Assert.Equal(new[] { "Sports", "Household" }, probe.Imported.Single().Tags);
+    }
+
+    [Fact]
+    public async Task UnrelatedViewerSkipsPlaylistAndExpiredReadRetainsKnownGroups()
+    {
+        var tuner = DispatchProxy.Create<ITunerHost, Tuner>();
+        var probe = (Tuner)tuner;
+        probe.Imported.Add(Channel("slow", "Sports", "Household"));
+        probe.Pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var host = new TunerHostInfo { Id = "slow-host", ProviderOptions = """{"AdditionalTags":["Household"]}""" };
+        using var deadline = new CancellationTokenSource();
+        var missing = new List<string>();
+        var mixed = EmbyTunerGroupReader.GetChannelsAsync(tuner, host, CancellationToken.None,
+            deadline.Token, _ => true, missing.Add);
+        await probe.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        try
+        {
+            var restricted = await EmbyTunerGroupReader.GetChannelsAsync(tuner, host, CancellationToken.None,
+                CancellationToken.None, id => id == "healthy", _ => { });
+            Assert.DoesNotContain("Household", restricted.Single().Tags);
+            deadline.Cancel();
+            var fallback = await mixed.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.Equal(new[] { "Sports" }, fallback.Single().Tags);
+            Assert.Equal(new[] { "slow" }, missing);
+            var again = await EmbyTunerGroupReader.GetChannelsAsync(tuner, host, CancellationToken.None,
+                CancellationToken.None, _ => true, _ => { });
+            Assert.Equal(new[] { "Sports" }, again.Single().Tags);
+            Assert.Equal(1, probe.ReadCount);
+        }
+        finally { probe.Pending.TrySetResult(probe.Playlist); }
+    }
+
+    [Fact]
+    public async Task SkipsParserWhenOnlyOtherViewersHaveAmbiguousTags()
+    {
+        var tuner = DispatchProxy.Create<ITunerHost, Tuner>();
+        var probe = (Tuner)tuner;
+        probe.Imported.AddRange(new[] { Channel("healthy", "Sports"), Channel("slow", "Household") });
+        var host = new TunerHostInfo { ProviderOptions = """{"AdditionalTags":["Household"]}""" };
+        await EmbyTunerGroupReader.GetChannelsAsync(tuner, host, CancellationToken.None,
+            CancellationToken.None, id => id == "healthy", _ => { });
+        Assert.Equal(0, probe.ReadCount);
     }
 
     private static ChannelInfo Channel(string id, params string[] tags) => new() { Id = id, Tags = tags };
 
     public class Tuner : DispatchProxy
     {
+        public TaskCompletionSource<List<ChannelInfo>>? Pending { get; set; }
+        public TaskCompletionSource<bool> Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int ReadCount { get; private set; }
         public bool Offline { get; set; }
         public string Type { get; set; } = "m3u";
         public List<ChannelInfo> Imported { get; } = new();
@@ -94,7 +142,9 @@ public class EmbyTunerGroupReaderTests
             token.ThrowIfCancellationRequested();
             if (Offline) throw new FileNotFoundException();
             ReadHost = host;
-            return Task.FromResult(Playlist);
+            ReadCount++;
+            Started.TrySetResult(true);
+            return Pending?.Task ?? Task.FromResult(Playlist);
         }
     }
 }

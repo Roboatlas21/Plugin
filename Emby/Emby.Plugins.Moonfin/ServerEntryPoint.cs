@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LiveTv;
@@ -27,6 +28,7 @@ namespace Emby.Plugins.Moonfin
         private Services.CalendarReminderNotifier? _calendarReminders;
         private Services.DefaultHiddenLibraries? _hiddenLibraries;
         private Services.EmbyLiveTvRecordingHost? _recordingHost;
+        private IConfigurationManager? _configuration;
         private LiveTvGuideChanges? _guideChanges;
         private IncompleteRecordingWatcher? _recordingWatcher;
         private CancellationTokenSource? _recordingStop;
@@ -61,6 +63,11 @@ namespace Emby.Plugins.Moonfin
                 plugin.SettingsService?.BroadcastSystemEvent("liveTvGuideChanged");
                 return Task.CompletedTask;
             }, ex => _logManager.GetLogger("Moonfin").ErrorException("Could not notify clients of a Live TV guide update", ex));
+
+            // Emby writes channel disable/order changes to Live TV configuration.
+            // Disabling a channel can bypass both the library event and the guide task.
+            _configuration = _appHost.Resolve<IConfigurationManager>();
+            _configuration.NamedConfigurationUpdated += OnConfigurationUpdated;
 
             // New-media notifications: ItemAdded -> coalesced websocket + push fan-out.
             var pushDelivery = plugin.PushDelivery;
@@ -122,6 +129,12 @@ namespace Emby.Plugins.Moonfin
             }
         }
 
+        private void OnConfigurationUpdated(object? sender, ConfigurationUpdateEventArgs args)
+        {
+            if (string.Equals(args.Key, "livetv", StringComparison.OrdinalIgnoreCase))
+                _guideChanges?.ChannelChanged();
+        }
+
         private void StartGameArtwork(Plugin plugin)
         {
             var artwork = plugin.GameArtwork;
@@ -169,6 +182,7 @@ namespace Emby.Plugins.Moonfin
             _hiddenLibraries?.Dispose();
             PluginServices.HiddenLibraries = null;
 
+            if (_configuration != null) _configuration.NamedConfigurationUpdated -= OnConfigurationUpdated;
             _guideChanges?.Dispose();
             _recordingStop?.Cancel();
             _recordingHost?.Dispose();

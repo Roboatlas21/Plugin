@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using MediaBrowser.Model.Tasks;
 
 namespace Moonfin.LiveTv
 {
@@ -18,6 +19,26 @@ namespace Moonfin.LiveTv
         // including channels that the tuner confirmed have no group.
         [JsonPropertyName("unresolvedChannelIds"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public List<string>? UnresolvedChannelIds { get; set; }
+
+        [JsonPropertyName("programmeCategories"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string[]? ProgrammeCategories { get; private set; }
+
+        // Sample only during this request. A guide import may replace both the channels and their listings.
+        public static long? StableImportTime(ITaskManager tasks)
+        {
+            var import = tasks.ScheduledTasks.FirstOrDefault(t => t.ScheduledTask.Key == "RefreshGuide");
+            var last = import?.LastExecutionResult;
+            if (import != null && (import.State != TaskState.Idle || (last != null && last.Status != TaskCompletionStatus.Completed)))
+                return null;
+            return last?.EndTimeUtc.Ticks ?? 0;
+        }
+
+        public void ReadProgrammeCategories(ITaskManager tasks, long? importTime, Func<string[]> read)
+        {
+            if (!importTime.HasValue || StableImportTime(tasks) != importTime) return;
+            var categories = read();
+            if (StableImportTime(tasks) == importTime) ProgrammeCategories = categories;
+        }
     }
 
     internal sealed class ChannelGroupSnapshot

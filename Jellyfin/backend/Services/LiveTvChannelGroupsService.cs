@@ -1,19 +1,25 @@
+using Jellyfin.Data.Enums;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Dto;
+using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LiveTv;
 using MediaBrowser.Model.LiveTv;
+using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Logging;
 using Moonfin.LiveTv;
 
 namespace Moonfin.Server.Services;
 
 public sealed class LiveTvChannelGroupsService(
-    ILiveTvManager liveTv, ITunerHostManager tuners, IServerConfigurationManager config, ILogger<LiveTvChannelGroupsService> logger)
+    ILiveTvManager liveTv, ITunerHostManager tuners, IServerConfigurationManager config,
+    ILibraryManager library, IUserManager users, ITaskManager tasks, ILogger<LiveTvChannelGroupsService> logger)
 {
     private readonly ChannelGroupReader _reader = new();
 
     internal async Task<ChannelGroupResult> GetAsync(Guid userId, CancellationToken token)
     {
+        var importTime = ChannelGroupResult.StableImportTime(tasks);
         var query = new LiveTvChannelQuery { UserId = userId, AddCurrentProgram = false };
         var options = new DtoOptions(false) { EnableImages = false, EnableUserData = false, AddCurrentProgram = false };
         var visible = liveTv.GetInternalChannels(query, options, token).Items;
@@ -21,9 +27,46 @@ public sealed class LiveTvChannelGroupsService(
         var channels = visible.OfType<LiveTvChannel>()
             .Where(c => c.ServiceName == "Emby")
             .Select(c => (ClientId: c.Id.ToString("N"), c.ExternalId)).ToArray();
-        if (channels.Length == 0) return new ChannelGroupResult();
-        var snapshot = await _reader.GetAsync(channels.Select(c => c.ExternalId), ReadTunersAsync, token);
-        return snapshot.ForVisibleChannels(channels);
+        var result = new ChannelGroupResult();
+        if (channels.Length != 0)
+        {
+            var snapshot = await _reader.GetAsync(channels.Select(c => c.ExternalId), ReadTunersAsync, token);
+            result = snapshot.ForVisibleChannels(channels);
+        }
+        try
+        {
+            result.ReadProgrammeCategories(tasks, importTime, () => ReadCategories(userId, visible.Select(c => c.Id).ToArray(), token));
+        }
+        catch (Exception ex) when (!token.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "Could not read guide programme categories");
+        }
+        return result;
+    }
+
+    private string[] ReadCategories(Guid userId, Guid[] channelIds, CancellationToken token)
+    {
+        if (channelIds.Length == 0) return [];
+        // Jellyfin moved the User type between 10.10 and 10.11. Bind the user-scoped
+        // query constructor at runtime so both versions apply parental restrictions.
+        var user = typeof(IUserManager).GetMethod(nameof(IUserManager.GetUserById), [typeof(Guid)])?.Invoke(users, [userId])
+            ?? throw new InvalidOperationException("Guide user is unavailable");
+        var query = (InternalItemsQuery)Activator.CreateInstance(typeof(InternalItemsQuery), user)!;
+        query.IncludeItemTypes = [BaseItemKind.LiveTvProgram];
+        query.ChannelIds = channelIds;
+        query.Limit = 1;
+        query.EnableTotalRecordCount = false;
+
+        // The Jellyfin guide importer writes these tags on the programme itself.
+        var found = new List<string>();
+        foreach (var (key, tag) in new[] { ("movies", "Movie"), ("series", "Series"), ("sports", "Sports"),
+                                           ("news", "News"), ("kids", "Kids"), ("premiere", "Premiere") })
+        {
+            token.ThrowIfCancellationRequested();
+            query.Tags = [tag];
+            if (library.GetItemsResult(query).Items.Count != 0) found.Add(key);
+        }
+        return found.ToArray();
     }
 
     private async Task ReadTunersAsync(ChannelGroupSnapshot result, CancellationToken token)

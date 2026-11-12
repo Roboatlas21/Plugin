@@ -101,6 +101,8 @@ public class LiveTvChannelGroupsServiceTests
         });
         var reads = 0;
         var tagWithListings = "Sports";
+        var lastImport = new TaskResult { Status = TaskCompletionStatus.Cancelled, EndTimeUtc = DateTime.UtcNow };
+        var importFinishesDuringRead = false;
         var library = RecordingHostProxy.Create<ILibraryManager>((_, args) =>
         {
             var query = (InternalItemsQuery)args![0]!;
@@ -111,6 +113,8 @@ public class LiveTvChannelGroupsServiceTests
             Assert.Null(query.MaxEndDate);
             Assert.Equal(1, query.Limit);
             reads++;
+            if (importFinishesDuringRead && Assert.Single(query.Tags) == "Movie")
+                lastImport.EndTimeUtc = lastImport.EndTimeUtc.AddSeconds(1);
             return new QueryResult<BaseItem> { Items = Assert.Single(query.Tags) == tagWithListings ? [new LiveTvProgram()] : [] };
         });
         var task = RecordingHostProxy.Create<IScheduledTask>((_, _) => "RefreshGuide");
@@ -119,7 +123,7 @@ public class LiveTvChannelGroupsServiceTests
         {
             "get_ScheduledTask" => task,
             "get_State" => state,
-            "get_LastExecutionResult" => null,
+            "get_LastExecutionResult" => lastImport,
             _ => throw new NotSupportedException(method.Name)
         });
         var tasks = RecordingHostProxy.Create<ITaskManager>((_, _) => new[] { worker });
@@ -133,8 +137,10 @@ public class LiveTvChannelGroupsServiceTests
         Assert.Equal(new[] { "news" }, (await service.GetAsync(user.Id, CancellationToken.None)).ProgrammeCategories);
         tagWithListings = "";
         Assert.Empty((await service.GetAsync(user.Id, CancellationToken.None)).ProgrammeCategories!);
+        importFinishesDuringRead = true;
+        Assert.Null((await service.GetAsync(user.Id, CancellationToken.None)).ProgrammeCategories);
         state = TaskState.Running;
         Assert.Null((await service.GetAsync(user.Id, CancellationToken.None)).ProgrammeCategories);
-        Assert.Equal(18, reads);
+        Assert.Equal(24, reads);
     }
 }

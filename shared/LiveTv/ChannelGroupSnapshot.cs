@@ -27,10 +27,9 @@ namespace Moonfin.LiveTv
         public static long? StableImportTime(ITaskManager tasks)
         {
             var import = tasks.ScheduledTasks.FirstOrDefault(t => t.ScheduledTask.Key == "RefreshGuide");
-            var last = import?.LastExecutionResult;
-            if (import != null && (import.State != TaskState.Idle || (last != null && last.Status != TaskCompletionStatus.Completed)))
+            if (import != null && import.State != TaskState.Idle)
                 return null;
-            return last?.EndTimeUtc.Ticks ?? 0;
+            return import?.LastExecutionResult?.EndTimeUtc.Ticks ?? 0;
         }
 
         public void ReadProgrammeCategories(ITaskManager tasks, long? importTime, Func<string[]> read)

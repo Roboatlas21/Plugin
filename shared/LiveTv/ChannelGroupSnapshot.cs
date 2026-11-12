@@ -101,6 +101,12 @@ namespace Moonfin.LiveTv
         public ChannelGroupResult ForVisibleChannels(IEnumerable<(string ClientId, string ExternalId)> channels)
         {
             var result = new ChannelGroupResult();
+            AddVisibleChannelsTo(result, channels);
+            return result;
+        }
+
+        public void AddVisibleChannelsTo(ChannelGroupResult result, IEnumerable<(string ClientId, string ExternalId)> channels)
+        {
             foreach (var channel in channels)
             {
                 if (string.IsNullOrEmpty(channel.ExternalId) || _ambiguous.Contains(channel.ExternalId) ||
@@ -123,7 +129,6 @@ namespace Moonfin.LiveTv
                 if (source.Groups.Count > 0)
                     result.Groups[channel.ClientId] = source.Groups.OrderBy(x => x, StringComparer.Ordinal).ToArray();
             }
-            return result;
         }
     }
 

@@ -8,6 +8,7 @@ using MediaBrowser.Controller.LiveTv;
 using MediaBrowser.Model.LiveTv;
 using MediaBrowser.Model.Querying;
 using MediaBrowser.Model.Tasks;
+using Microsoft.Extensions.Hosting;
 using Moonfin.Server.Services;
 using Xunit;
 
@@ -28,16 +29,6 @@ public class LiveTvChannelGroupsServiceTests
             if (corruptLineup)
                 File.WriteAllText(Path.Combine(cache.FullName, "second_channels"), """[{"Id":"m3u_news","ChannelGroup":"Incomplete"},""");
 
-            var paths = RecordingHostProxy.Create<IServerApplicationPaths>((_, _) => cache.FullName);
-            var options = new LiveTvOptions { TunerHosts = [
-                new() { Id = "first", Type = "m3u" }, new() { Id = "second", Type = "m3u" },
-                new() { Id = "native", Type = "xtream-library" }] };
-            var config = RecordingHostProxy.Create<IServerConfigurationManager>((method, _) => method.Name switch
-            {
-                "get_ApplicationPaths" => paths,
-                "GetConfiguration" => options,
-                _ => throw new NotSupportedException(method.Name)
-            });
             var unrelatedCalls = 0;
             ITunerHost UnrelatedTuner(string type) => RecordingHostProxy.Create<ITunerHost>((method, _) =>
             {
@@ -54,27 +45,23 @@ public class LiveTvChannelGroupsServiceTests
                 xtreamCalls++;
                 return Task.FromResult(new List<ChannelInfo> { new() { TunerHostId = "xtream-library", Id = "xtream_42", ChannelGroup = "Radio" } });
             });
-            var tuners = RecordingHostProxy.Create<ITunerHostManager>((_, _) => new[] { UnrelatedTuner("m3u"), UnrelatedTuner("hdhomerun"), xtream });
             var visible = new[] { "m3u_sports", "m3u_news", "xtream_42", "hdhr_8" }.Select(id =>
                 new LiveTvChannel { Id = Guid.NewGuid(), ExternalId = id, ServiceName = "Emby" }).ToArray();
-            var liveTv = RecordingHostProxy.Create<ILiveTvManager>((_, _) => new QueryResult<BaseItem> { Items = visible });
-            var user = new User("viewer", "auth", "reset");
-            var users = RecordingHostProxy.Create<IUserManager>((_, _) => user);
-            var library = RecordingHostProxy.Create<ILibraryManager>((_, _) => new QueryResult<BaseItem>());
-            var tasks = RecordingHostProxy.Create<ITaskManager>((_, _) => Array.Empty<IScheduledTaskWorker>());
-            var service = new LiveTvChannelGroupsService(liveTv, tuners, config, library, users, tasks,
-                new NoOpLogger<LiveTvChannelGroupsService>());
+            var service = CreateGroupService(cache.FullName, [UnrelatedTuner("m3u"), UnrelatedTuner("hdhomerun"), xtream], _ => visible);
 
-            var result = await service.GetAsync(user.Id, CancellationToken.None);
+            var userId = Guid.NewGuid();
+            var result = await service.GetAsync(userId, CancellationToken.None);
             Assert.Equal(2, result.Groups.Count);
             Assert.Equal("Sports", Assert.Single(result.Groups[visible[0].Id.ToString("N")]));
             Assert.Equal("Radio", Assert.Single(result.Groups[visible[2].Id.ToString("N")]));
             Assert.Equal(visible[1].Id.ToString("N"), Assert.Single(result.UnresolvedChannelIds!));
 
             visible = visible.Where(c => c.ExternalId != "xtream_42").ToArray();
-            File.WriteAllText(lineup, """[{"Id":"m3u_sports","ChannelGroup":"Hockey"}]""");
-            var reload = await service.GetAsync(user.Id, CancellationToken.None);
-            Assert.Equal("Hockey", Assert.Single(reload.Groups[visible[0].Id.ToString("N")]));
+            // Jellyfin overwrites this file without truncating it on a shorter import.
+            using (var stream = File.OpenWrite(lineup))
+                stream.Write("""[{"Id":"m3u_sports","ChannelGroup":"Golf"}]"""u8);
+            var reload = await service.GetAsync(userId, CancellationToken.None);
+            Assert.Equal("Golf", Assert.Single(reload.Groups[visible[0].Id.ToString("N")]));
             Assert.Equal(1, xtreamCalls);
             Assert.Equal(0, unrelatedCalls);
         }
@@ -82,6 +69,76 @@ public class LiveTvChannelGroupsServiceTests
         {
             cache.Delete(true);
         }
+    }
+
+    [Fact]
+    public async Task StalledXtreamLookupReturnsM3uGroupsAndDoesNotBlockOtherViewers()
+    {
+        var cache = Directory.CreateTempSubdirectory();
+        var pending = new TaskCompletionSource<List<ChannelInfo>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            File.WriteAllText(Path.Combine(cache.FullName, "first_channels"), """[{"Id":"m3u_news","ChannelGroup":"News"}]""");
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var calls = 0;
+            var xtream = RecordingHostProxy.Create<ITunerHost>((method, _) =>
+            {
+                if (method.Name == "get_Type") return "xtream-library";
+                Assert.Equal("GetChannels", method.Name);
+                Interlocked.Increment(ref calls);
+                entered.TrySetResult();
+                return pending.Task;
+            });
+            var m3u = new LiveTvChannel { Id = Guid.NewGuid(), ExternalId = "m3u_news", ServiceName = "Emby" };
+            var native = new LiveTvChannel { Id = Guid.NewGuid(), ExternalId = "xtream_42", ServiceName = "Emby" };
+            var mixedUser = Guid.NewGuid();
+            var service = CreateGroupService(cache.FullName, [xtream], id => id == mixedUser ? [m3u, native] : [m3u]);
+
+            var mixed = service.GetAsync(mixedUser, CancellationToken.None);
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            var anotherMixed = service.GetAsync(mixedUser, CancellationToken.None);
+            var local = await service.GetAsync(Guid.NewGuid(), CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.False(local.Partial);
+            Assert.Equal("News", Assert.Single(local.Groups[m3u.Id.ToString("N")]));
+            foreach (var partial in await Task.WhenAll(mixed, anotherMixed).WaitAsync(TimeSpan.FromSeconds(10)))
+            {
+                Assert.True(partial.Partial);
+                Assert.Equal("News", Assert.Single(partial.Groups[m3u.Id.ToString("N")]));
+                Assert.Equal(native.Id.ToString("N"), Assert.Single(partial.UnresolvedChannelIds!));
+            }
+            Assert.Equal(1, calls);
+            pending.SetResult([new ChannelInfo { Id = native.ExternalId, TunerHostId = "native", ChannelGroup = "Radio" }]);
+            var recovered = await service.GetAsync(mixedUser, CancellationToken.None);
+            Assert.False(recovered.Partial);
+            Assert.Equal("Radio", Assert.Single(recovered.Groups[native.Id.ToString("N")]));
+        }
+        finally
+        {
+            pending.TrySetResult([]);
+            cache.Delete(true);
+        }
+    }
+
+    private static LiveTvChannelGroupsService CreateGroupService(string cache, ITunerHost[] tuners, Func<Guid, BaseItem[]> channels)
+    {
+        var paths = RecordingHostProxy.Create<IServerApplicationPaths>((_, _) => cache);
+        var options = new LiveTvOptions { TunerHosts = [
+            new() { Id = "first", Type = "m3u" }, new() { Id = "second", Type = "m3u" },
+            new() { Id = "native", Type = "xtream-library" }] };
+        var config = RecordingHostProxy.Create<IServerConfigurationManager>((method, _) => method.Name switch
+        {
+            "get_ApplicationPaths" => paths,
+            "GetConfiguration" => options,
+            _ => throw new NotSupportedException(method.Name)
+        });
+        var liveTv = RecordingHostProxy.Create<ILiveTvManager>((_, args) =>
+            new QueryResult<BaseItem> { Items = channels(((LiveTvChannelQuery)args![0]!).UserId) });
+        return new LiveTvChannelGroupsService(liveTv, RecordingHostProxy.Create<ITunerHostManager>((_, _) => tuners), config,
+            RecordingHostProxy.Create<ILibraryManager>((_, _) => new QueryResult<BaseItem>()),
+            RecordingHostProxy.Create<IUserManager>((_, _) => new User("viewer", "auth", "reset")),
+            RecordingHostProxy.Create<ITaskManager>((_, _) => Array.Empty<IScheduledTaskWorker>()),
+            new NoOpLogger<LiveTvChannelGroupsService>(),
+            RecordingHostProxy.Create<IHostApplicationLifetime>((_, _) => CancellationToken.None));
     }
 
     [Fact]
@@ -128,7 +185,8 @@ public class LiveTvChannelGroupsServiceTests
         });
         var tasks = RecordingHostProxy.Create<ITaskManager>((_, _) => new[] { worker });
         var service = new LiveTvChannelGroupsService(liveTv, null!, null!, library, users, tasks,
-            new NoOpLogger<LiveTvChannelGroupsService>());
+            new NoOpLogger<LiveTvChannelGroupsService>(),
+            RecordingHostProxy.Create<IHostApplicationLifetime>((_, _) => CancellationToken.None));
 
         var result = await service.GetAsync(user.Id, CancellationToken.None);
         Assert.Empty(result.Groups);

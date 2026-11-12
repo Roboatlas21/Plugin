@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Jellyfin.Data.Enums;
 using MediaBrowser.Controller.Configuration;
@@ -7,6 +8,7 @@ using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LiveTv;
 using MediaBrowser.Model.LiveTv;
 using MediaBrowser.Model.Tasks;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Moonfin.LiveTv;
 
@@ -14,9 +16,12 @@ namespace Moonfin.Server.Services;
 
 public sealed class LiveTvChannelGroupsService(
     ILiveTvManager liveTv, ITunerHostManager tuners, IServerConfigurationManager config,
-    ILibraryManager library, IUserManager users, ITaskManager tasks, ILogger<LiveTvChannelGroupsService> logger)
+    ILibraryManager library, IUserManager users, ITaskManager tasks, ILogger<LiveTvChannelGroupsService> logger,
+    IHostApplicationLifetime lifetime)
 {
-    private readonly ChannelGroupReader _reader = new();
+    private readonly ChannelGroupReader _m3uReader = new();
+    private readonly ChannelGroupReader _xtreamReader = new();
+    private static readonly TimeSpan XtreamGuideWait = TimeSpan.FromSeconds(3);
 
     internal async Task<ChannelGroupResult> GetAsync(Guid userId, CancellationToken token)
     {
@@ -30,12 +35,28 @@ public sealed class LiveTvChannelGroupsService(
                 && (id.StartsWith("m3u_", StringComparison.Ordinal) || IsNativeXtreamChannel(id)))
             .Select(c => (ClientId: c.Id.ToString("N"), c.ExternalId)).ToArray();
         var result = new ChannelGroupResult();
-        if (channels.Length != 0)
+        var m3u = channels.Where(c => !IsNativeXtreamChannel(c.ExternalId)).ToArray();
+        if (m3u.Length != 0)
         {
-            var hasXtream = channels.Any(c => IsNativeXtreamChannel(c.ExternalId));
-            var snapshot = await _reader.GetAsync(channels.Select(c => c.ExternalId),
-                (groups, ct) => ReadTunersAsync(groups, hasXtream, ct), token);
-            result = snapshot.ForVisibleChannels(channels);
+            var snapshot = await _m3uReader.GetAsync(m3u.Select(c => c.ExternalId), ReadM3uAsync, token);
+            snapshot.AddVisibleChannelsTo(result, m3u);
+        }
+        var xtream = channels.Where(c => IsNativeXtreamChannel(c.ExternalId)).ToArray();
+        if (xtream.Length != 0)
+        {
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+            deadline.CancelAfter(XtreamGuideWait);
+            try
+            {
+                var snapshot = await _xtreamReader.GetAsync(xtream.Select(c => c.ExternalId), ReadXtreamAsync, deadline.Token)
+                    .WaitAsync(deadline.Token);
+                snapshot.AddVisibleChannelsTo(result, xtream);
+            }
+            catch (OperationCanceledException) when (deadline.IsCancellationRequested && !token.IsCancellationRequested)
+            {
+                result.Partial = true;
+                (result.UnresolvedChannelIds ??= []).AddRange(xtream.Select(c => c.ClientId));
+            }
         }
         try
         {
@@ -73,7 +94,7 @@ public sealed class LiveTvChannelGroupsService(
         return found.ToArray();
     }
 
-    private async Task ReadTunersAsync(ChannelGroupSnapshot result, bool hasXtream, CancellationToken token)
+    private async Task ReadM3uAsync(ChannelGroupSnapshot result, CancellationToken token)
     {
         var configured = ((LiveTvOptions)config.GetConfiguration("livetv")).TunerHosts;
         // Jellyfin writes one lineup per M3U host during import. Its tuner API can
@@ -89,9 +110,8 @@ public sealed class LiveTvChannelGroupsService(
                     continue;
                 }
                 var path = Path.Combine(config.ApplicationPaths.CachePath, host.Id + "_channels");
-                using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-                var channels = await JsonSerializer.DeserializeAsync<ImportedM3uChannel[]>(stream, cancellationToken: token)
-                    ?? throw new JsonException("Expected an imported channel list");
+                var bytes = await File.ReadAllBytesAsync(path, token);
+                var channels = ReadImportedChannels(bytes);
                 foreach (var channel in channels)
                     result.Add(0, host.Id, channel?.Id, channel?.ChannelGroup is { } group ? [group] : null);
             }
@@ -101,8 +121,21 @@ public sealed class LiveTvChannelGroupsService(
                 logger.LogDebug("Could not read the imported M3U lineup for tuner {HostId}", host.Id);
             }
         }
+    }
 
-        if (!hasXtream) return;
+    private static ImportedM3uChannel[] ReadImportedChannels(ReadOnlySpan<byte> bytes)
+    {
+        // Jellyfin can leave the old tail on disk when a shorter lineup overwrites the file.
+        // Deserialize exactly one complete array. A truncated array still fails as a unit.
+        var preamble = Encoding.UTF8.Preamble;
+        if (bytes.StartsWith(preamble)) bytes = bytes[preamble.Length..];
+        var reader = new Utf8JsonReader(bytes);
+        return JsonSerializer.Deserialize<ImportedM3uChannel[]>(ref reader)
+            ?? throw new JsonException("Expected an imported channel list");
+    }
+
+    private async Task ReadXtreamAsync(ChannelGroupSnapshot result, CancellationToken token)
+    {
         try
         {
             var xtream = tuners.TunerHosts.FirstOrDefault(t => string.Equals(t.Type, "xtream-library", StringComparison.OrdinalIgnoreCase));
@@ -111,11 +144,15 @@ public sealed class LiveTvChannelGroupsService(
                 result.MissingTuner = true;
                 return;
             }
-            foreach (var channel in await xtream.GetChannels(true, token))
+            // One native lookup may finish warming the tuner for the next reload after a viewer stops waiting.
+            var channels = await xtream.GetChannels(true, lifetime.ApplicationStopping);
+            token.ThrowIfCancellationRequested();
+            foreach (var channel in channels)
                 result.Add(1, channel.TunerHostId, channel.Id, [channel.ChannelGroup]);
         }
-        catch (Exception) when (!token.IsCancellationRequested)
+        catch (Exception) when (!lifetime.ApplicationStopping.IsCancellationRequested)
         {
+            token.ThrowIfCancellationRequested();
             result.MissingTuner = true;
             logger.LogWarning("Could not read channel groups from Xtream Library");
         }

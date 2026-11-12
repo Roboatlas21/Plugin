@@ -129,7 +129,7 @@ namespace Emby.Plugins.Moonfin.Api
             }
 
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
-            deadline.CancelAfter(EmbyTunerGroupReader.PlaylistBudget);
+            deadline.CancelAfter(EmbyTunerGroupReader.TunerBudget);
             var reads = tuners.SelectMany(tuner => _manager.GetTunerHostInfos(tuner.Type)
                 .Select(host => ReadHostAsync(tuner, host))).ToArray();
             var hosts = await Task.WhenAll(reads).ConfigureAwait(false);

@@ -128,6 +128,43 @@ public class EmbyTunerGroupReaderTests
     }
 
     [Fact]
+    public async Task StalledImportDoesNotBlockAnotherHostOrStartDuplicateReads()
+    {
+        var tuner = DispatchProxy.Create<ITunerHost, Tuner>();
+        var probe = (Tuner)tuner;
+        var slow = new TunerHostInfo { Id = "slow" };
+        var healthy = new TunerHostInfo { Id = "healthy" };
+        var started = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stalled = new TaskCompletionSource<List<ChannelInfo>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var slowReads = 0;
+        probe.ReadImported = host =>
+        {
+            if (host.Id == healthy.Id) return Task.FromResult(new List<ChannelInfo> { Channel("2", "News") });
+            Interlocked.Increment(ref slowReads);
+            started.TrySetResult(true);
+            return stalled.Task;
+        };
+        Task<List<ChannelInfo>> Read(TunerHostInfo host, CancellationToken deadline) =>
+            EmbyTunerGroupReader.GetChannelsAsync(tuner, host, CancellationToken.None, deadline, _ => true, _ => { });
+
+        using var deadline = new CancellationTokenSource();
+        try
+        {
+            var first = Read(slow, deadline.Token);
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            var otherViewer = Read(slow, CancellationToken.None);
+            Assert.Equal("News", (await Read(healthy, deadline.Token)).Single().Tags.Single());
+            deadline.Cancel();
+            Assert.Empty(await first.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.False(otherViewer.IsCompleted);
+            stalled.SetResult(new() { Channel("1", "Sports") });
+            Assert.Equal("Sports", (await otherViewer.WaitAsync(TimeSpan.FromSeconds(2))).Single().Tags.Single());
+            Assert.Equal(1, slowReads);
+        }
+        finally { stalled.TrySetResult(new()); }
+    }
+
+    [Fact]
     public async Task SkipsParserWhenOnlyOtherViewersHaveAmbiguousTags()
     {
         var tuner = DispatchProxy.Create<ITunerHost, Tuner>();
@@ -149,13 +186,14 @@ public class EmbyTunerGroupReaderTests
         public bool Offline { get; set; }
         public string Type { get; set; } = "m3u";
         public List<ChannelInfo> Imported { get; } = new();
+        public Func<TunerHostInfo, Task<List<ChannelInfo>>>? ReadImported { get; set; }
         public List<ChannelInfo> Playlist { get; } = new();
         public TunerHostInfo? ReadHost { get; private set; }
 
         protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
         {
             "get_Type" => Type,
-            nameof(ITunerHost.GetChannels) => Task.FromResult(Imported),
+            nameof(ITunerHost.GetChannels) => ReadImported?.Invoke((TunerHostInfo)args![0]!) ?? Task.FromResult(Imported),
             _ => throw new NotSupportedException(method?.Name)
         };
 

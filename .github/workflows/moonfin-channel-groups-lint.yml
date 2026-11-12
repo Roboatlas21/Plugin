@@ -1,0 +1,59 @@
+name: Check Moonfin PR warnings
+
+on:
+  push:
+    branches:
+      - ci/moonfin-channel-groups-lint
+
+permissions:
+  contents: read
+
+jobs:
+  changed-lines-analyzer:
+    name: Analyze changes against pre-feature base
+    runs-on: ubuntu-26.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out Moonfin PR
+        uses: actions/checkout@v5
+        with:
+          repository: Roboatlas21/Moonfin-Core
+          ref: f907c2c401099bcba39a3f4a7e55b814b624b719
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.2'
+          channel: stable
+
+      - name: Resolve app and package dependencies
+        run: |
+          set -euo pipefail
+          flutter pub get
+          packages="custom_tv_text_field_fork design rar_fork server_core server_emby server_jellyfin server_plex playback_plex server_silo playback_silo"
+          for pkg in $packages; do
+            (cd "packages/$pkg" && flutter pub get >/dev/null)
+          done
+
+      - name: Analyze changed Dart lines
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/touched_lines_diagnostics.py             0b55bc616da9bdb98816ebf02c8ae66fb2327ec8 HEAD             --out "$RUNNER_TEMP/analyzer-delta.json"
+          python3 - <<'PY'
+          import json, os, sys
+          with open(os.path.join(os.environ["RUNNER_TEMP"], "analyzer-delta.json")) as f:
+              data = json.load(f)
+          problems = [x for x in data["items"] if x["severity"] in ("error", "warning")]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("## Moonfin PR changed-line diagnostics\n\n")
+              f.write(f"Total diagnostics: {data['count']}\n\n")
+              f.write(f"Errors or warnings in reported diagnostics: {len(problems)}\n\n")
+              for x in data["items"]:
+                  f.write(f"- {x['file']}:{x['line']} {x['severity']} {x['code']}: {x['message']}\n")
+          if data["count"] > len(data["items"]):
+              sys.exit("More findings than displayed; review full analyzer output")
+          if problems:
+              sys.exit("New analyzer warning/error on PR-changed lines")
+          PY

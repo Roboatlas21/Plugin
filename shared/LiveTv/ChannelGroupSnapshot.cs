@@ -122,7 +122,11 @@ namespace Moonfin.LiveTv
                 {
                     // Either server can return an empty tuner list after losing its cache.
                     result.Partial = true;
-                    (result.UnresolvedChannelIds ??= new List<string>()).Add(channel.ClientId);
+                    result.UnresolvedChannelIds ??= new List<string>();
+                    // A known collision has no safe group. Only a missing tuner
+                    // answer may reuse this client's last known membership.
+                    if (!_ambiguous.Contains(channel.ExternalId))
+                        result.UnresolvedChannelIds.Add(channel.ClientId);
                     continue;
                 }
                 if (_incompleteGroups.Contains(channel.ExternalId))

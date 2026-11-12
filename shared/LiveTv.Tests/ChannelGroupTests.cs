@@ -103,6 +103,11 @@ namespace Moonfin.Tests
             var visible = snapshot.ForVisibleChannels(new[] { ("c1", "same"), ("c2", "other"), ("c3", "untagged") });
             Assert.True(visible.Partial);
             Assert.Equal("c2", Assert.Single(visible.Groups).Key);
+            Assert.Empty(visible.UnresolvedChannelIds!);
+
+            var mixed = snapshot.ForVisibleChannels(new[] { ("c1", "same"), ("c4", "offline") });
+            Assert.Equal(new[] { "c4" }, mixed.UnresolvedChannelIds);
+            Assert.Empty(mixed.Groups);
         }
 
         [Fact]

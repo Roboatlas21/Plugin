@@ -24,11 +24,11 @@ public sealed class LiveTvChannelGroupsService(
     private readonly ChannelGroupReader _xtreamReader = new();
     private static readonly TimeSpan XtreamGuideWait = TimeSpan.FromSeconds(3);
 
-    internal async Task<ChannelGroupResult> GetAsync(Guid userId, CancellationToken token, bool includeChannels = false)
+    internal async Task<ChannelGroupResult> GetAsync(Guid userId, CancellationToken token)
     {
         var importTime = ChannelGroupResult.StableImportTime(tasks);
         var query = new LiveTvChannelQuery { UserId = userId, AddCurrentProgram = false };
-        var options = new DtoOptions(false) { EnableImages = includeChannels, EnableUserData = includeChannels, AddCurrentProgram = false };
+        var options = new DtoOptions(false) { EnableImages = true, EnableUserData = true, AddCurrentProgram = false };
         var visible = liveTv.GetInternalChannels(query, options, token).Items;
         // The host User type moved between 10.10 and 10.11.
         var viewer = new Lazy<object>(() => typeof(IUserManager).GetMethod(nameof(IUserManager.GetUserById), [typeof(Guid)])!
@@ -70,11 +70,8 @@ public sealed class LiveTvChannelGroupsService(
         {
             logger.LogWarning(ex, "Could not read guide programme categories");
         }
-        if (includeChannels)
-        {
-            var items = visible.Count == 0 ? [] : BuildChannelDtos(visible, options, viewer.Value);
-            result.IncludeChannels(items, item => item.Id.ToString("N"));
-        }
+        var items = visible.Count == 0 ? [] : BuildChannelDtos(visible, options, viewer.Value);
+        result.SetChannels(items, item => item.Id.ToString("N"));
         return result;
     }
 

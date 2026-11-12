@@ -11,17 +11,14 @@ namespace Moonfin.LiveTv
 {
     internal sealed class ChannelGroupResult
     {
-        [JsonPropertyName("version")] public int Version => Channels == null ? 1 : 2;
+        [JsonPropertyName("version")] public int Version => 2;
         [JsonPropertyName("supported")] public bool Supported => Groups.Count != 0;
         [JsonPropertyName("partial")] public bool Partial { get; set; }
         [JsonIgnore]
         public Dictionary<string, string[]> Groups { get; } = new Dictionary<string, string[]>(StringComparer.Ordinal);
-        [JsonPropertyName("groupsByChannelId"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public Dictionary<string, string[]>? LegacyGroups => Channels == null ? Groups : null;
-        [JsonPropertyName("channels"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public object[]? Channels { get; private set; }
+        [JsonPropertyName("channels")] public object[] Channels { get; private set; } = Array.Empty<object>();
 
-        public void IncludeChannels(IEnumerable<BaseItemDto> channels, Func<BaseItemDto, string> clientId)
+        public void SetChannels(IEnumerable<BaseItemDto> channels, Func<BaseItemDto, string> clientId)
         {
             Channels = channels.Select(channel =>
             {

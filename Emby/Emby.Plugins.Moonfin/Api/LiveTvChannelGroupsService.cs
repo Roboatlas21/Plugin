@@ -68,11 +68,8 @@ namespace Emby.Plugins.Moonfin.Api
             {
                 _logger.Warn("Could not read guide programme categories");
             }
-            if (request.IncludeChannels)
-            {
-                var options = new DtoOptions { EnableImages = true, EnableUserData = true, AddCurrentProgram = false };
-                result.IncludeChannels(_dtos.GetBaseItemDtos(channels, options, user), item => item.Id);
-            }
+            var options = new DtoOptions { EnableImages = true, EnableUserData = true, AddCurrentProgram = false };
+            result.SetChannels(_dtos.GetBaseItemDtos(channels, options, user), item => item.Id);
             return MoonfinJson.Result(Request, ResultFactory, result);
         }
 

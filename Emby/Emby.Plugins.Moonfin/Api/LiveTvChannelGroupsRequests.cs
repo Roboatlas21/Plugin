@@ -5,8 +5,5 @@ namespace Emby.Plugins.Moonfin.Api
 {
     [Route("/Moonfin/LiveTv/ChannelGroups", "GET")]
     [Authenticated]
-    public class GetLiveTvChannelGroups : IReturn<object>
-    {
-        public bool IncludeChannels { get; set; }
-    }
+    public class GetLiveTvChannelGroups : IReturn<object> { }
 }

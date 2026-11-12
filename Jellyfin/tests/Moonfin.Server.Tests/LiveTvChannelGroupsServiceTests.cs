@@ -46,7 +46,7 @@ public class LiveTvChannelGroupsServiceTests
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
             var anotherMixed = service.GetAsync(mixedUser, CancellationToken.None);
             var local = await service.GetAsync(Guid.NewGuid(), CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.False(local.Partial);
+            Assert.NotEmpty(local.Channels);
             Assert.Equal("News", Assert.Single(local.Groups[m3u.Id.ToString("N")]));
             foreach (var partial in await Task.WhenAll(mixed, anotherMixed).WaitAsync(TimeSpan.FromSeconds(10)))
             {

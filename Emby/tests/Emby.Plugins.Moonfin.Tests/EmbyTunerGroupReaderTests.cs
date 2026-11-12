@@ -57,10 +57,26 @@ public class EmbyTunerGroupReaderTests
         Assert.Null(probe.ReadHost);
     }
 
+    [Fact]
+    public async Task OfflinePlaylistKeepsKnownGroupsWithoutPublishingTunerTags()
+    {
+        var tuner = DispatchProxy.Create<ITunerHost, Tuner>();
+        var probe = (Tuner)tuner;
+        probe.Offline = true;
+        probe.Imported.Add(Channel("1", "Sports", "Household"));
+        var unresolved = new List<string>();
+        var host = new TunerHostInfo { ProviderOptions = """{"AdditionalTags":["Household"]}""" };
+        var result = await EmbyTunerGroupReader.GetChannelsAsync(tuner, host, CancellationToken.None, unresolved.Add);
+        Assert.Equal(new[] { "Sports" }, result.Single().Tags);
+        Assert.Equal(new[] { "1" }, unresolved);
+        Assert.Equal(new[] { "Sports", "Household" }, probe.Imported.Single().Tags);
+    }
+
     private static ChannelInfo Channel(string id, params string[] tags) => new() { Id = id, Tags = tags };
 
     public class Tuner : DispatchProxy
     {
+        public bool Offline { get; set; }
         public string Type { get; set; } = "m3u";
         public List<ChannelInfo> Imported { get; } = new();
         public List<ChannelInfo> Playlist { get; } = new();
@@ -76,6 +92,7 @@ public class EmbyTunerGroupReaderTests
         protected Task<List<ChannelInfo>> GetChannelsInternal(TunerHostInfo host, CancellationToken token)
         {
             token.ThrowIfCancellationRequested();
+            if (Offline) throw new FileNotFoundException();
             ReadHost = host;
             return Task.FromResult(Playlist);
         }

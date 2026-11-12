@@ -13,7 +13,7 @@ namespace Emby.Plugins.Moonfin.Api
 {
     internal static class EmbyTunerGroupReader
     {
-        public static async Task<List<ChannelInfo>> GetChannelsAsync(ITunerHost tuner, TunerHostInfo host, CancellationToken token)
+        public static async Task<List<ChannelInfo>> GetChannelsAsync(ITunerHost tuner, TunerHostInfo host, CancellationToken token, Action<string>? unresolved = null)
         {
             var imported = await tuner.GetChannels(host, token).ConfigureAwait(false);
             if (imported.Count == 0 || tuner.Type != "m3u" || string.IsNullOrWhiteSpace(host.ProviderOptions))
@@ -35,14 +35,40 @@ namespace Emby.Plugins.Moonfin.Api
 
             // GetChannels reads the merged tag cache. RefreshChannels would overwrite that cache.
             // Call the built-in tuner's read-only parser so Emby also handles channel IDs and playlist syntax.
-            var readPlaylist = tuner.GetType().GetMethod("GetChannelsInternal", BindingFlags.Instance | BindingFlags.NonPublic,
-                null, new[] { typeof(TunerHostInfo), typeof(CancellationToken) }, null)
-                ?? throw new MissingMethodException(tuner.GetType().Name, "GetChannelsInternal");
-            var read = (Func<TunerHostInfo, CancellationToken, Task<List<ChannelInfo>>>)readPlaylist.CreateDelegate(
-                typeof(Func<TunerHostInfo, CancellationToken, Task<List<ChannelInfo>>>), tuner);
-            var channels = await read(playlistHost, token).ConfigureAwait(false);
-            var importedIds = new HashSet<string>(imported.Select(c => c.Id), StringComparer.Ordinal);
-            return channels.Where(c => importedIds.Contains(c.Id)).ToList();
+            var comparer = StringComparer.OrdinalIgnoreCase;
+            var tunerTags = new HashSet<string>(additional, comparer);
+            var playlist = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+            try
+            {
+                var parser = tuner.GetType().GetMethod("GetChannelsInternal", BindingFlags.Instance | BindingFlags.NonPublic,
+                    null, new[] { typeof(TunerHostInfo), typeof(CancellationToken) }, null)
+                    ?? throw new MissingMethodException(tuner.GetType().Name, "GetChannelsInternal");
+                var read = (Func<TunerHostInfo, CancellationToken, Task<List<ChannelInfo>>>)parser.CreateDelegate(
+                    typeof(Func<TunerHostInfo, CancellationToken, Task<List<ChannelInfo>>>), tuner);
+                foreach (var entry in await read(playlistHost, token).ConfigureAwait(false))
+                {
+                    if (!playlist.TryGetValue(entry.Id, out var labels)) playlist[entry.Id] = labels = new List<string>();
+                    labels.AddRange(entry.Tags ?? Array.Empty<string>());
+                }
+            }
+            catch (Exception) when (!token.IsCancellationRequested)
+            {
+                // The imported lineup still contains every unambiguous group.
+                playlist.Clear();
+            }
+
+            var result = new List<ChannelInfo>(imported.Count);
+            foreach (var channel in imported)
+            {
+                var tags = channel.Tags ?? Array.Empty<string>();
+                var groups = tags.Where(tag => !tunerTags.Contains(tag)).ToList();
+                if (playlist.TryGetValue(channel.Id, out var labels))
+                    groups.AddRange(labels.Where(label => tunerTags.Contains(label) && tags.Contains(label, comparer)));
+                else if (groups.Count != tags.Length)
+                    unresolved?.Invoke(channel.Id);
+                result.Add(new ChannelInfo { Id = channel.Id, Tags = groups.ToArray() });
+            }
+            return result;
         }
     }
 }

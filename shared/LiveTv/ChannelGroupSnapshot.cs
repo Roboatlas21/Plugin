@@ -63,9 +63,10 @@ namespace Moonfin.LiveTv
         private readonly Dictionary<string, (int Adapter, string? HostId, string ExternalId, HashSet<string> Groups)> _channels =
             new Dictionary<string, (int, string?, string, HashSet<string>)>(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _ambiguous = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _incompleteGroups = new HashSet<string>(StringComparer.Ordinal);
         public bool Partial { get; set; }
 
-        public void Add(int adapter, string? hostId, string? externalId, IEnumerable<string>? labels)
+        public void Add(int adapter, string? hostId, string? externalId, IEnumerable<string>? labels, bool incomplete = false)
         {
             if (string.IsNullOrEmpty(externalId) || _ambiguous.Contains(externalId)) return;
             if (!_channels.TryGetValue(externalId, out var source))
@@ -82,6 +83,7 @@ namespace Moonfin.LiveTv
                 return;
             }
 
+            if (incomplete) { _incompleteGroups.Add(externalId); Partial = true; }
             if (labels == null) return;
             foreach (var label in labels)
             {
@@ -89,6 +91,7 @@ namespace Moonfin.LiveTv
                 var name = label.Trim();
                 if (source.Groups.Count == MaxGroupsPerChannel && !source.Groups.Contains(name))
                 {
+                    _incompleteGroups.Add(externalId);
                     Partial = true;
                     continue;
                 }
@@ -98,7 +101,7 @@ namespace Moonfin.LiveTv
 
         public ChannelGroupResult ForVisibleChannels(IEnumerable<(string ClientId, string ExternalId)> channels)
         {
-            var result = new ChannelGroupResult { Partial = Partial };
+            var result = new ChannelGroupResult();
             foreach (var channel in channels)
             {
                 if (string.IsNullOrEmpty(channel.ExternalId) ||
@@ -109,10 +112,14 @@ namespace Moonfin.LiveTv
                     (result.UnresolvedChannelIds ??= new List<string>()).Add(channel.ClientId);
                     continue;
                 }
+                if (_incompleteGroups.Contains(channel.ExternalId))
+                {
+                    result.Partial = true;
+                    (result.UnresolvedChannelIds ??= new List<string>()).Add(channel.ClientId);
+                }
                 if (source.Groups.Count > 0)
                     result.Groups[channel.ClientId] = source.Groups.OrderBy(x => x, StringComparer.Ordinal).ToArray();
             }
-            if (result.Partial) result.UnresolvedChannelIds ??= new List<string>();
             return result;
         }
     }
@@ -123,6 +130,10 @@ namespace Moonfin.LiveTv
         private ChannelGroupSnapshot? _snapshot;
         private DateTime _expires;
         private string? _revision;
+        private int _epoch;
+        private int _snapshotEpoch;
+
+        public void Clear() => Interlocked.Increment(ref _epoch);
 
         public void Invalidate(ChannelGroupSnapshot snapshot) =>
             Interlocked.CompareExchange(ref _snapshot, null, snapshot);
@@ -133,10 +144,12 @@ namespace Moonfin.LiveTv
             await _gate.WaitAsync(token).ConfigureAwait(false);
             try
             {
+                var epoch = Volatile.Read(ref _epoch);
                 var cached = _snapshot;
-                if (cached != null && revision == _revision && DateTime.UtcNow < _expires) return cached;
+                if (cached != null && epoch == _snapshotEpoch && revision == _revision && DateTime.UtcNow < _expires) return cached;
                 var fresh = await read(token).ConfigureAwait(false);
                 token.ThrowIfCancellationRequested();
+                _snapshotEpoch = epoch;
                 _revision = revision;
                 _snapshot = revision == "pending" || fresh.Partial ? null : fresh;
                 _expires = DateTime.UtcNow.AddMinutes(2);

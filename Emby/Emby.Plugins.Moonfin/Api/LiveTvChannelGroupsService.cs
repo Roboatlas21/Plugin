@@ -18,6 +18,7 @@ namespace Emby.Plugins.Moonfin.Api
     public sealed class LiveTvChannelGroupsService : IService, IRequiresRequest, IHasResultFactory
     {
         private static readonly ChannelGroupCache Cache = new ChannelGroupCache();
+        internal static void Invalidate() => Cache.Clear();
         private readonly ILiveTvManager _manager;
         private readonly ILibraryManager _library;
         private readonly ITaskManager _tasks;
@@ -112,9 +113,10 @@ namespace Emby.Plugins.Moonfin.Api
                     token.ThrowIfCancellationRequested();
                     try
                     {
-                        var channels = await EmbyTunerGroupReader.GetChannelsAsync(tuner, host, token).ConfigureAwait(false);
+                        var uncertain = new HashSet<string>(StringComparer.Ordinal);
+                        var channels = await EmbyTunerGroupReader.GetChannelsAsync(tuner, host, token, id => uncertain.Add(id)).ConfigureAwait(false);
                         foreach (var channel in channels)
-                            result.Add(index, host.Id, channel.Id, channel.Tags);
+                            result.Add(index, host.Id, channel.Id, channel.Tags, uncertain.Contains(channel.Id));
                     }
                     catch (Exception) when (!token.IsCancellationRequested)
                     {

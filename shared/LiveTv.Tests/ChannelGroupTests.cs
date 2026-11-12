@@ -111,6 +111,30 @@ namespace Moonfin.Tests
         }
 
         [Fact]
+        public void OnlyUnresolvedVisibleChannelsMakeTheResponsePartial()
+        {
+            var snapshot = new ChannelGroupSnapshot { Partial = true };
+            snapshot.Add(1, "tuner", "healthy", new[] { "Kids" });
+            snapshot.Add(2, "other", "offline", new[] { "Sports" }, incomplete: true);
+            Assert.False(snapshot.ForVisibleChannels(new[] { ("1", "healthy") }).Partial);
+            var mixed = snapshot.ForVisibleChannels(new[] { ("1", "healthy"), ("2", "offline") });
+            Assert.Equal(new[] { "2" }, mixed.UnresolvedChannelIds);
+            Assert.Equal(new[] { "Sports" }, mixed.Groups["2"]);
+        }
+
+        [Fact]
+        public async Task ChannelEditInvalidatesAnInFlightReadAtTheSameGuideRevision()
+        {
+            var cache = new ChannelGroupCache();
+            var gate = new TaskCompletionSource<ChannelGroupSnapshot>();
+            var old = cache.GetAsync("1", _ => gate.Task, CancellationToken.None);
+            cache.Clear();
+            gate.SetResult(new ChannelGroupSnapshot());
+            var fresh = await cache.GetAsync("1", _ => Task.FromResult(new ChannelGroupSnapshot()), CancellationToken.None);
+            Assert.NotSame(await old, fresh);
+        }
+
+        [Fact]
         public async Task NewRevisionAndIncompleteReadsBypassTheCachedSnapshot()
         {
             var cache = new ChannelGroupCache();

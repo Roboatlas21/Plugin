@@ -2,7 +2,6 @@ using Jellyfin.Data.Events.Users;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Events;
 using MediaBrowser.Controller.Plugins;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moonfin.Bookmarks;
@@ -26,9 +25,6 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
         serviceCollection.AddSingleton<LiveTvChannelGroupsService>();
-        serviceCollection.AddSingleton<LiveTvGuideNotifier>();
-        serviceCollection.AddHostedService(provider => provider.GetRequiredService<LiveTvGuideNotifier>());
-        serviceCollection.Configure<MvcOptions>(options => options.Conventions.Add(new LiveTvChannelEditFilter()));
         serviceCollection.AddSingleton<MoonfinSettingsService>();
         serviceCollection.AddSingleton<IUserDirectory, UserDirectory>();
         serviceCollection.AddSingleton<DefaultHiddenLibraries>();

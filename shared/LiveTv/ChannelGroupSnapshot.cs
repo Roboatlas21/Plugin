@@ -1,11 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-using MediaBrowser.Model.Tasks;
 
 namespace Moonfin.LiveTv
 {
@@ -16,52 +14,12 @@ namespace Moonfin.LiveTv
         [JsonPropertyName("partial")] public bool Partial { get; set; }
         [JsonPropertyName("groupsByChannelId")]
         public Dictionary<string, string[]> Groups { get; } = new Dictionary<string, string[]>(StringComparer.Ordinal);
-        // Only returned for a partial, stable lineup. Other visible IDs were resolved,
+        // Only returned for a partial lineup. Other visible IDs were resolved,
         // including channels that the tuner confirmed have no group.
         [JsonPropertyName("unresolvedChannelIds"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public List<string>? UnresolvedChannelIds { get; set; }
-        [JsonPropertyName("programmeCategories"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string[]? ProgrammeCategories { get; private set; }
-        [JsonPropertyName("guideRevision")] public string GuideRevision { get; private set; } = "pending";
-
-        public static string GetGuideRevision(ITaskManager tasks)
-        {
-            var refresh = tasks.ScheduledTasks.FirstOrDefault(t => t.ScheduledTask.Key == "RefreshGuide");
-            var last = refresh?.LastExecutionResult;
-            if (refresh == null || refresh.State != TaskState.Idle) return "pending";
-            return last == null ? "0" : last.EndTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture);
-        }
-
-        public void ReadProgrammeCategories(ITaskManager tasks, string revision, Func<string[]> read)
-        {
-            // The revision was sampled before reading the tuners and visible channels.
-            if (revision == "pending" || GetGuideRevision(tasks) != revision)
-            {
-                Partial = true;
-                UnresolvedChannelIds = null;
-                return;
-            }
-
-            string[]? categories = null;
-            try { categories = read(); }
-            finally
-            {
-                if (GetGuideRevision(tasks) == revision)
-                {
-                    // A category query failure leaves this field unknown. The tuner data is still valid.
-                    ProgrammeCategories = categories;
-                    GuideRevision = revision;
-                }
-                else
-                {
-                    Partial = true;
-                    UnresolvedChannelIds = null;
-                }
-            }
-        }
     }
 
-    // Only tuner metadata is cached. Each response joins against a fresh, user-scoped lineup.
     internal sealed class ChannelGroupSnapshot
     {
         private const int MaxGroupsPerChannel = 256;
@@ -70,15 +28,25 @@ namespace Moonfin.LiveTv
             new Dictionary<string, (int, string?, string, HashSet<string>)>(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _ambiguous = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _incompleteGroups = new HashSet<string>(StringComparer.Ordinal);
-        public bool Partial { get; set; }
+        public bool MissingTuner { get; set; }
+
+        // Only an authoritative read can clear a previous conflict. A restricted
+        // user can resolve only IDs present in their own lineup.
+        public void UpdateConflicts(HashSet<string> known)
+        {
+            if (MissingTuner)
+                _ambiguous.UnionWith(known.Where(_visibleIds.Contains));
+            else
+                known.ExceptWith(_visibleIds);
+            known.UnionWith(_ambiguous);
+        }
 
         public ChannelGroupSnapshot(IEnumerable<string> visibleIds) =>
             _visibleIds = new HashSet<string>(visibleIds, StringComparer.OrdinalIgnoreCase);
 
         public bool Covers(IEnumerable<string> visibleIds) => _visibleIds.IsSupersetOf(visibleIds);
 
-        // Large authorized lineups still get a complete response without retaining them between requests.
-        public bool Cacheable => !Partial && _visibleIds.Count <= 100_000;
+        public bool CanShare => _visibleIds.Count <= 100_000;
 
         public void Add(int adapter, string? hostId, string? externalId, IEnumerable<string>? labels, bool incomplete = false)
         {
@@ -92,11 +60,10 @@ namespace Moonfin.LiveTv
             {
                 _channels.Remove(externalId);
                 _ambiguous.Add(externalId);
-                Partial = true;
                 return;
             }
 
-            if (incomplete) { _incompleteGroups.Add(externalId); Partial = true; }
+            if (incomplete) _incompleteGroups.Add(externalId);
             if (labels == null) return;
             foreach (var label in labels)
             {
@@ -105,7 +72,6 @@ namespace Moonfin.LiveTv
                 if (source.Groups.Count == MaxGroupsPerChannel && !source.Groups.Contains(name))
                 {
                     _incompleteGroups.Add(externalId);
-                    Partial = true;
                     continue;
                 }
                 source.Groups.Add(name);
@@ -117,7 +83,7 @@ namespace Moonfin.LiveTv
             var result = new ChannelGroupResult();
             foreach (var channel in channels)
             {
-                if (string.IsNullOrEmpty(channel.ExternalId) ||
+                if (string.IsNullOrEmpty(channel.ExternalId) || _ambiguous.Contains(channel.ExternalId) ||
                     !_channels.TryGetValue(channel.ExternalId, out var source) || source.ExternalId != channel.ExternalId)
                 {
                     // Either server can return an empty tuner list after losing its cache.
@@ -141,39 +107,29 @@ namespace Moonfin.LiveTv
         }
     }
 
-    internal sealed class ChannelGroupCache
+    // Each guide reload reads the current tuner metadata. Requests that overlap
+    // can share a completed read when it covers their visible channels.
+    internal sealed class ChannelGroupReader
     {
         private readonly SemaphoreSlim _gate = new SemaphoreSlim(1);
-        private ChannelGroupSnapshot? _snapshot;
-        private DateTime _expires;
-        private string? _revision;
-        private int _epoch;
-        private int _snapshotEpoch;
-
-        public void Clear() => Interlocked.Increment(ref _epoch);
-
-        public void Invalidate(ChannelGroupSnapshot snapshot) =>
-            Interlocked.CompareExchange(ref _snapshot, null, snapshot);
+        private readonly HashSet<string> _conflicts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private ChannelGroupSnapshot? _lastRead;
 
         public async Task<ChannelGroupSnapshot> GetAsync(
-            string revision, IEnumerable<string> visibleIds,
-            Func<ChannelGroupSnapshot, CancellationToken, Task> read, CancellationToken token)
+            IEnumerable<string> visibleIds, Func<ChannelGroupSnapshot, CancellationToken, Task> read, CancellationToken token)
         {
+            var previous = Volatile.Read(ref _lastRead);
             await _gate.WaitAsync(token).ConfigureAwait(false);
             try
             {
-                var epoch = Volatile.Read(ref _epoch);
-                var cached = _snapshot;
-                if (cached != null && epoch == _snapshotEpoch && revision == _revision &&
-                    DateTime.UtcNow < _expires && cached.Covers(visibleIds)) return cached;
-                var fresh = new ChannelGroupSnapshot(visibleIds);
-                await read(fresh, token).ConfigureAwait(false);
+                if (_lastRead != null && _lastRead != previous && _lastRead.Covers(visibleIds))
+                    return _lastRead;
+                var current = new ChannelGroupSnapshot(visibleIds);
+                await read(current, token).ConfigureAwait(false);
                 token.ThrowIfCancellationRequested();
-                _snapshotEpoch = epoch;
-                _revision = revision;
-                _snapshot = revision != "pending" && fresh.Cacheable ? fresh : null;
-                _expires = DateTime.UtcNow.AddMinutes(2);
-                return fresh;
+                current.UpdateConflicts(_conflicts);
+                Volatile.Write(ref _lastRead, current.CanShare ? current : null);
+                return current;
             }
             finally { _gate.Release(); }
         }

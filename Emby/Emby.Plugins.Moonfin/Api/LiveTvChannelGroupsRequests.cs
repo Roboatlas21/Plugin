@@ -7,5 +7,6 @@ namespace Emby.Plugins.Moonfin.Api
     [Authenticated]
     public class GetLiveTvChannelGroups : IReturn<object>
     {
+        public bool IncludeChannels { get; set; }
     }
 }

@@ -6,6 +6,7 @@ using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LiveTv;
+using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.LiveTv;
 using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Hosting;
@@ -17,18 +18,21 @@ namespace Moonfin.Server.Services;
 public sealed class LiveTvChannelGroupsService(
     ILiveTvManager liveTv, ITunerHostManager tuners, IServerConfigurationManager config,
     ILibraryManager library, IUserManager users, ITaskManager tasks, ILogger<LiveTvChannelGroupsService> logger,
-    IHostApplicationLifetime lifetime)
+    IHostApplicationLifetime lifetime, IDtoService dtos)
 {
     private readonly ChannelGroupReader _m3uReader = new();
     private readonly ChannelGroupReader _xtreamReader = new();
     private static readonly TimeSpan XtreamGuideWait = TimeSpan.FromSeconds(3);
 
-    internal async Task<ChannelGroupResult> GetAsync(Guid userId, CancellationToken token)
+    internal async Task<ChannelGroupResult> GetAsync(Guid userId, CancellationToken token, bool includeChannels = false)
     {
         var importTime = ChannelGroupResult.StableImportTime(tasks);
         var query = new LiveTvChannelQuery { UserId = userId, AddCurrentProgram = false };
-        var options = new DtoOptions(false) { EnableImages = false, EnableUserData = false, AddCurrentProgram = false };
+        var options = new DtoOptions(false) { EnableImages = includeChannels, EnableUserData = includeChannels, AddCurrentProgram = false };
         var visible = liveTv.GetInternalChannels(query, options, token).Items;
+        // The host User type moved between 10.10 and 10.11.
+        var viewer = new Lazy<object>(() => typeof(IUserManager).GetMethod(nameof(IUserManager.GetUserById), [typeof(Guid)])!
+            .Invoke(users, [userId]) ?? throw new InvalidOperationException("Guide user is unavailable"));
         // Registered tuners feed Jellyfin's DefaultLiveTvService, whose service name is "Emby".
         var channels = visible.OfType<LiveTvChannel>()
             .Where(c => c.ServiceName == "Emby" && c.ExternalId is { } id
@@ -60,23 +64,34 @@ public sealed class LiveTvChannelGroupsService(
         }
         try
         {
-            result.ReadProgrammeCategories(tasks, importTime, () => ReadCategories(userId, visible.Select(c => c.Id).ToArray(), token));
+            result.ReadProgrammeCategories(tasks, importTime, () => ReadCategories(viewer, visible.Select(c => c.Id).ToArray(), token));
         }
         catch (Exception ex) when (!token.IsCancellationRequested)
         {
             logger.LogWarning(ex, "Could not read guide programme categories");
         }
+        if (includeChannels)
+        {
+            var items = visible.Count == 0 ? [] : BuildChannelDtos(visible, options, viewer.Value);
+            result.IncludeChannels(items, item => item.Id.ToString("N"));
+        }
         return result;
     }
 
-    private string[] ReadCategories(Guid userId, Guid[] channelIds, CancellationToken token)
+    private IEnumerable<BaseItemDto> BuildChannelDtos(IReadOnlyList<BaseItem> channels, DtoOptions options, object viewer)
+    {
+        // 12.x adds an optional skipVisibilityCheck parameter. Keep the host's normal visibility check.
+        var method = typeof(IDtoService).GetMethod(nameof(IDtoService.GetBaseItemDtos))!;
+        object?[] args = method.GetParameters().Length == 4
+            ? [channels, options, viewer, null]
+            : [channels, options, viewer, null, false];
+        return (IEnumerable<BaseItemDto>)method.Invoke(dtos, args)!;
+    }
+
+    private string[] ReadCategories(Lazy<object> viewer, Guid[] channelIds, CancellationToken token)
     {
         if (channelIds.Length == 0) return [];
-        // Jellyfin moved the User type between 10.10 and 10.11. Bind the user-scoped
-        // query constructor at runtime so both versions apply parental restrictions.
-        var user = typeof(IUserManager).GetMethod(nameof(IUserManager.GetUserById), [typeof(Guid)])?.Invoke(users, [userId])
-            ?? throw new InvalidOperationException("Guide user is unavailable");
-        var query = (InternalItemsQuery)Activator.CreateInstance(typeof(InternalItemsQuery), user)!;
+        var query = (InternalItemsQuery)Activator.CreateInstance(typeof(InternalItemsQuery), viewer.Value)!;
         query.IncludeItemTypes = [BaseItemKind.LiveTvProgram];
         query.ChannelIds = channelIds;
         query.Limit = 1;

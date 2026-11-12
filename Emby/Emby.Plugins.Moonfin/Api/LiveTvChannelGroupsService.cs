@@ -4,11 +4,13 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Common;
+using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LiveTv;
 using MediaBrowser.Controller.Net;
 using MediaBrowser.Model.Logging;
+using MediaBrowser.Model.LiveTv;
 using MediaBrowser.Model.Services;
 using MediaBrowser.Model.Tasks;
 using Moonfin.LiveTv;
@@ -23,12 +25,14 @@ namespace Emby.Plugins.Moonfin.Api
         private readonly ILibraryManager _library;
         private readonly ITaskManager _tasks;
         private readonly IAuthorizationContext _auth;
+        private readonly IDtoService _dtos;
         private readonly ILogger _logger;
         public IRequest Request { get; set; } = null!;
         public IHttpResultFactory ResultFactory { get; set; }
 
         public LiveTvChannelGroupsService(IApplicationHost appHost)
         {
+            _dtos = appHost.Resolve<IDtoService>();
             _manager = appHost.Resolve<ILiveTvManager>();
             _library = appHost.Resolve<ILibraryManager>();
             _tasks = appHost.Resolve<ITaskManager>();
@@ -63,6 +67,11 @@ namespace Emby.Plugins.Moonfin.Api
             catch (Exception) when (!token.IsCancellationRequested)
             {
                 _logger.Warn("Could not read guide programme categories");
+            }
+            if (request.IncludeChannels)
+            {
+                var options = new DtoOptions { EnableImages = true, EnableUserData = true, AddCurrentProgram = false };
+                result.IncludeChannels(_dtos.GetBaseItemDtos(channels, options, user), item => item.Id);
             }
             return MoonfinJson.Result(Request, ResultFactory, result);
         }
@@ -120,28 +129,32 @@ namespace Emby.Plugins.Moonfin.Api
             }
 
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
-            deadline.CancelAfter(TimeSpan.FromSeconds(3));
-            var index = 0;
-            foreach (var tuner in tuners)
+            deadline.CancelAfter(EmbyTunerGroupReader.PlaylistBudget);
+            var reads = tuners.SelectMany(tuner => _manager.GetTunerHostInfos(tuner.Type)
+                .Select(host => ReadHostAsync(tuner, host))).ToArray();
+            var hosts = await Task.WhenAll(reads).ConfigureAwait(false);
+            for (var index = 0; index < hosts.Length; index++)
             {
-                foreach (var host in _manager.GetTunerHostInfos(tuner.Type))
+                var (host, channels, uncertain) = hosts[index];
+                if (channels.Count == 0) result.MissingTuner = true;
+                foreach (var channel in channels)
+                    result.Add(index, host.Id, channel.Id, channel.Tags, uncertain.Contains(channel.Id));
+            }
+
+            async Task<(TunerHostInfo, List<ChannelInfo>, HashSet<string>)> ReadHostAsync(ITunerHost tuner, TunerHostInfo host)
+            {
+                token.ThrowIfCancellationRequested();
+                var uncertain = new HashSet<string>(StringComparer.Ordinal);
+                try
                 {
-                    token.ThrowIfCancellationRequested();
-                    try
-                    {
-                        var uncertain = new HashSet<string>(StringComparer.Ordinal);
-                        var channels = await EmbyTunerGroupReader.GetChannelsAsync(
-                            tuner, host, token, deadline.Token, result.IsVisible, id => uncertain.Add(id)).ConfigureAwait(false);
-                        if (channels.Count == 0) result.MissingTuner = true;
-                        foreach (var channel in channels)
-                            result.Add(index, host.Id, channel.Id, channel.Tags, uncertain.Contains(channel.Id));
-                    }
-                    catch (Exception) when (!token.IsCancellationRequested)
-                    {
-                        result.MissingTuner = true;
-                        _logger.Warn("Could not read channel groups from tuner {0}", index);
-                    }
-                    index++;
+                    var channels = await EmbyTunerGroupReader.GetChannelsAsync(
+                        tuner, host, token, deadline.Token, result.IsVisible, id => uncertain.Add(id)).ConfigureAwait(false);
+                    return (host, channels, uncertain);
+                }
+                catch (Exception) when (!token.IsCancellationRequested)
+                {
+                    _logger.Warn("Could not read channel groups from tuner {0}", host.Id);
+                    return (host, new List<ChannelInfo>(), uncertain);
                 }
             }
         }

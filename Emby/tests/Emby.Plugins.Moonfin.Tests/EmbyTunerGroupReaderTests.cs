@@ -1,14 +1,35 @@
 using System.Reflection;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Emby.Plugins.Moonfin.Api;
 using MediaBrowser.Controller.LiveTv;
+using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.LiveTv;
+using Moonfin.LiveTv;
 using Xunit;
 
 namespace Emby.Plugins.Moonfin.Tests;
 
 public class EmbyTunerGroupReaderTests
 {
+    [Fact]
+    public void CombinedLineupUsesEmbyClientIdsAndIncludesUngroupedChannels()
+    {
+        var result = new ChannelGroupResult();
+        result.Groups["17"] = new[] { "CA | Sports" };
+        result.IncludeChannels(new[]
+        {
+            new BaseItemDto { Id = "17", Name = "Sports", ChannelNumber = "7", UserData = new() { IsFavorite = true } },
+            new BaseItemDto { Id = "24", Name = "Radio" }
+        }, item => item.Id);
+        var wire = JsonSerializer.SerializeToElement(result, MoonfinJson.Options);
+        var channels = wire.GetProperty("channels");
+        Assert.Equal("17", channels[0].GetProperty("Id").GetString());
+        Assert.True(channels[0].GetProperty("UserData").GetProperty("IsFavorite").GetBoolean());
+        Assert.Equal("CA | Sports", channels[0].GetProperty("groups")[0].GetString());
+        Assert.Empty(channels[1].GetProperty("groups").EnumerateArray());
+    }
+
     [Theory]
     [InlineData("HOUSEHOLD", false)]
     [InlineData("Sports", true)]
@@ -93,13 +114,14 @@ public class EmbyTunerGroupReaderTests
             var restricted = await EmbyTunerGroupReader.GetChannelsAsync(tuner, host, CancellationToken.None,
                 CancellationToken.None, id => id == "healthy", _ => { });
             Assert.DoesNotContain("Household", restricted.Single().Tags);
+            var other = EmbyTunerGroupReader.GetChannelsAsync(tuner, host, CancellationToken.None,
+                CancellationToken.None, _ => true, _ => { });
             deadline.Cancel();
             var fallback = await mixed.WaitAsync(TimeSpan.FromSeconds(2));
             Assert.Equal(new[] { "Sports" }, fallback.Single().Tags);
             Assert.Equal(new[] { "slow" }, missing);
-            var again = await EmbyTunerGroupReader.GetChannelsAsync(tuner, host, CancellationToken.None,
-                CancellationToken.None, _ => true, _ => { });
-            Assert.Equal(new[] { "Sports" }, again.Single().Tags);
+            probe.Pending.SetResult(new() { Channel("slow", "Household") });
+            Assert.Equal(new[] { "Sports", "Household" }, (await other).Single().Tags);
             Assert.Equal(1, probe.ReadCount);
         }
         finally { probe.Pending.TrySetResult(probe.Playlist); }

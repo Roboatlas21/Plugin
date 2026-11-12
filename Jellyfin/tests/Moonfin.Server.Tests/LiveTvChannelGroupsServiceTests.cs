@@ -1,10 +1,13 @@
+using System.Text.Json;
 using Jellyfin.Data.Entities;
 using Jellyfin.Data.Enums;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Configuration;
+using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LiveTv;
+using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.LiveTv;
 using MediaBrowser.Model.Querying;
 using MediaBrowser.Model.Tasks;
@@ -60,7 +63,14 @@ public class LiveTvChannelGroupsServiceTests
             // Jellyfin overwrites this file without truncating it on a shorter import.
             using (var stream = File.OpenWrite(lineup))
                 stream.Write("""[{"Id":"m3u_sports","ChannelGroup":"Golf"}]"""u8);
-            var reload = await service.GetAsync(userId, CancellationToken.None);
+            var reload = await service.GetAsync(userId, CancellationToken.None, includeChannels: true);
+            var wire = JsonSerializer.SerializeToElement(reload);
+            Assert.Equal(2, wire.GetProperty("version").GetInt32());
+            Assert.False(wire.TryGetProperty("groupsByChannelId", out _));
+            var rows = wire.GetProperty("channels").EnumerateArray().ToDictionary(row => row.GetProperty("Id").GetString()!);
+            Assert.Equal(visible.Length, rows.Count);
+            Assert.Equal("Golf", rows[visible[0].Id.ToString("N")].GetProperty("groups")[0].GetString());
+            Assert.Empty(rows[visible[2].Id.ToString("N")].GetProperty("groups").EnumerateArray());
             Assert.Equal("Golf", Assert.Single(reload.Groups[visible[0].Id.ToString("N")]));
             Assert.Equal(1, xtreamCalls);
             Assert.Equal(0, unrelatedCalls);
@@ -133,12 +143,20 @@ public class LiveTvChannelGroupsServiceTests
         });
         var liveTv = RecordingHostProxy.Create<ILiveTvManager>((_, args) =>
             new QueryResult<BaseItem> { Items = channels(((LiveTvChannelQuery)args![0]!).UserId) });
+        var dtos = RecordingHostProxy.Create<IDtoService>((_, args) =>
+        {
+            var requested = (DtoOptions)args![1]!;
+            Assert.True(requested.EnableImages && requested.EnableUserData);
+            Assert.False(requested.AddCurrentProgram);
+            Assert.IsType<User>(args[2]);
+            return ((IReadOnlyList<BaseItem>)args[0]!).Select(item => new BaseItemDto { Id = item.Id, Name = item.ExternalId }).ToArray();
+        });
         return new LiveTvChannelGroupsService(liveTv, RecordingHostProxy.Create<ITunerHostManager>((_, _) => tuners), config,
             RecordingHostProxy.Create<ILibraryManager>((_, _) => new QueryResult<BaseItem>()),
             RecordingHostProxy.Create<IUserManager>((_, _) => new User("viewer", "auth", "reset")),
             RecordingHostProxy.Create<ITaskManager>((_, _) => Array.Empty<IScheduledTaskWorker>()),
             new NoOpLogger<LiveTvChannelGroupsService>(),
-            RecordingHostProxy.Create<IHostApplicationLifetime>((_, _) => CancellationToken.None));
+            RecordingHostProxy.Create<IHostApplicationLifetime>((_, _) => CancellationToken.None), dtos);
     }
 
     [Fact]
@@ -186,7 +204,7 @@ public class LiveTvChannelGroupsServiceTests
         var tasks = RecordingHostProxy.Create<ITaskManager>((_, _) => new[] { worker });
         var service = new LiveTvChannelGroupsService(liveTv, null!, null!, library, users, tasks,
             new NoOpLogger<LiveTvChannelGroupsService>(),
-            RecordingHostProxy.Create<IHostApplicationLifetime>((_, _) => CancellationToken.None));
+            RecordingHostProxy.Create<IHostApplicationLifetime>((_, _) => CancellationToken.None), null!);
 
         var result = await service.GetAsync(user.Id, CancellationToken.None);
         Assert.Empty(result.Groups);

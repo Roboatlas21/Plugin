@@ -4,17 +4,38 @@ using System.Linq;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Tasks;
 
 namespace Moonfin.LiveTv
 {
     internal sealed class ChannelGroupResult
     {
-        [JsonPropertyName("version")] public int Version => 1;
+        [JsonPropertyName("version")] public int Version => Channels == null ? 1 : 2;
         [JsonPropertyName("supported")] public bool Supported => Groups.Count != 0;
         [JsonPropertyName("partial")] public bool Partial { get; set; }
-        [JsonPropertyName("groupsByChannelId")]
+        [JsonIgnore]
         public Dictionary<string, string[]> Groups { get; } = new Dictionary<string, string[]>(StringComparer.Ordinal);
+        [JsonPropertyName("groupsByChannelId"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public Dictionary<string, string[]>? LegacyGroups => Channels == null ? Groups : null;
+        [JsonPropertyName("channels"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public object[]? Channels { get; private set; }
+
+        public void IncludeChannels(IEnumerable<BaseItemDto> channels, Func<BaseItemDto, string> clientId)
+        {
+            Channels = channels.Select(channel =>
+            {
+                var id = clientId(channel);
+                return new
+                {
+                    Id = id, channel.Name, channel.ChannelNumber, channel.ServerId,
+                    Type = Convert.ToString(channel.Type), MediaType = Convert.ToString(channel.MediaType),
+                    channel.ImageTags, channel.UserData,
+                    groups = Groups.TryGetValue(id, out var labels) ? labels : Array.Empty<string>()
+                };
+            }).ToArray();
+        }
+
         // Only returned for a partial lineup. Other visible IDs were resolved,
         // including channels that the tuner confirmed have no group.
         [JsonPropertyName("unresolvedChannelIds"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

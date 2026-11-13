@@ -1,0 +1,3 @@
+Moonfin-Core v2 pinned commit: 319447ee3c9f9b9f0ead750abf246bc3910f8b0b
+Moonbase v2 pinned commit: 972eec918a284424c384f550ec2b00ed0069cc6b
+Purpose: trigger the Android APK and test relay workflow in the Plugin fork.

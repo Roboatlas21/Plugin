@@ -16,10 +16,10 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: Roboatlas21/Moonfin-Core
-          ref: 821351a59593557d2c9facf19f4c8b4c8dfcd3bc
+          ref: e5159c9a8e910872db0846f754aa2d7b942f59db
           persist-credentials: false
       - name: Verify pinned commit
-        run: test "$(git rev-parse HEAD)" = "821351a59593557d2c9facf19f4c8b4c8dfcd3bc"
+        run: test "$(git rev-parse HEAD)" = "e5159c9a8e910872db0846f754aa2d7b942f59db"
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.2'

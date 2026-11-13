@@ -10,7 +10,6 @@ using MediaBrowser.Controller.LiveTv;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.LiveTv;
 using MediaBrowser.Model.Querying;
-using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Hosting;
 using Moonfin.Server.Services;
 using Xunit;
@@ -89,9 +88,7 @@ public class LiveTvChannelGroupsServiceTests
             return ((IReadOnlyList<BaseItem>)args[0]!).Select(item => new BaseItemDto { Id = item.Id, Name = item.ExternalId }).ToArray();
         });
         return new LiveTvChannelGroupsService(liveTv, RecordingHostProxy.Create<ITunerHostManager>((_, _) => tuners), config,
-            RecordingHostProxy.Create<ILibraryManager>((_, _) => new QueryResult<BaseItem>()),
             RecordingHostProxy.Create<IUserManager>((_, _) => new User("viewer", "auth", "reset")),
-            RecordingHostProxy.Create<ITaskManager>((_, _) => Array.Empty<IScheduledTaskWorker>()),
             new NoOpLogger<LiveTvChannelGroupsService>(),
             RecordingHostProxy.Create<IHostApplicationLifetime>((_, _) => CancellationToken.None), dtos);
     }

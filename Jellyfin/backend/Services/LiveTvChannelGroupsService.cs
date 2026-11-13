@@ -1,6 +1,5 @@
 using System.Text;
 using System.Text.Json;
-using Jellyfin.Data.Enums;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
@@ -8,7 +7,6 @@ using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LiveTv;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.LiveTv;
-using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Moonfin.LiveTv;
@@ -17,7 +15,7 @@ namespace Moonfin.Server.Services;
 
 public sealed class LiveTvChannelGroupsService(
     ILiveTvManager liveTv, ITunerHostManager tuners, IServerConfigurationManager config,
-    ILibraryManager library, IUserManager users, ITaskManager tasks, ILogger<LiveTvChannelGroupsService> logger,
+    IUserManager users, ILogger<LiveTvChannelGroupsService> logger,
     IHostApplicationLifetime lifetime, IDtoService dtos)
 {
     private readonly ChannelGroupReader _m3uReader = new();
@@ -26,7 +24,6 @@ public sealed class LiveTvChannelGroupsService(
 
     internal async Task<ChannelGroupResult> GetAsync(Guid userId, CancellationToken token)
     {
-        var importTime = ChannelGroupResult.StableImportTime(tasks);
         var query = new LiveTvChannelQuery { UserId = userId, AddCurrentProgram = false };
         var options = new DtoOptions(false) { EnableImages = true, EnableUserData = true, AddCurrentProgram = false };
         var visible = liveTv.GetInternalChannels(query, options, token).Items;
@@ -62,14 +59,6 @@ public sealed class LiveTvChannelGroupsService(
                 (result.UnresolvedChannelIds ??= []).AddRange(xtream.Select(c => c.ClientId));
             }
         }
-        try
-        {
-            result.ReadProgrammeCategories(tasks, importTime, () => ReadCategories(viewer, visible.Select(c => c.Id).ToArray(), token));
-        }
-        catch (Exception ex) when (!token.IsCancellationRequested)
-        {
-            logger.LogWarning(ex, "Could not read guide programme categories");
-        }
         var items = visible.Count == 0 ? [] : BuildChannelDtos(visible, options, viewer.Value);
         result.SetChannels(items, item => item.Id.ToString("N"));
         return result;
@@ -83,27 +72,6 @@ public sealed class LiveTvChannelGroupsService(
             ? [channels, options, viewer, null]
             : [channels, options, viewer, null, false];
         return (IEnumerable<BaseItemDto>)method.Invoke(dtos, args)!;
-    }
-
-    private string[] ReadCategories(Lazy<object> viewer, Guid[] channelIds, CancellationToken token)
-    {
-        if (channelIds.Length == 0) return [];
-        var query = (InternalItemsQuery)Activator.CreateInstance(typeof(InternalItemsQuery), viewer.Value)!;
-        query.IncludeItemTypes = [BaseItemKind.LiveTvProgram];
-        query.ChannelIds = channelIds;
-        query.Limit = 1;
-        query.EnableTotalRecordCount = false;
-
-        // Program categories come from tags on the programs, not the channels.
-        var found = new List<string>();
-        foreach (var (key, tag) in new[] { ("movies", "Movie"), ("series", "Series"), ("sports", "Sports"),
-                                           ("news", "News"), ("kids", "Kids"), ("premiere", "Premiere") })
-        {
-            token.ThrowIfCancellationRequested();
-            query.Tags = [tag];
-            if (library.GetItemsResult(query).Items.Count != 0) found.Add(key);
-        }
-        return found.ToArray();
     }
 
     private async Task ReadM3uAsync(ChannelGroupSnapshot result, CancellationToken token)

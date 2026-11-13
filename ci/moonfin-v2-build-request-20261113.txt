@@ -3,3 +3,4 @@ Core commit: 3e1f64c29c4f8bf0815abd96d55dc48cdc9fb745
 Plugin commit: ae79e2ee744c23b187f47d873db1a65e62f11551
 Android TV, Android mobile, app/package tests, Moonbase tests.
 CI-only branch; no release or signed package publishing.
+Retry requested after enabling GitHub Actions: 2026-11-13.

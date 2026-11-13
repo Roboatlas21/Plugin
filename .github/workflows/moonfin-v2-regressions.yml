@@ -1,0 +1,61 @@
+name: Verify Moonfin v2 focus, Emby and compact layout
+
+on:
+  push:
+    branches: [ci/moonfin-v2-regression-check-20261113]
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    name: Targeted Moonfin v2 regressions
+    runs-on: ubuntu-26.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: Roboatlas21/Moonfin-Core
+          ref: 4c3d0ae6bda276a11e34968259c4f6679ea85a89
+          persist-credentials: false
+      - name: Verify pinned commit
+        run: test "$(git rev-parse HEAD)" = "4c3d0ae6bda276a11e34968259c4f6679ea85a89"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.2'
+      - name: Check Dart formatting and syntax
+        id: format
+        continue-on-error: true
+        run: |
+          dart format --output=none --set-exit-if-changed \
+            lib/ui/screens/livetv/live_tv_guide_screen.dart \
+            lib/ui/widgets/local_search_field.dart \
+            test/livetv/guide_navigation_widget_test.dart \
+            packages/server_emby/test/emby_live_tv_channel_groups_test.dart
+      - name: Resolve dependencies
+        run: flutter pub get
+      - name: Test TV picker focus
+        id: picker
+        continue-on-error: true
+        run: flutter test test/livetv/guide_navigation_widget_test.dart --reporter expanded
+      - name: Test compact landscape guide
+        id: layout
+        continue-on-error: true
+        run: |
+          flutter test test/livetv/guide_layout_arrangement_widget_test.dart \
+            --plain-name 'compact landscape chrome leaves five full guide rows visible' \
+            --reporter expanded
+      - name: Test Emby malformed response
+        id: emby
+        continue-on-error: true
+        run: |
+          cd packages/server_emby
+          flutter pub get
+          flutter test test/emby_live_tv_channel_groups_test.dart --reporter expanded
+      - name: Require all checks to pass
+        if: always()
+        run: |
+          test "${{ steps.format.outcome }}" = success
+          test "${{ steps.picker.outcome }}" = success
+          test "${{ steps.layout.outcome }}" = success
+          test "${{ steps.emby.outcome }}" = success

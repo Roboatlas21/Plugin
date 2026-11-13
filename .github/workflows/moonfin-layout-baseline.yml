@@ -1,0 +1,31 @@
+name: Check existing Moonfin guide layout against main
+
+on:
+  push:
+    branches: [ci/moonfin-layout-baseline-20261113]
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    name: Compact guide row baseline
+    runs-on: ubuntu-26.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: Roboatlas21/Moonfin-Core
+          ref: 47191b6765a3bd788041771c162d8346e87916fc
+          persist-credentials: false
+      - name: Verify source
+        run: test "$(git rev-parse HEAD)" = "47191b6765a3bd788041771c162d8346e87916fc"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.2'
+      - name: Run unchanged compact guide layout test
+        run: |
+          flutter pub get
+          flutter test test/livetv/guide_layout_arrangement_widget_test.dart \
+            --plain-name 'compact landscape chrome leaves five full guide rows visible' \
+            --reporter expanded

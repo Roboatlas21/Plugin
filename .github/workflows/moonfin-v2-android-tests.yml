@@ -1,0 +1,167 @@
+name: Moonfin v2 Android APKs and tests (Plugin relay)
+
+# Runs on the Plugin fork because Actions are unavailable in the Core fork.
+# Both repositories are pinned so the build cannot silently switch to newer code.
+on:
+  push:
+    branches: [ci/moonfin-v2-android-tests-20261113]
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: '3.47.2'
+  CORE_SHA: '319447ee3c9f9b9f0ead750abf246bc3910f8b0b'
+  PLUGIN_SHA: '972eec918a284424c384f550ec2b00ed0069cc6b'
+
+jobs:
+  android:
+    name: Android ${{ matrix.target }} APK
+    runs-on: ubuntu-26.04
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: mobile
+            artifact: moonfin-v2-android-mobile
+            files: Moonfin_Android_v*.apk
+          - target: tv
+            artifact: moonfin-v2-android-tv
+            files: Moonfin_AndroidTV_v*.apk
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: Roboatlas21/Moonfin-Core
+          ref: 319447ee3c9f9b9f0ead750abf246bc3910f8b0b
+          persist-credentials: false
+      - name: Verify source commit
+        run: test "$(git rev-parse HEAD)" = "$CORE_SHA"
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/cache/restore@v5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.m2/repository/org/robolectric
+          key: gradle-${{ runner.os }}-flutter-${{ env.FLUTTER_VERSION }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'pubspec.lock') }}
+          restore-keys: gradle-${{ runner.os }}-flutter-${{ env.FLUTTER_VERSION }}-
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - name: Limit Gradle memory
+        run: |
+          mkdir -p ~/.gradle
+          cat >> ~/.gradle/gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx4G -XX:MaxMetaspaceSize=1G -XX:ReservedCodeCacheSize=256m -XX:+HeapDumpOnOutOfMemoryError
+          kotlin.daemon.jvmargs=-Xmx2G
+          EOF
+      - name: Build Android APK and app bundle
+        run: |
+          chmod +x build-android.sh
+          ./build-android.sh ${{ matrix.target }}
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+          retention-days: 7
+
+  app-tests:
+    name: Flutter app tests (shard ${{ matrix.shard }})
+    runs-on: ubuntu-26.04
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: Roboatlas21/Moonfin-Core
+          ref: 319447ee3c9f9b9f0ead750abf246bc3910f8b0b
+          persist-credentials: false
+      - name: Verify source commit
+        run: test "$(git rev-parse HEAD)" = "$CORE_SHA"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - name: Run full app test shard
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter pub get
+          mapfile -t files < <(find test -name '*_test.dart' | LC_ALL=C sort | awk -v shard="${{ matrix.shard }}" '(NR - 1) % 3 == shard')
+          echo "Running ${#files[@]} Dart test files on shard ${{ matrix.shard }}"
+          flutter test "${files[@]}" --reporter expanded 2>&1 | tee "app-tests-${{ matrix.shard }}.log"
+      - name: Save test log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: app-tests-shard-${{ matrix.shard }}-log
+          path: app-tests-${{ matrix.shard }}.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  package-tests:
+    name: Flutter package tests
+    runs-on: ubuntu-26.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: Roboatlas21/Moonfin-Core
+          ref: 319447ee3c9f9b9f0ead750abf246bc3910f8b0b
+          persist-credentials: false
+      - name: Verify source commit
+        run: test "$(git rev-parse HEAD)" = "$CORE_SHA"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - name: Run package tests
+        shell: bash
+        run: |
+          set -uo pipefail
+          flutter pub get
+          status=0
+          packages="custom_tv_text_field_fork design rar_fork server_core server_emby server_jellyfin server_plex playback_plex server_silo playback_silo"
+          for pkg in $packages; do
+            echo "=== $pkg ==="
+            (cd "packages/$pkg" && flutter pub get && flutter test --reporter expanded) 2>&1 | tee -a package-tests.log || status=1
+          done
+          exit "$status"
+      - name: Save package test log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: package-tests-log
+          path: package-tests.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  moonbase-tests:
+    name: Moonbase Jellyfin and Emby tests
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: Roboatlas21/Plugin
+          ref: 972eec918a284424c384f550ec2b00ed0069cc6b
+          persist-credentials: false
+      - name: Verify source commit
+        run: test "$(git rev-parse HEAD)" = "$PLUGIN_SHA"
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+      - name: Test Jellyfin plugin
+        run: dotnet test Jellyfin/tests/Moonfin.Server.Tests/Moonfin.Server.Tests.csproj -c Release
+      - name: Test Emby plugin
+        run: dotnet test Emby/tests/Emby.Plugins.Moonfin.Tests/Emby.Plugins.Moonfin.Tests.csproj -c Release
+      - name: Run salvage tests
+        run: dotnet run --project Jellyfin/tools/salvage-tests -c Release

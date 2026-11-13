@@ -12,7 +12,7 @@ permissions:
 
 env:
   FLUTTER_VERSION: '3.47.2'
-  CORE_SHA: '3e1f64c29c4f8bf0815abd96d55dc48cdc9fb745'
+  CORE_SHA: '89537abec8215ff4dfedef5f2184555630b6cdde'
   PLUGIN_SHA: 'ae79e2ee744c23b187f47d873db1a65e62f11551'
 
 jobs:
@@ -34,7 +34,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: Roboatlas21/Moonfin-Core
-          ref: 3e1f64c29c4f8bf0815abd96d55dc48cdc9fb745
+          ref: 89537abec8215ff4dfedef5f2184555630b6cdde
           persist-credentials: false
       - name: Verify source commit
         run: test "$(git rev-parse HEAD)" = "$CORE_SHA"
@@ -85,7 +85,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: Roboatlas21/Moonfin-Core
-          ref: 3e1f64c29c4f8bf0815abd96d55dc48cdc9fb745
+          ref: 89537abec8215ff4dfedef5f2184555630b6cdde
           persist-credentials: false
       - name: Verify source commit
         run: test "$(git rev-parse HEAD)" = "$CORE_SHA"
@@ -117,7 +117,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: Roboatlas21/Moonfin-Core
-          ref: 3e1f64c29c4f8bf0815abd96d55dc48cdc9fb745
+          ref: 89537abec8215ff4dfedef5f2184555630b6cdde
           persist-credentials: false
       - name: Verify source commit
         run: test "$(git rev-parse HEAD)" = "$CORE_SHA"

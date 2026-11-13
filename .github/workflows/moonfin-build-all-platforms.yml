@@ -5,14 +5,15 @@ name: Moonfin v2 Android APKs and tests (Plugin relay)
 on:
   push:
     branches: [ci/moonfin-live-tv-groups]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 env:
   FLUTTER_VERSION: '3.47.2'
-  CORE_SHA: '319447ee3c9f9b9f0ead750abf246bc3910f8b0b'
-  PLUGIN_SHA: '972eec918a284424c384f550ec2b00ed0069cc6b'
+  CORE_SHA: '2b673adb885b5e366a5617821358ea9990461c41'
+  PLUGIN_SHA: 'ae79e2ee744c23b187f47d873db1a65e62f11551'
 
 jobs:
   android:
@@ -33,7 +34,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: Roboatlas21/Moonfin-Core
-          ref: 319447ee3c9f9b9f0ead750abf246bc3910f8b0b
+          ref: 2b673adb885b5e366a5617821358ea9990461c41
           persist-credentials: false
       - name: Verify source commit
         run: test "$(git rev-parse HEAD)" = "$CORE_SHA"
@@ -84,7 +85,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: Roboatlas21/Moonfin-Core
-          ref: 319447ee3c9f9b9f0ead750abf246bc3910f8b0b
+          ref: 2b673adb885b5e366a5617821358ea9990461c41
           persist-credentials: false
       - name: Verify source commit
         run: test "$(git rev-parse HEAD)" = "$CORE_SHA"
@@ -116,7 +117,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: Roboatlas21/Moonfin-Core
-          ref: 319447ee3c9f9b9f0ead750abf246bc3910f8b0b
+          ref: 2b673adb885b5e366a5617821358ea9990461c41
           persist-credentials: false
       - name: Verify source commit
         run: test "$(git rev-parse HEAD)" = "$CORE_SHA"
@@ -152,7 +153,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: Roboatlas21/Plugin
-          ref: 972eec918a284424c384f550ec2b00ed0069cc6b
+          ref: ae79e2ee744c23b187f47d873db1a65e62f11551
           persist-credentials: false
       - name: Verify source commit
         run: test "$(git rev-parse HEAD)" = "$PLUGIN_SHA"

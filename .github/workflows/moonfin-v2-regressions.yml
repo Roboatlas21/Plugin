@@ -16,27 +16,17 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: Roboatlas21/Moonfin-Core
-          ref: 4203162f2fad96ac6a82b93ad0c6db5652e953b9
+          ref: 6b779bb884db0703434d12033f4d8f5bff42840d
           persist-credentials: false
       - name: Verify pinned commit
-        run: test "$(git rev-parse HEAD)" = "4203162f2fad96ac6a82b93ad0c6db5652e953b9"
+        run: test "$(git rev-parse HEAD)" = "6b779bb884db0703434d12033f4d8f5bff42840d"
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.2'
-      - name: Show Dart formatting differences
+      - name: Verify Dart formatting
         id: format
         run: |
-          dart format --output=write \
-            lib/ui/screens/livetv/live_tv_guide_screen.dart \
-            lib/ui/widgets/local_search_field.dart \
-            test/livetv/guide_navigation_widget_test.dart \
-            packages/server_emby/test/emby_live_tv_channel_groups_test.dart
-          git diff -- \
-            lib/ui/screens/livetv/live_tv_guide_screen.dart \
-            lib/ui/widgets/local_search_field.dart \
-            test/livetv/guide_navigation_widget_test.dart \
-            packages/server_emby/test/emby_live_tv_channel_groups_test.dart
-          git restore -- \
+          dart format --output=none --set-exit-if-changed \
             lib/ui/screens/livetv/live_tv_guide_screen.dart \
             lib/ui/widgets/local_search_field.dart \
             test/livetv/guide_navigation_widget_test.dart \

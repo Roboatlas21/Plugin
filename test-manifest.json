@@ -6,8 +6,17 @@
     "description": "Moonbase is the Moonfin server plugin for Jellyfin, powering settings sync, the Moonfin Web app at /Moonfin/Web/, a built-in theme editor with custom theme APIs, media bar and ratings integrations, and Seerr proxy/SSO with admin defaults and broadcasts across Moonfin clients.",
     "owner": "Roboatlas21",
     "category": "General",
-    "imageUrl": "https://raw.githubusercontent.com/Roboatlas21/Plugin/a5f8e9f4ea6d1c29e1b96266c1ad7f041e327016/Jellyfin/backend/assets/logo.png",
+    "imageUrl": "https://raw.githubusercontent.com/Roboatlas21/Plugin/5df2b5f88772a9083c2acac426128d301e8dda8f/Jellyfin/backend/assets/logo.png",
     "versions": [
+      {
+        "version": "3.1.1.2",
+        "targetAbi": "10.10.0.0",
+        "sourceUrl": "https://github.com/Roboatlas21/Plugin/releases/download/test-3.1.1.2/Moonfin.Server-3.1.1.2.zip",
+        "checksum": "67C744133B7BB5AF0632DDE12762FBC4",
+        "changelog": "Live TV channel groups v2: Jellyfin M3U and Xtream groups, Emby native channel tags, and handling for ungrouped channels. Built from feat/live-tv-channel-groups-emby-tags-experiment-v2 (ae79e2ee744c23b187f47d873db1a65e62f11551); release-only version bump from 3.1.1.1. No feature PR source changes.",
+        "timestamp": "2026-11-13T22:27:24Z",
+        "dependencies": []
+      },
       {
         "version": "3.1.1.1",
         "targetAbi": "10.10.0.0",

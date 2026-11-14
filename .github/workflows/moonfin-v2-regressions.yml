@@ -16,17 +16,17 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: Roboatlas21/Moonfin-Core
-          ref: 72c16187441447ae3bc6816d303e94f2de0becad
+          ref: 4ca533ddb5d2ebd9a5a5dd6a6a9fb8ad5ae2652d
           persist-credentials: false
       - name: Verify pinned commit
-        run: test "$(git rev-parse HEAD)" = "72c16187441447ae3bc6816d303e94f2de0becad"
+        run: test "$(git rev-parse HEAD)" = "4ca533ddb5d2ebd9a5a5dd6a6a9fb8ad5ae2652d"
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.2'
       - name: Verify Dart formatting
         id: format
         run: |
-          dart format --output=write \
+          dart format --output=none --set-exit-if-changed \
             lib/ui/screens/livetv/live_tv_guide_screen.dart \
             lib/ui/screens/livetv/guide/guide_filter_picker.dart \
             lib/ui/screens/livetv/guide/guide_program_search_dialog.dart \
@@ -34,8 +34,6 @@ jobs:
             test/livetv/guide_navigation_widget_test.dart \
             test/livetv/guide_program_search_test.dart \
             packages/server_emby/test/emby_live_tv_channel_groups_test.dart
-          git diff -- lib/ui/screens/livetv/live_tv_guide_screen.dart lib/ui/screens/livetv/guide/guide_program_search_dialog.dart test/livetv/guide_program_search_test.dart
-          git diff --exit-code -- lib/ui/screens/livetv/live_tv_guide_screen.dart lib/ui/screens/livetv/guide/guide_program_search_dialog.dart test/livetv/guide_program_search_test.dart
       - name: Resolve dependencies
         run: flutter pub get
       - name: Test TV picker focus

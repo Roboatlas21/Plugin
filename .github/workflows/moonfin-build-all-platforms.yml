@@ -12,7 +12,7 @@ permissions:
 
 env:
   FLUTTER_VERSION: '3.47.2'
-  CORE_SHA: 'e5159c9a8e910872db0846f754aa2d7b942f59db'
+  CORE_SHA: 'e95e60d4a5cf1fb72597d967158ab5c90665babd'
   PLUGIN_SHA: 'ae79e2ee744c23b187f47d873db1a65e62f11551'
 
 jobs:
@@ -34,7 +34,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: Roboatlas21/Moonfin-Core
-          ref: e5159c9a8e910872db0846f754aa2d7b942f59db
+          ref: e95e60d4a5cf1fb72597d967158ab5c90665babd
           persist-credentials: false
       - name: Verify source commit
         run: test "$(git rev-parse HEAD)" = "$CORE_SHA"
@@ -73,6 +73,57 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  windows:
+    name: Windows x64 installer
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: Roboatlas21/Moonfin-Core
+          ref: e95e60d4a5cf1fb72597d967158ab5c90665babd
+          persist-credentials: false
+      - name: Verify source commit
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD).Trim() -ne $env:CORE_SHA) {
+            throw "Unexpected Moonfin-Core commit"
+          }
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+      - name: Find vcpkg and runner image versions
+        id: vcpkg
+        shell: pwsh
+        run: |
+          $commit = git -C $env:VCPKG_INSTALLATION_ROOT rev-parse HEAD
+          "commit=$commit" >> $env:GITHUB_OUTPUT
+          "image=$env:ImageVersion" >> $env:GITHUB_OUTPUT
+      - uses: actions/cache@v5
+        with:
+          path: ~\AppData\Local\vcpkg\archives
+          key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ steps.vcpkg.outputs.commit }}-${{ steps.vcpkg.outputs.image }}
+          restore-keys: vcpkg-${{ runner.os }}-${{ runner.arch }}-
+      - name: Build Windows installer
+        shell: pwsh
+        run: .\build-windows.ps1
+      - name: Verify Windows installer
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem -Path . -Filter 'Moonfin_Windows_v*.exe' -File -ErrorAction SilentlyContinue)
+          if ($files.Count -eq 0) { throw "Windows installer not found" }
+          $files | ForEach-Object { Write-Host "Built $($_.Name)" }
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v6
+        with:
+          name: moonfin-v2-windows-x64-installer
+          path: Moonfin_Windows_v*.exe
+          if-no-files-found: error
+          retention-days: 7
+
   app-tests:
     name: Flutter app tests (shard ${{ matrix.shard }})
     runs-on: ubuntu-26.04
@@ -85,7 +136,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: Roboatlas21/Moonfin-Core
-          ref: e5159c9a8e910872db0846f754aa2d7b942f59db
+          ref: e95e60d4a5cf1fb72597d967158ab5c90665babd
           persist-credentials: false
       - name: Verify source commit
         run: test "$(git rev-parse HEAD)" = "$CORE_SHA"
@@ -117,7 +168,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: Roboatlas21/Moonfin-Core
-          ref: e5159c9a8e910872db0846f754aa2d7b942f59db
+          ref: e95e60d4a5cf1fb72597d967158ab5c90665babd
           persist-credentials: false
       - name: Verify source commit
         run: test "$(git rev-parse HEAD)" = "$CORE_SHA"

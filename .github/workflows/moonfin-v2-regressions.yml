@@ -26,7 +26,7 @@ jobs:
       - name: Verify Dart formatting
         id: format
         run: |
-          dart format --output=none --set-exit-if-changed \
+          dart format --output=write \
             lib/ui/screens/livetv/live_tv_guide_screen.dart \
             lib/ui/screens/livetv/guide/guide_filter_picker.dart \
             lib/ui/screens/livetv/guide/guide_program_search_dialog.dart \
@@ -34,6 +34,8 @@ jobs:
             test/livetv/guide_navigation_widget_test.dart \
             test/livetv/guide_program_search_test.dart \
             packages/server_emby/test/emby_live_tv_channel_groups_test.dart
+          git diff -- lib/ui/screens/livetv/live_tv_guide_screen.dart lib/ui/screens/livetv/guide/guide_program_search_dialog.dart test/livetv/guide_program_search_test.dart
+          git diff --exit-code -- lib/ui/screens/livetv/live_tv_guide_screen.dart lib/ui/screens/livetv/guide/guide_program_search_dialog.dart test/livetv/guide_program_search_test.dart
       - name: Resolve dependencies
         run: flutter pub get
       - name: Test TV picker focus

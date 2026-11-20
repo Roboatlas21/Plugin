@@ -157,3 +157,41 @@ func TestCleanLeavesNonASCIIKeysAlone(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 }
+
+func TestSavedLiveTvFiltersSharePlexDeviceProfiles(t *testing.T) {
+	keys := ServerKeys{}
+	pinned := decode(t, `{"liveTvSavedFilters":["group:US | SPORTS, Canada","category:sports"]}`)
+	env := SaveProfile(nil, "tv", Clean(pinned), "tv", keys, now)
+	wanted := pinned["liveTvSavedFilters"]
+	if got := Resolve(env, "mobile", nil, keys)["liveTvSavedFilters"]; !reflect.DeepEqual(got, wanted) {
+		t.Fatalf("mobile pins = %v, want %v", got, wanted)
+	}
+	if _, exists := env["tv"].(M)["liveTvSavedFilters"]; exists {
+		t.Fatal("TV-only pins must move to global")
+	}
+
+	// A client that does not know this field cannot erase it.
+	env = SaveProfile(env, "desktop", M{"cinemaModeEnabled": true}, "desktop", keys, now)
+	if got := Resolve(env, "desktop", nil, keys)["liveTvSavedFilters"]; !reflect.DeepEqual(got, wanted) {
+		t.Fatalf("unrelated desktop update lost pins: %v", got)
+	}
+
+	// Explicitly unpinning everything on mobile reaches the TV.
+	env = SaveProfile(env, "mobile", M{"liveTvSavedFilters": []any{}}, "mobile", keys, now)
+	if got := Resolve(env, "tv", nil, keys)["liveTvSavedFilters"]; !reflect.DeepEqual(got, []any{}) {
+		t.Fatalf("clear pins did not reach TV: %v", got)
+	}
+}
+
+func TestSavedLiveTvFiltersSurvivePlexEnvelopeMergeAndReplace(t *testing.T) {
+	keys := ServerKeys{}
+	env := SaveProfile(nil, "tv", decode(t, `{"liveTvSavedFilters":["group:News, English"]}`), "tv", keys, now)
+	env = SaveEnvelope(env, decode(t, `{"mobile":{"liveTvSavedFilters":["category:movies"]}}`), "merge", "mobile", keys, now)
+	if got := Resolve(env, "tv", nil, keys)["liveTvSavedFilters"]; !reflect.DeepEqual(got, []any{"category:movies"}) {
+		t.Fatalf("envelope merge did not promote mobile pins: %v", got)
+	}
+	env = ReplaceProfile(env, "desktop", M{"cinemaModeEnabled": true}, "desktop", keys, now)
+	if got := Resolve(env, "desktop", nil, keys)["liveTvSavedFilters"]; !reflect.DeepEqual(got, []any{"category:movies"}) {
+		t.Fatalf("replacing unrelated desktop settings erased pins: %v", got)
+	}
+}

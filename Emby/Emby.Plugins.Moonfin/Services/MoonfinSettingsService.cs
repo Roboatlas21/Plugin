@@ -370,6 +370,10 @@ namespace Emby.Plugins.Moonfin.Services
                 finalSettings.LastUpdatedBy = clientId ?? "unknown";
                 finalSettings.SchemaVersion = 2;
 
+                MoveLiveTvSavedFiltersToGlobal(
+                    finalSettings,
+                    settings.Global?.LiveTvSavedFilters ?? settings.Tv?.LiveTvSavedFilters
+                        ?? settings.Mobile?.LiveTvSavedFilters ?? settings.Desktop?.LiveTvSavedFilters);
                 MoveContentHidingToGlobal(finalSettings, storedHiddenContinueWatching, storedHiddenNextUp);
 
                 settingsChanged = SettingsDiffer(beforeComparisonJson, finalSettings);
@@ -421,6 +425,7 @@ namespace Emby.Plugins.Moonfin.Services
                 else
                     settings.SetProfile(profileName, profile);
 
+                MoveLiveTvSavedFiltersToGlobal(settings, profile.LiveTvSavedFilters);
                 StripServerWideKeys(settings);
                 settings.LastUpdated = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 settings.LastUpdatedBy = clientId ?? "unknown";
@@ -1032,6 +1037,27 @@ namespace Emby.Plugins.Moonfin.Services
             ("mobile", s => s.Mobile),
             ("tv", s => s.Tv),
         };
+
+        /// <summary>
+        /// Pinned guide shortcuts belong to the user, not to a TV or mobile profile.
+        /// An explicit empty list clears them; a missing field leaves them unchanged.
+        /// </summary>
+        private static void MoveLiveTvSavedFiltersToGlobal(
+            MoonfinUserSettings settings, List<string>? incoming = null)
+        {
+            var filters = incoming ?? settings.Global?.LiveTvSavedFilters
+                ?? settings.Tv?.LiveTvSavedFilters
+                ?? settings.Mobile?.LiveTvSavedFilters
+                ?? settings.Desktop?.LiveTvSavedFilters;
+            if (filters != null)
+            {
+                settings.Global ??= new MoonfinSettingsProfile();
+                settings.Global.LiveTvSavedFilters = new List<string>(filters);
+            }
+            if (settings.Tv != null) settings.Tv.LiveTvSavedFilters = null;
+            if (settings.Mobile != null) settings.Mobile.LiveTvSavedFilters = null;
+            if (settings.Desktop != null) settings.Desktop.LiveTvSavedFilters = null;
+        }
 
         /// <summary>
         /// Content hiding is a global preference, so each profile's hidden lists get lifted into

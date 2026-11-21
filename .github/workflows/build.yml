@@ -25,6 +25,7 @@ jobs:
             exit 1
           }
           node --check Go/web/host.js
+          node --test Go/web/admin-guide.test.cjs
 
       - name: Read Jellyfin version and ABI
         id: jf_meta

@@ -21,33 +21,68 @@ public sealed class LiveTvSavedFiltersProfileTests : IDisposable
     }
 
     [Fact]
-    public async Task SavedFiltersAreSharedAcrossDevicesAndCanBeCleared()
+    public async Task AtomicEditsPreserveOtherPinsAndRejectStaleFullProfiles()
     {
         var userId = Guid.NewGuid();
-        var shortcuts = new List<string> { "group:US | SPORTS, Canada", "category:sports" };
-
-        await _service.SaveProfileAsync(userId, "tv",
-            new MoonfinSettingsProfile { LiveTvSavedFilters = shortcuts },
-            notifySettingsChanged: false);
-
-        var settings = (await _service.GetUserSettingsAsync(userId))!;
-        Assert.Equal(shortcuts, settings.Global!.LiveTvSavedFilters);
-        Assert.Null(settings.Tv!.LiveTvSavedFilters);
-        Assert.Equal(shortcuts, _service.ResolveProfile(settings, "mobile").LiveTvSavedFilters);
-
-        // An unrelated profile update must not erase shortcuts.
-        await _service.SaveProfileAsync(userId, "desktop",
-            new MoonfinSettingsProfile { CinemaModeEnabled = true },
-            notifySettingsChanged: false);
-        settings = (await _service.GetUserSettingsAsync(userId))!;
-        Assert.Equal(shortcuts, _service.ResolveProfile(settings, "desktop").LiveTvSavedFilters);
+        var initial = new List<string> { "group:US | SPORTS, Canada" };
+        await _service.SaveProfileAsync(userId, "tv", new MoonfinSettingsProfile(),
+            notifySettingsChanged: false,
+            savedFilterChange: new LiveTvSavedFilterChange { Action = "initializeIfAbsent", Filters = initial });
 
         await _service.SaveProfileAsync(userId, "mobile",
             new MoonfinSettingsProfile { LiveTvSavedFilters = new List<string>() },
             notifySettingsChanged: false);
-        settings = (await _service.GetUserSettingsAsync(userId))!;
-        Assert.Empty(settings.Global!.LiveTvSavedFilters!);
-        Assert.Null(settings.Mobile!.LiveTvSavedFilters);
-        Assert.Empty(_service.ResolveProfile(settings, "tv").LiveTvSavedFilters!);
+        var stored = (await _service.GetUserSettingsAsync(userId))!;
+        Assert.Equal(initial, stored.Global!.LiveTvSavedFilters);
+        Assert.Null(stored.Mobile!.LiveTvSavedFilters);
+
+        await _service.SaveProfileAsync(userId, "tv", new MoonfinSettingsProfile(),
+            notifySettingsChanged: false,
+            savedFilterChange: new LiveTvSavedFilterChange { Action = "add", Filter = "group:News" });
+        await _service.SaveProfileAsync(userId, "mobile", new MoonfinSettingsProfile(),
+            notifySettingsChanged: false,
+            savedFilterChange: new LiveTvSavedFilterChange { Action = "add", Filter = "group:Kids" });
+        stored = (await _service.GetUserSettingsAsync(userId))!;
+        Assert.Equal(new[] { "group:US | SPORTS, Canada", "group:News", "group:Kids" },
+            _service.ResolveProfile(stored, "mobile").LiveTvSavedFilters);
+
+        await _service.SaveProfileAsync(userId, "tv", new MoonfinSettingsProfile(),
+            notifySettingsChanged: false,
+            savedFilterChange: new LiveTvSavedFilterChange { Action = "remove", Filter = "group:News" });
+        stored = (await _service.GetUserSettingsAsync(userId))!;
+        Assert.Equal(new[] { "group:US | SPORTS, Canada", "group:Kids" }, stored.Global!.LiveTvSavedFilters);
+    }
+
+    [Fact]
+    public async Task FirstImportIsConditionalAndExplicitEmptyIsNotReimported()
+    {
+        var userId = Guid.NewGuid();
+        await _service.SaveProfileAsync(userId, "tv", new MoonfinSettingsProfile(),
+            notifySettingsChanged: false,
+            savedFilterChange: new LiveTvSavedFilterChange { Action = "initializeIfAbsent",
+                Filters = new List<string> { "group:Sports" } });
+        await _service.SaveProfileAsync(userId, "mobile", new MoonfinSettingsProfile(),
+            notifySettingsChanged: false,
+            savedFilterChange: new LiveTvSavedFilterChange { Action = "initializeIfAbsent",
+                Filters = new List<string> { "group:News" } });
+        await _service.SaveUserSettingsAsync(userId, new MoonfinUserSettings {
+            Global = new MoonfinSettingsProfile { LiveTvSavedFilters = new List<string>() }
+        }, mergeMode: "replace");
+        await _service.SaveProfileAsync(userId, "global", new MoonfinSettingsProfile {
+            LiveTvSavedFilters = new List<string>()
+        }, replace: true, notifySettingsChanged: false);
+        var stored = (await _service.GetUserSettingsAsync(userId))!;
+        Assert.Equal(new[] { "group:Sports" }, stored.Global!.LiveTvSavedFilters);
+
+        await _service.SaveProfileAsync(userId, "mobile", new MoonfinSettingsProfile(),
+            notifySettingsChanged: false,
+            savedFilterChange: new LiveTvSavedFilterChange { Action = "remove", Filter = "group:Sports" });
+        await _service.SaveProfileAsync(userId, "tv", new MoonfinSettingsProfile(),
+            notifySettingsChanged: false,
+            savedFilterChange: new LiveTvSavedFilterChange { Action = "initializeIfAbsent",
+                Filters = new List<string> { "group:News" } });
+        stored = (await _service.GetUserSettingsAsync(userId))!;
+        Assert.Empty(stored.Global!.LiveTvSavedFilters!);
+        Assert.Empty(_service.ResolveProfile(stored, "tv").LiveTvSavedFilters!);
     }
 }

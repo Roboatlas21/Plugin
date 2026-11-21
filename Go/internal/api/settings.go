@@ -403,6 +403,21 @@ func (s *Server) handleGetDefaults(w http.ResponseWriter, r *http.Request) {
 	if d == nil {
 		d = M{}
 	}
+	// The admin picker requests Plex's available groups through this existing
+	// settings route, avoiding browser CORS restrictions and new endpoints.
+	if r.URL.Query().Get("includeLiveTvGroups") == "true" {
+		if provider, ok := s.catalog.(interface {
+			LiveTvFreeGroups(context.Context, string) ([]string, error)
+		}); ok {
+			groups, err := provider.LiveTvFreeGroups(r.Context(), callerOf(r).Token)
+			if err != nil {
+				writeError(w, http.StatusBadGateway, "Could not load Plex Free TV groups")
+				return
+			}
+			writeJSON(w, http.StatusOK, M{"defaultSettings": d, "availableGuideGroups": groups})
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, d)
 }
 

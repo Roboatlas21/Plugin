@@ -1053,7 +1053,7 @@ namespace Emby.Plugins.Moonfin.Services
         }
 
         /// <summary>Apply a pin operation while holding the settings-file lock.</summary>
-        private static void ApplySavedFilterChange(MoonfinUserSettings settings, LiveTvSavedFilterChange? change, List<string>? defaults)
+        internal static void ApplySavedFilterChange(MoonfinUserSettings settings, LiveTvSavedFilterChange? change, List<string>? defaults)
         {
             if (change == null) return;
             if (!change.IsValid()) throw new ArgumentException("Invalid saved guide filter change", nameof(change));

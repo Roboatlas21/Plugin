@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [master]
+    branches: [master, ci/moonbase-exclusion-save-20261121]
   pull_request:
     branches: [master]
 

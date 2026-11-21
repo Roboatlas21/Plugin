@@ -11387,8 +11387,9 @@
                 // Use the same group identifiers as the guide's saved shortcuts.
                 var availableDefaultGuideGroups = [];
                 var defaultGuideGroupsMessage = 'Loading available groups…';
-                var defaultGuideCategories = [['movies', 'Movies'], ['series', 'Series'], ['sports', 'Sports'],
-                    ['news', 'News'], ['kids', 'Kids'], ['premiere', 'Premieres']];
+                var defaultGuideCategories = (window.moonbaseHost && window.moonbaseHost.guideCategories) ||
+                    [['movies', 'Movies'], ['series', 'Series'], ['sports', 'Sports'],
+                     ['news', 'News'], ['kids', 'Kids'], ['premiere', 'Premieres']];
 
                 function renderDefaultGuideGroups(defaults, preserveSelection) {
                     var host = document.querySelector('#DefaultPinnedGuideGroups');
@@ -11418,21 +11419,25 @@
                 }
 
                 function discoverDefaultGuideGroups() {
-                    ApiClient.ajax({type: 'GET', url: ApiClient.getUrl('Moonfin/LiveTv/ChannelGroups'), dataType: 'json'})
-                        .then(function(result) {
-                            // Moonbase includes group names in each visible channel DTO.
-                            var names = [];
-                            (result.channels || result.Channels || []).forEach(function(channel) {
-                                names.push.apply(names, channel.groups || channel.Groups || []);
+                    // A host adapter may supply genres using its existing backend route.
+                    var hostLoader = window.moonbaseHost && window.moonbaseHost.loadGuideGroups;
+                    var discovery = hostLoader ? hostLoader() :
+                        ApiClient.ajax({type: 'GET', url: ApiClient.getUrl('Moonfin/LiveTv/ChannelGroups'), dataType: 'json'})
+                            .then(function(result) {
+                                var names = [];
+                                (result.channels || result.Channels || []).forEach(function(channel) {
+                                    names.push.apply(names, channel.groups || channel.Groups || []);
+                                });
+                                return names;
                             });
-                            // The server has already cleaned each group's label.
-                            availableDefaultGuideGroups = Array.from(new Set(names)).sort();
-                            defaultGuideGroupsMessage = 'No channel groups available.';
-                        }).catch(function() {
-                            defaultGuideGroupsMessage = 'Could not load groups. Reload to retry.';
-                        }).finally(function() {
-                            renderDefaultGuideGroups(defaultsState.profiles[defaultsState.active] || {}, true);
-                        });
+                    discovery.then(function(names) {
+                        availableDefaultGuideGroups = Array.from(new Set(names)).sort();
+                        defaultGuideGroupsMessage = 'No channel groups available.';
+                    }).catch(function() {
+                        defaultGuideGroupsMessage = 'Could not load groups. Reload to retry.';
+                    }).finally(function() {
+                        renderDefaultGuideGroups(defaultsState.profiles[defaultsState.active] || {}, true);
+                    });
                 }
 
                 // Fills the User defaults form from one profile's defaults. The same form edits

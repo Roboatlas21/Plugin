@@ -11387,7 +11387,9 @@
                 // Use the same group identifiers as the guide's saved shortcuts.
                 var availableDefaultGuideGroups = [];
                 var defaultGuideGroupsMessage = 'Loading available groups…';
-                var defaultGuideCategories = [['movies', 'Movies'], ['series', 'Series'], ['premiere', 'Premieres']];
+                var defaultGuideCategories = (window.moonbaseHost && window.moonbaseHost.guideCategories) ||
+                    [['movies', 'Movies'], ['series', 'Series'], ['sports', 'Sports'],
+                     ['news', 'News'], ['kids', 'Kids'], ['premiere', 'Premieres']];
 
                 function renderDefaultGuideGroups(defaults, preserveSelection) {
                     var host = document.querySelector('#DefaultPinnedGuideGroups');
@@ -11417,12 +11419,19 @@
                 }
 
                 function discoverDefaultGuideGroups() {
-                    // The Plex companion reads the Cloud catalog, avoiding browser CORS.
-                    ApiClient.ajax({
-                        type: 'GET', url: ApiClient.getUrl('Moonfin/Defaults', {includeLiveTvGroups: 'true'}), dataType: 'json'
-                    }).then(function(result) {
-                        // The Plex companion already returns unique, sorted labels.
-                        availableDefaultGuideGroups = result.availableGuideGroups || result.AvailableGuideGroups || [];
+                    // A host adapter may supply genres using its existing backend route.
+                    var hostLoader = window.moonbaseHost && window.moonbaseHost.loadGuideGroups;
+                    var discovery = hostLoader ? hostLoader() :
+                        ApiClient.ajax({type: 'GET', url: ApiClient.getUrl('Moonfin/LiveTv/ChannelGroups'), dataType: 'json'})
+                            .then(function(result) {
+                                var names = [];
+                                (result.channels || result.Channels || []).forEach(function(channel) {
+                                    names.push.apply(names, channel.groups || channel.Groups || []);
+                                });
+                                return names;
+                            });
+                    discovery.then(function(names) {
+                        availableDefaultGuideGroups = Array.from(new Set(names)).sort();
                         defaultGuideGroupsMessage = 'No channel groups available.';
                     }).catch(function() {
                         defaultGuideGroupsMessage = 'Could not load groups. Reload to retry.';

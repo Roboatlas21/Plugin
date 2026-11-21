@@ -83,6 +83,15 @@
     };
     var host = hosts[hostName] || hosts.Silo;
 
+    // The admin form is identical to Jellyfin's. Supply only host-specific guide options.
+    window.moonbaseHost.guideCategories = [['movies', 'Movies'], ['series', 'Series'], ['premiere', 'Premieres']];
+    window.moonbaseHost.loadGuideGroups = function () {
+        if (hostName !== 'Plex') return Promise.resolve([]);
+        // The Plex companion already offers these labels on the Defaults route.
+        return window.ApiClient.getJSON(getUrl('Moonfin/Defaults', { includeLiveTvGroups: 'true' }))
+            .then(function (result) { return result.availableGuideGroups || result.AvailableGuideGroups || []; });
+    };
+
     // The page is served at <base>/admin and the routes live under <base>/Moonfin.
     var base = location.origin + location.pathname.replace(/\/admin\/?$/, '');
     var draftKey = 'moonbaseConfigDraft:' + base;

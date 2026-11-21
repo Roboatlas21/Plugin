@@ -160,15 +160,28 @@ public sealed class SavedGuideFiltersContractTests : IDisposable
     }
 
     [Fact]
-    public void DeviceOnlyAdminPinsAreSharedAcrossAllProfiles()
+    public async Task AdministratorGuidePinsIgnoreDeviceDefaultsEvenOnMergeAndReset()
     {
-        var config = new PluginConfiguration { DefaultDeviceSettings = new MoonfinDeviceDefaults {
-            Tv = new MoonfinSettingsProfile { LiveTvSavedFilters = ["group:Sports", "group:News"] } } };
+        var config = Defaults("group:Sports");
+        config.DefaultDeviceSettings = new MoonfinDeviceDefaults {
+            Tv = new MoonfinSettingsProfile { LiveTvSavedFilters = ["group:TV"] } };
         foreach (var profile in new string?[] { "global", "desktop", "mobile", "tv", null })
-            Assert.Equal(["group:Sports", "group:News"],
-                MoonfinSettingsService.AdminDefaultsFor(profile, config)!.LiveTvSavedFilters);
-        config.DefaultDeviceSettings.Tv!.LiveTvSavedFilters = [];
-        Assert.Null(MoonfinSettingsService.AdminDefaultsFor("mobile", config));
+            Assert.Equal(["group:Sports"], MoonfinSettingsService.AdminDefaultsFor(profile, config)!.LiveTvSavedFilters);
+
+        var id = Guid.NewGuid();
+        await Edit(id, "tv", "remove", "group:TV");
+        await _service.MergeDefaultsAsync(config, ["tv"], ["liveTvSavedFilters"], [id]);
+        var stored = (await Read(id))!;
+        Assert.Equal(["group:TV"], stored.LiveTvSavedFilterExclusions);
+        Assert.Equal(["group:Sports"], _service.ResolveProfile(stored, "tv", config).LiveTvSavedFilters);
+
+        await _service.ResetUsersToDefaultsAsync(config, ["tv"], [id], deleteOrphans: false);
+        stored = (await Read(id))!;
+        Assert.Null(stored.Tv?.LiveTvSavedFilters);
+        Assert.Equal(["group:Sports"], _service.ResolveProfile(stored, "tv", config).LiveTvSavedFilters);
+
+        config.DefaultUserSettings!.LiveTvSavedFilters = [];
+        Assert.Empty(_service.ResolveProfile(stored, "tv", config).LiveTvSavedFilters!);
     }
 
     [Fact]
@@ -211,14 +224,14 @@ public sealed class SavedGuideFiltersContractTests : IDisposable
         await _service.MergeDefaultsAsync(config, ["global"], ["liveTvSavedFilters"], [id, inherited]);
         await _service.MergeDefaultsAsync(config, ["tv"], ["liveTvSavedFilters"], [id]);
         Assert.Null((await Read(inherited))!.Global!.LiveTvSavedFilters);
-        Assert.Equal(["group:Sports", "group:News", "group:Kids", "group:Movies"],
+        Assert.Equal(["group:Sports", "group:News", "group:Movies"],
             _service.ResolveProfile((await Read(id))!, "tv", config).LiveTvSavedFilters);
         await _service.ResetUsersToDefaultsAsync(config, ["global"], [id], deleteOrphans: false);
         Assert.Empty((await Read(id))!.Global!.LiveTvSavedFilters!);
-        Assert.Equal(["group:Sports", "group:News", "group:Kids"],
+        Assert.Equal(["group:Sports", "group:News"],
             _service.ResolveProfile((await Read(id))!, "tv", config).LiveTvSavedFilters);
         config.DefaultUserSettings!.LiveTvSavedFilters = ["group:Sports", "group:Tennis"];
-        Assert.Equal(["group:Sports", "group:Tennis", "group:Kids"],
+        Assert.Equal(["group:Sports", "group:Tennis"],
             _service.ResolveProfile((await Read(id))!, "tv", config).LiveTvSavedFilters);
     }
 }

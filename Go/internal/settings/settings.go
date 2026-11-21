@@ -248,19 +248,13 @@ func MergeAdminSavedFilters(env M, raw any) {
 	})
 }
 
-// AdminSavedFilters combines global and device defaults into one shared guide list.
-func AdminSavedFilters(global, devices M) []any {
+// AdminSavedFilters includes only global defaults; device pin lists are ignored.
+func AdminSavedFilters(global M) []any {
+	list, _ := pinnedStrings(global["liveTvSavedFilters"])
 	pins := []any{}
-	for _, name := range Profiles {
-		layer := global
-		if name != "global" {
-			layer, _ = devices[name].(M)
-		}
-		list, _ := pinnedStrings(layer["liveTvSavedFilters"])
-		for _, pin := range list {
-			if !slices.Contains(pins, pin) {
-				pins = append(pins, pin)
-			}
+	for _, pin := range list {
+		if !slices.Contains(pins, pin) {
+			pins = append(pins, pin)
 		}
 	}
 	return pins
@@ -442,7 +436,7 @@ func Resolve(env M, name string, defaults M, keys ServerKeys) M {
 	out := M{}
 	for i := len(layers) - 1; i >= 0; i-- {
 		for k, v := range layers[i] {
-			if v == nil || k == "homeSections" || k == "homeRowOrder" || aliases[k] != "" {
+			if v == nil || k == "homeSections" || k == "homeRowOrder" || k == "liveTvSavedFilters" || aliases[k] != "" {
 				continue
 			}
 			out[k] = v

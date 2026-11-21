@@ -263,7 +263,7 @@ func (s *Server) handlePostProfile(w http.ResponseWriter, r *http.Request) {
 		}
 		// Defaults are only used if this user has never customized the pins.
 		cfg := s.config(r.Context())
-		change.Defaults = settings.AdminSavedFilters(cfg.Defaults, cfg.DeviceDefaults)
+		change.Defaults = settings.AdminSavedFilters(cfg.Defaults)
 		extra := M{}
 		s.save(w, r, func(env M) M {
 			updated := settings.SaveProfile(env, name, cleaned, clientID, serverKeys(s.config(r.Context())), time.Now(), change)
@@ -358,7 +358,7 @@ func (s *Server) resolve(r *http.Request, name string, record bool) (M, error) {
 	}
 	cfg := configFrom(stored)
 	defaults := settings.LayerDefaults(cfg.DefaultsFor(name), M{
-		"liveTvSavedFilters": settings.AdminSavedFilters(cfg.Defaults, cfg.DeviceDefaults),
+		"liveTvSavedFilters": settings.AdminSavedFilters(cfg.Defaults),
 	})
 	resolved := settings.Resolve(env, name, defaults, serverKeys(cfg))
 	if record && env != nil && settings.RecordBaseline(env, name, resolved) {
@@ -498,7 +498,12 @@ func (s *Server) applyDefaults(w http.ResponseWriter, r *http.Request, req apply
 	}
 	push := map[string]M{}
 	for _, p := range profiles {
-		if d := keepOnly(storedDefaults(cfg, p), req.Keys); len(d) > 0 {
+		d := keepOnly(storedDefaults(cfg, p), req.Keys)
+		if p != "global" {
+			d = clone(d)
+			delete(d, "liveTvSavedFilters")
+		}
+		if len(d) > 0 {
 			push[p] = d
 		}
 	}
@@ -568,7 +573,9 @@ func (s *Server) applyDefaults(w http.ResponseWriter, r *http.Request, req apply
 				}
 				if len(layer) > 0 {
 					env = settings.SaveProfile(env, p, clone(layer), by, serverKeys(cfg), time.Now())
-					settings.MergeAdminSavedFilters(env, layer["liveTvSavedFilters"])
+					if p == "global" {
+						settings.MergeAdminSavedFilters(env, layer["liveTvSavedFilters"])
+					}
 				}
 			}
 		}

@@ -290,13 +290,9 @@ public class MoonfinSettingsService
         return merged;
     }
 
-    // Gather the administrator's shared pins across every device profile.
+    // Administrator guide shortcuts are global; device defaults never add pins.
     private static List<string> AdminGuidePins(PluginConfiguration? config) =>
-        GuidePinRules.AdminPins(
-            config?.DefaultUserSettings?.LiveTvSavedFilters,
-            config?.GetDefaultsFor("desktop")?.LiveTvSavedFilters,
-            config?.GetDefaultsFor("mobile")?.LiveTvSavedFilters,
-            config?.GetDefaultsFor("tv")?.LiveTvSavedFilters);
+        GuidePinRules.AdminPins(config?.DefaultUserSettings?.LiveTvSavedFilters);
 
     private static bool IsDeviceProfile(string? profileName) =>
         !string.IsNullOrEmpty(profileName) && !string.Equals(profileName, "global", StringComparison.OrdinalIgnoreCase);
@@ -1353,7 +1349,7 @@ public class MoonfinSettingsService
                 CloneProfile(layer),
                 "admin-default-merge",
                 notifySettingsChanged: false,
-                mergeAdminGuidePins: true);
+                mergeAdminGuidePins: !IsDeviceProfile(profileName));
         }
     }
 
@@ -1450,6 +1446,7 @@ public class MoonfinSettingsService
             }
 
             var copy = KeepOnly(SetDefaultsOnly(defaults), keys);
+            if (IsDeviceProfile(profileName)) copy.LiveTvSavedFilters = null;
             if (HasAnyProfileValues(copy))
             {
                 push[profileName.ToLowerInvariant()] = copy;

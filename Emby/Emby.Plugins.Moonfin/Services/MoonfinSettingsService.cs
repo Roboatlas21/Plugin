@@ -261,13 +261,9 @@ namespace Emby.Plugins.Moonfin.Services
             return merged;
         }
 
-        // Gather the administrator's shared pins across every device profile.
+        // Administrator guide shortcuts are global; device defaults never add pins.
         private static List<string> AdminGuidePins(PluginConfiguration? config) =>
-            GuidePinRules.AdminPins(
-                config?.DefaultUserSettings?.LiveTvSavedFilters,
-                config?.GetDefaultsFor("desktop")?.LiveTvSavedFilters,
-                config?.GetDefaultsFor("mobile")?.LiveTvSavedFilters,
-                config?.GetDefaultsFor("tv")?.LiveTvSavedFilters);
+            GuidePinRules.AdminPins(config?.DefaultUserSettings?.LiveTvSavedFilters);
 
         private static bool IsDeviceProfile(string? profileName) =>
             !string.IsNullOrEmpty(profileName) && !string.Equals(profileName, "global", StringComparison.OrdinalIgnoreCase);
@@ -714,7 +710,7 @@ namespace Emby.Plugins.Moonfin.Services
                 if (layer == null || !HasAnyProfileValues(layer)) continue;
 
                 // SaveProfileAsync changes what it's handed, so each profile gets its own copy.
-                await SaveProfileAsync(userId, profileName, CloneProfile(layer), "admin-default-push", notifySettingsChanged: false, mergeAdminGuidePins: true).ConfigureAwait(false);
+                await SaveProfileAsync(userId, profileName, CloneProfile(layer), "admin-default-push", notifySettingsChanged: false, mergeAdminGuidePins: !IsDeviceProfile(profileName)).ConfigureAwait(false);
             }
         }
 
@@ -782,6 +778,7 @@ namespace Emby.Plugins.Moonfin.Services
                 var defaults = config.GetDefaultsFor(profileName);
                 if (defaults == null) continue;
                 var copy = KeepOnly(SetDefaultsOnly(defaults), keys);
+                if (IsDeviceProfile(profileName)) copy.LiveTvSavedFilters = null;
                 if (HasAnyProfileValues(copy)) push[profileName.ToLowerInvariant()] = copy;
             }
             return push;

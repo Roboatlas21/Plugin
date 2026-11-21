@@ -20,16 +20,9 @@ internal static class GuidePinRules
             _ => false,
         };
 
-    // Guide shortcuts are shared across global, desktop, mobile and TV defaults.
-    internal static List<string> AdminPins(params List<string>?[] layers)
-    {
-        var pins = new List<string>();
-        foreach (var layer in layers)
-            if (layer != null)
-                foreach (var pin in layer)
-                    if (!pins.Contains(pin)) pins.Add(pin);
-        return pins;
-    }
+    // Only the global administrator list contributes managed guide shortcuts.
+    internal static List<string> AdminPins(List<string>? global) =>
+        global?.Distinct().ToList() ?? new List<string>();
 
     internal static List<string> EffectivePins(
         List<string> defaults, List<string>? exclusions, List<string>? personal)

@@ -307,6 +307,43 @@ func TestDeviceDefaults(t *testing.T) {
 }
 
 // The existing profile route is the only write path for shared guide pins.
+func TestAdministratorGuidePinsUseOnlyGlobalDefaults(t *testing.T) {
+	s := newTestServer()
+	saveConfig(t, s, map[string]any{
+		"DefaultUserSettings": map[string]any{"liveTvSavedFilters": []any{"group:Sports"}},
+		"DefaultDeviceSettings": map[string]any{"tv": map[string]any{
+			"liveTvSavedFilters": []any{"group:TV"}, "clockBehavior": "never",
+		}},
+	})
+	code, ping := call(t, s, userMain, "GET", "/Moonfin/Ping", "", map[string]any{"profile": "tv"})
+	if code != 200 || !reflect.DeepEqual(ping["defaultSettings"].(map[string]any)["liveTvSavedFilters"], []any{"group:Sports"}) {
+		t.Fatalf("TV sign-in defaults must inherit only global pins: %d %v", code, ping)
+	}
+	pins := func() any {
+		_, got := call(t, s, userMain, "GET", "/Moonfin/Settings/Resolved/tv", "", nil)
+		return got["liveTvSavedFilters"]
+	}
+	if !reflect.DeepEqual(pins(), []any{"group:Sports"}) {
+		t.Fatalf("TV resolved defaults used device pins: %v", pins())
+	}
+	call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv",
+		`{"profile":{},"liveTvSavedFilterChange":{"action":"remove","filter":"group:Sports"}}`, nil)
+	if code, _ := call(t, s, adminMain, "POST", "/Moonfin/Admin/ApplyDefaults",
+		`{"profiles":["tv"],"keys":["liveTvSavedFilters"],"userIds":["3~30"]}`, nil); code != 200 {
+		t.Fatalf("device-only pin merge: %d", code)
+	}
+	if !reflect.DeepEqual(pins(), []any{}) {
+		t.Fatalf("device defaults cleared personal exclusion: %v", pins())
+	}
+	if code, _ := call(t, s, adminMain, "POST", "/Moonfin/Admin/ApplyDefaults",
+		`{"overwrite":true,"profiles":["tv"],"userIds":["3~30"]}`, nil); code != 200 {
+		t.Fatalf("device-only pin reset: %d", code)
+	}
+	if !reflect.DeepEqual(pins(), []any{"group:Sports"}) {
+		t.Fatalf("reset should inherit global pins, not device pins: %v", pins())
+	}
+}
+
 func TestSavedLiveTvFiltersUseExistingProfileEndpoint(t *testing.T) {
 	s := newTestServer()
 	for _, body := range []string{

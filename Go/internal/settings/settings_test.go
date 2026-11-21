@@ -158,6 +158,20 @@ func TestCleanLeavesNonASCIIKeysAlone(t *testing.T) {
 	}
 }
 
+func TestAdminGuidePinsOnlyComeFromGlobalDefaults(t *testing.T) {
+	pins := AdminSavedFilters(M{"liveTvSavedFilters": []any{"group:Sports", "group:Sports"}})
+	if !reflect.DeepEqual(pins, []any{"group:Sports"}) {
+		t.Fatalf("global pins should be deduplicated: %v", pins)
+	}
+	env := decode(t, `{"tv":{"liveTvSavedFilters":["group:Device"]}}`)
+	if got := Resolve(env, "tv", nil, ServerKeys{})["liveTvSavedFilters"]; got != nil {
+		t.Fatalf("device-only pins leaked into resolved profile: %v", got)
+	}
+	if got := Resolve(env, "tv", M{"liveTvSavedFilters": pins}, ServerKeys{})["liveTvSavedFilters"]; !reflect.DeepEqual(got, pins) {
+		t.Fatalf("device pins overrode the global list: %v", got)
+	}
+}
+
 func TestSavedLiveTvFiltersAtomicEditsAndStaleUploads(t *testing.T) {
 	keys := ServerKeys{}
 	env := SaveProfile(nil, "tv", M{}, "tv", keys, now, SavedFilterChange{

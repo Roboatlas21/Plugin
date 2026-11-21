@@ -2917,6 +2917,8 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
     // The admin selects the same native channel tags used by the guide.
     var availableDefaultGuideGroups = [];
     var defaultGuideGroupsMessage = 'Loading available groups…';
+    var defaultGuideCategories = [['movies', 'Movies'], ['series', 'Series'], ['sports', 'Sports'],
+        ['news', 'News'], ['kids', 'Kids'], ['premiere', 'Premieres']];
 
     function renderDefaultGuideGroups(view, defaults, preserveSelection) {
         var host = view.querySelector('#DefaultPinnedGuideGroups');
@@ -2930,15 +2932,19 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
                 return [input.getAttribute('data-guide-filter'), input.checked];
             })) : null;
         var saved = Array.isArray(defaults.liveTvSavedFilters)
-            ? defaults.liveTvSavedFilters.filter(function(key) { return typeof key === 'string' && key.startsWith('group:'); })
+            ? defaults.liveTvSavedFilters.filter(function(key) { return typeof key === 'string'; })
             : [];
-        var names = Array.from(new Set(saved.map(function(key) { return key.slice(6); }).concat(availableDefaultGuideGroups)));
-        host.innerHTML = names.length ? names.map(function(name) {
-            var key = 'group:' + name;
+        var names = Array.from(new Set(saved.filter(function(key) { return key.startsWith('group:'); })
+            .map(function(key) { return key.slice(6); }).concat(availableDefaultGuideGroups)));
+        function checkbox(key, label) {
             return '<label style="display:flex;align-items:center;gap:8px;padding:5px 3px;">' +
                 '<input type="checkbox" data-guide-filter="' + esc(key) + '"' +
-                ((current && current.has(key) ? current.get(key) : saved.includes(key)) ? ' checked' : '') + '><span>' + esc(name) + '</span></label>';
-        }).join('') : defaultGuideGroupsMessage;
+                ((current && current.has(key) ? current.get(key) : saved.includes(key)) ? ' checked' : '') + '><span>' + esc(label) + '</span></label>';
+        }
+        host.innerHTML = '<div style="font-weight:600;padding:5px 3px;">Program Categories</div>' +
+            defaultGuideCategories.map(function(category) { return checkbox('category:' + category[0], category[1]); }).join('') +
+            '<div style="font-weight:600;padding:8px 3px 5px;">Channel Groups</div>' +
+            (names.length ? names.map(function(name) { return checkbox('group:' + name, name); }).join('') : defaultGuideGroupsMessage);
     }
 
     function discoverDefaultGuideGroups(view) {
@@ -3716,15 +3722,16 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
         d.liveTvChannelSortBy = view.querySelector('#DefaultLiveTvChannelSortBy').value || null;
         d.liveTvCategoryDisplay = view.querySelector('#DefaultLiveTvCategoryDisplay').value || null;
         if (defaultsState.active === 'global') {
-            var selectedGroups = Array.from(view.querySelectorAll('#DefaultPinnedGuideGroups input[data-guide-filter]'))
-                .filter(function(input) { return input.checked; })
+            var inputs = Array.from(view.querySelectorAll('#DefaultPinnedGuideGroups input[data-guide-filter]'));
+            var visiblePins = inputs.map(function(input) { return input.getAttribute('data-guide-filter'); });
+            var selectedPins = inputs.filter(function(input) { return input.checked; })
                 .map(function(input) { return input.getAttribute('data-guide-filter'); });
-            // Keep category and other non-group shortcuts in their original order.
+            // Keep shortcuts that this server's picker does not display.
             var existingPins = Array.isArray(d.liveTvSavedFilters) ? d.liveTvSavedFilters : [];
             var keptPins = existingPins.filter(function(key) {
-                return typeof key === 'string' && (!key.startsWith('group:') || selectedGroups.includes(key));
+                return typeof key === 'string' && (!visiblePins.includes(key) || selectedPins.includes(key));
             });
-            selectedGroups.forEach(function(key) { if (!keptPins.includes(key)) keptPins.push(key); });
+            selectedPins.forEach(function(key) { if (!keptPins.includes(key)) keptPins.push(key); });
             d.liveTvSavedFilters = keptPins.length ? keptPins : null;
         }
         d.epgMobileView = view.querySelector('#DefaultEpgMobileView').value || null;

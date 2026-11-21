@@ -207,7 +207,7 @@ public sealed class ProfileDefaultsTests : IDisposable
     }
 
     [Fact]
-    public async Task ApplyingGuidePinDefaultsAddsMissingGroupsWithoutOverwritingUsers()
+    public async Task AdminPinChangesInheritAndFullResetClearsPersonalPins()
     {
         var config = Config();
         config.DefaultUserSettings.LiveTvSavedFilters = ["group:Sports", "group:News"];
@@ -218,17 +218,24 @@ public sealed class ProfileDefaultsTests : IDisposable
             { Action = "initializeIfAbsent", Filters = ["group:Sports", "group:Movies"] });
         var inherited = await SeedAsync("global", new MoonfinSettingsProfile());
 
+        // Non-pin defaults leave personal pin choices untouched.
         await _service.MergeDefaultsAsync(config, ["global"], ["use24HourClock"], [userId]);
         Assert.Equal(["group:Sports", "group:Movies"], Read(userId).Global!.LiveTvSavedFilters);
         await _service.MergeDefaultsAsync(config, ["global"], ["liveTvSavedFilters"], [userId, inherited]);
-        await _service.MergeDefaultsAsync(config, ["global"], ["liveTvSavedFilters"], [userId]);
-        Assert.Equal(["group:Sports", "group:Movies", "group:News"], Read(userId).Global!.LiveTvSavedFilters);
-        Assert.Null(Read(inherited).Global!.LiveTvSavedFilters);
-
         await _service.MergeDefaultsAsync(config, ["tv"], ["liveTvSavedFilters"], [userId]);
-        Assert.Equal(["group:Sports", "group:Movies", "group:News", "group:Kids"], Read(userId).Global!.LiveTvSavedFilters);
+        Assert.Equal(["group:Sports", "group:Movies"], Read(userId).Global!.LiveTvSavedFilters);
+        Assert.Null(Read(inherited).Global!.LiveTvSavedFilters);
+        Assert.Equal(["group:Sports", "group:News", "group:Kids", "group:Movies"],
+            _service.ResolveProfile(Read(userId), "tv", config).LiveTvSavedFilters);
+
+        // Reset restores inherited defaults, rather than freezing them into user pins.
         await _service.ResetUsersToDefaultsAsync(config, ["global"], [userId], deleteOrphans: false);
-        Assert.Equal(["group:Sports", "group:News"], Read(userId).Global!.LiveTvSavedFilters);
+        Assert.Empty(Read(userId).Global!.LiveTvSavedFilters!);
+        Assert.Equal(["group:Sports", "group:News", "group:Kids"],
+            _service.ResolveProfile(Read(userId), "tv", config).LiveTvSavedFilters);
+        config.DefaultUserSettings.LiveTvSavedFilters = ["group:Sports", "group:Tennis"];
+        Assert.Equal(["group:Sports", "group:Tennis", "group:Kids"],
+            _service.ResolveProfile(Read(userId), "tv", config).LiveTvSavedFilters);
     }
 
     [Fact]

@@ -5587,8 +5587,9 @@
                     <div class="verticalSection" id="ApplyDefaultsSection">
                         <h3 class="sectionTitle">Apply Defaults To Users</h3>
                         <div class="fieldDescription" style="margin-bottom: 0.8em;">
-                            New users and users who never synced pick up the defaults on their own once you Save. Use this
-                            to also write them over settings users already have. Applying saves your changes first.
+                            Saved pinned groups update automatically for everyone, preserving personal additions and removals.
+                            Other defaults are inherited until users override them. Apply Defaults pushes settings to
+                            existing users; applying saves your changes first.
                         </div>
 
                         <div class="moonfinActionRow">
@@ -5633,7 +5634,7 @@
                             <div class="moonfinActionBody moonfinModeCards">
                                 <label class="moonfinModeCard">
                                     <input type="radio" name="ApplyMode" value="merge" checked />
-                                    <span class="moonfinModeText"><span class="moonfinModeTitle">Merge</span><span class="moonfinModeDesc">The pushed settings replace the user's own, except pinned groups, which are added to their existing pins. Everything else stays.</span></span>
+                                    <span class="moonfinModeText"><span class="moonfinModeTitle">Merge</span><span class="moonfinModeDesc">Selected settings replace the user's choices. Pinned groups already follow saved defaults; Merge restores selected groups users unpinned, keeping personal additions.</span></span>
                                 </label>
                                 <label class="moonfinModeCard is-danger">
                                     <input type="radio" name="ApplyMode" value="reset" />
@@ -13052,7 +13053,7 @@
                     var who = state.users === 'all' ? 'every user' : joinWithAnd(state.pickedUsers.map(userName));
                     var message = reset
                         ? 'Reset ' + who + ' to the defaults?\n\nThis permanently erases their current Moonfin settings, device profiles included, and replaces them with the ' + joinWithAnd(on.map(function(e) { return e.label; })) + ' defaults.'
-                        : 'Apply the defaults to ' + who + '?\n\nEach pushed default replaces the user\'s choice, except pinned groups, which are added to their existing pins. Everything else stays.';
+                        : 'Apply the defaults to ' + who + '?\n\nSelected defaults replace the user\'s choices. Pinned groups already update on Save; Merge restores selected groups they hid and keeps their personal additions.';
                     if (!window.confirm(message)) return;
 
                     var button = document.querySelector('#ApplyDefaultsBtn');

@@ -178,6 +178,37 @@ func TestSavedLiveTvFiltersAtomicEditsAndStaleUploads(t *testing.T) {
 	}
 }
 
+// Initial local pins override only the defaults that existed at import time.
+func TestSavedGuideFiltersImportKeepsFutureAdminDefaults(t *testing.T) {
+	keys := ServerKeys{}
+	env := SaveProfile(nil, "tv", M{}, "tv", keys, now, SavedFilterChange{
+		Action: "initializeIfAbsent", Filters: []string{"group:Local"}, Defaults: []any{"group:Sports"},
+	})
+	if got := EffectiveSavedFilters(env, []any{"group:Sports"}); !reflect.DeepEqual(got, []any{"group:Local"}) {
+		t.Fatalf("initial local pins should win: %v", got)
+	}
+	if got := EffectiveSavedFilters(env, []any{"group:Tennis"}); !reflect.DeepEqual(got, []any{"group:Tennis", "group:Local"}) {
+		t.Fatalf("new admin pins should inherit: %v", got)
+	}
+}
+
+// Managed exclusions persist across admin updates, and an explicit re-pin becomes personal.
+func TestSavedGuidePinsFollowAdminChanges(t *testing.T) {
+	keys := ServerKeys{}
+	env := SaveProfile(nil, "tv", M{}, "tv", keys, now, SavedFilterChange{Action: "remove", Filter: "group:Sports"})
+	env = SaveProfile(env, "mobile", M{}, "mobile", keys, now, SavedFilterChange{Action: "add", Filter: "group:Formula 1"})
+	if got := EffectiveSavedFilters(env, []any{"group:Sports", "group:News"}); !reflect.DeepEqual(got, []any{"group:News", "group:Formula 1"}) {
+		t.Fatalf("removed admin pin returned: %v", got)
+	}
+	if got := EffectiveSavedFilters(env, []any{"group:Movies"}); !reflect.DeepEqual(got, []any{"group:Movies", "group:Formula 1"}) {
+		t.Fatalf("changed admin pins were not inherited: %v", got)
+	}
+	env = SaveProfile(env, "tv", M{}, "tv", keys, now, SavedFilterChange{Action: "add", Filter: "group:Sports"})
+	if got := EffectiveSavedFilters(env, []any{"group:Hockey"}); !reflect.DeepEqual(got, []any{"group:Hockey", "group:Formula 1", "group:Sports"}) {
+		t.Fatalf("personal re-pin was not preserved: %v", got)
+	}
+}
+
 func TestSavedLiveTvFiltersOneTimeImportAndExplicitEmpty(t *testing.T) {
 	keys := ServerKeys{}
 	env := SaveProfile(nil, "tv", M{}, "tv", keys, now, SavedFilterChange{Action: "initializeIfAbsent", Filters: []string{"group:Sports"}})

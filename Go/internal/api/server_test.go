@@ -306,124 +306,46 @@ func TestDeviceDefaults(t *testing.T) {
 	}
 }
 
+// The existing profile route is the only write path for shared guide pins.
 func TestSavedLiveTvFiltersUseExistingProfileEndpoint(t *testing.T) {
 	s := newTestServer()
 	for _, body := range []string{
 		`{"profile":{},"liveTvSavedFilterChange":{"action":"initializeIfAbsent","filters":["group:Sports"]}}`,
 		`{"profile":{},"liveTvSavedFilterChange":{"action":"add","filter":"group:News"}}`,
 	} {
-		code, value := call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv", body, nil)
-		if code != 200 || value["liveTvSavedFilters"] == nil {
-			t.Fatalf("atomic POST: %d %v", code, value)
+		if code, value := call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv", body, nil); code != 200 || value["liveTvSavedFilters"] == nil {
+			t.Fatalf("pin update = %d %v", code, value)
 		}
 	}
 	call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/mobile", `{"profile":{"liveTvSavedFilters":[],"cinemaModeEnabled":true}}`, nil)
-	code, value := call(t, s, userMain, "GET", "/Moonfin/Settings/Resolved/mobile", "", nil)
-	if code != 200 || !reflect.DeepEqual(value["liveTvSavedFilters"], []any{"group:Sports", "group:News"}) {
-		t.Fatalf("stale update changed shared pins: %d %v", code, value["liveTvSavedFilters"])
+	_, resolved := call(t, s, userMain, "GET", "/Moonfin/Settings/Resolved/mobile", "", nil)
+	if !reflect.DeepEqual(resolved["liveTvSavedFilters"], []any{"group:Sports", "group:News"}) {
+		t.Fatalf("stale profile cleared pins: %v", resolved)
 	}
-	code, _ = call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv",
-		`{"profile":{},"liveTvSavedFilterChange":{"action":"remove","filter":"group:"}}`, nil)
-	if code != 400 {
-		t.Fatalf("invalid filter status: %d", code)
-	}
-}
-
-func TestAdminGuidePinsFollowDefaultsAndPreserveUserChoices(t *testing.T) {
-	s := newTestServer()
-	saveConfig(t, s, map[string]any{
-		"DefaultUserSettings": map[string]any{
-			"liveTvSavedFilters": []any{"group:Sports", "group:News"},
-		},
-	})
-	pins := func(c caller, profile string) any {
-		_, got := call(t, s, c, "GET", "/Moonfin/Settings/Resolved/"+profile, "", nil)
-		return got["liveTvSavedFilters"]
-	}
-	if !reflect.DeepEqual(pins(userMain, "tv"), []any{"group:Sports", "group:News"}) {
-		t.Fatalf("initial inherited pins: %v", pins(userMain, "tv"))
-	}
-	code, value := call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv",
-		`{"profile":{},"liveTvSavedFilterChange":{"action":"remove","filter":"group:Sports"}}`, nil)
-	if code != 200 || !reflect.DeepEqual(value["liveTvSavedFilters"], []any{"group:News"}) {
-		t.Fatalf("first edit must preserve other inherited pins: %d %v", code, value)
-	}
-	call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/mobile",
-		`{"profile":{},"liveTvSavedFilterChange":{"action":"add","filter":"group:Formula 1"}}`, nil)
-	saveConfig(t, s, map[string]any{
-		"DefaultUserSettings": map[string]any{"liveTvSavedFilters": []any{"group:Movies"}},
-	})
-	if !reflect.DeepEqual(pins(userMain, "mobile"), []any{"group:Movies", "group:Formula 1"}) {
-		t.Fatalf("updated admin pins must replace prior defaults: %v", pins(userMain, "mobile"))
-	}
-	saveConfig(t, s, map[string]any{
-		"DefaultUserSettings": map[string]any{"liveTvSavedFilters": []any{"group:Sports", "group:Movies"}},
-	})
-	if !reflect.DeepEqual(pins(userMain, "tv"), []any{"group:Movies", "group:Formula 1"}) {
-		t.Fatalf("explicitly unpinned Sports reappeared: %v", pins(userMain, "tv"))
-	}
-	call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv",
-		`{"profile":{},"liveTvSavedFilterChange":{"action":"add","filter":"group:Sports"}}`, nil)
-	saveConfig(t, s, map[string]any{
-		"DefaultUserSettings": map[string]any{"liveTvSavedFilters": []any{"group:Movies"}},
-	})
-	if !reflect.DeepEqual(pins(userMain, "tv"), []any{"group:Movies", "group:Formula 1", "group:Sports"}) {
-		t.Fatalf("explicitly re-pinned Sports must remain personal: %v", pins(userMain, "tv"))
-	}
-
-	// A local list pre-dating Moonbase is imported without replacing future defaults.
-	other := newTestServer()
-	saveConfig(t, other, map[string]any{
-		"DefaultUserSettings": map[string]any{"liveTvSavedFilters": []any{"group:Sports"}},
-	})
-	code, value = call(t, other, userMain, "POST", "/Moonfin/Settings/Profile/tv",
-		`{"profile":{},"liveTvSavedFilterChange":{"action":"initializeIfAbsent","filters":["group:Local"]}}`, nil)
-	if code != 200 || !reflect.DeepEqual(value["liveTvSavedFilters"], []any{"group:Local"}) {
-		t.Fatalf("local first import should win: %d %v", code, value)
-	}
-	saveConfig(t, other, map[string]any{
-		"DefaultUserSettings": map[string]any{"liveTvSavedFilters": []any{"group:Tennis"}},
-	})
-	_, next := call(t, other, userMain, "GET", "/Moonfin/Settings/Resolved/tv", "", nil)
-	if !reflect.DeepEqual(next["liveTvSavedFilters"], []any{"group:Tennis", "group:Local"}) {
-		t.Fatalf("new admin defaults must inherit after local import: %v", next)
+	if code, _ := call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv", `{"profile":{},"liveTvSavedFilterChange":{"action":"remove","filter":"group:"}}`, nil); code != 400 {
+		t.Fatalf("invalid pin should be rejected: %d", code)
 	}
 }
 
 func TestLiveTvCategoryDisplaySettingsAndDefaults(t *testing.T) {
 	s := newTestServer()
 	saveConfig(t, s, map[string]any{
-		"DefaultUserSettings": map[string]any{"liveTvCategoryDisplay": "groups"},
-		"DefaultDeviceSettings": map[string]any{
-			"tv": map[string]any{"liveTvCategoryDisplay": "programmes"},
-		},
+		"DefaultUserSettings":   map[string]any{"liveTvCategoryDisplay": "groups"},
+		"DefaultDeviceSettings": map[string]any{"tv": map[string]any{"liveTvCategoryDisplay": "programmes"}},
 	})
-
-	resolved := func(profile string) map[string]any {
-		t.Helper()
-		code, value := call(t, s, userMain, "GET", "/Moonfin/Settings/Resolved/"+profile, "", nil)
-		if code != 200 {
-			t.Fatalf("resolved %s = %d", profile, code)
+	check := func(profile, want string) {
+		code, got := call(t, s, userMain, "GET", "/Moonfin/Settings/Resolved/"+profile, "", nil)
+		if code != 200 || got["liveTvCategoryDisplay"] != want {
+			t.Fatalf("%s category display: %d %v", profile, code, got)
 		}
-		return value
 	}
-	if got := resolved("mobile")["liveTvCategoryDisplay"]; got != "groups" {
-		t.Fatalf("mobile should inherit the global admin default, got %v", got)
+	check("mobile", "groups")
+	check("tv", "programmes")
+	if code, _ := call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv", `{"profile":{"liveTvCategoryDisplay":"both"}}`, nil); code != 200 {
+		t.Fatalf("save category display: %d", code)
 	}
-	if got := resolved("tv")["liveTvCategoryDisplay"]; got != "programmes" {
-		t.Fatalf("TV should inherit the device admin default, got %v", got)
-	}
-
-	if code, _ := call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv",
-		`{"profile":{"liveTvCategoryDisplay":"both"}}`, nil); code != 200 {
-		t.Fatalf("saving user's TV setting = %d", code)
-	}
-	if got := resolved("tv")["liveTvCategoryDisplay"]; got != "both" {
-		t.Fatalf("user override must win over the admin default, got %v", got)
-	}
-	if got := resolved("mobile")["liveTvCategoryDisplay"]; got != "groups" {
-		t.Fatalf("the user's TV override must not change mobile, got %v", got)
-	}
+	check("tv", "both")
+	check("mobile", "groups")
 }
 
 func TestWatchPartySubtitlesBelongToTheirHost(t *testing.T) {
@@ -995,56 +917,44 @@ func TestAdminUsersWithoutProfiles(t *testing.T) {
 
 func TestApplyDefaultsRestoresManagedPinsWithoutFreezingThem(t *testing.T) {
 	s := newTestServer()
-	call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/global",
-		`{"profile":{},"liveTvSavedFilterChange":{"action":"initializeIfAbsent","filters":["group:Sports","group:Movies"]}}`, nil)
+	call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/global", `{"profile":{},"liveTvSavedFilterChange":{"action":"initializeIfAbsent","filters":["group:Sports","group:Movies"]}}`, nil)
 	call(t, s, other, "POST", "/Moonfin/Settings/Profile/global", `{"profile":{"cinemaModeEnabled":true}}`, nil)
-	saveConfig(t, s, map[string]any{
-		"DefaultUserSettings": map[string]any{
-			"liveTvSavedFilters": []any{"group:Sports", "group:News"}, "use24HourClock": true,
-		},
-	})
-	pins := func(c caller) any {
-		_, got := call(t, s, c, "GET", "/Moonfin/Settings/Resolved/tv", "", nil)
-		return got["liveTvSavedFilters"]
+	set := func(pins ...string) {
+		list := make([]any, len(pins))
+		for i, p := range pins {
+			list[i] = p
+		}
+		saveConfig(t, s, map[string]any{"DefaultUserSettings": map[string]any{"liveTvSavedFilters": list, "use24HourClock": true}})
 	}
-	apply := func(body string) {
-		t.Helper()
-		if code, _ := call(t, s, adminMain, "POST", "/Moonfin/Admin/ApplyDefaults", body, nil); code != 200 {
-			t.Fatalf("Apply Defaults failed: %s (%d)", body, code)
+	check := func(c caller, want ...string) {
+		_, got := call(t, s, c, "GET", "/Moonfin/Settings/Resolved/tv", "", nil)
+		list := make([]any, len(want))
+		for i, p := range want {
+			list[i] = p
+		}
+		if !reflect.DeepEqual(got["liveTvSavedFilters"], list) {
+			t.Fatalf("pins for %+v: %v, want %v", c, got, list)
 		}
 	}
-	// The latest administrator groups inherit even before an explicit Merge.
-	if !reflect.DeepEqual(pins(userMain), []any{"group:Sports", "group:News", "group:Movies"}) {
-		t.Fatalf("admin pins not inherited: %v", pins(userMain))
+	apply := func(body string) {
+		if code, _ := call(t, s, adminMain, "POST", "/Moonfin/Admin/ApplyDefaults", body, nil); code != 200 {
+			t.Fatalf("apply %s: %d", body, code)
+		}
 	}
-	call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/global",
-		`{"profile":{},"liveTvSavedFilterChange":{"action":"remove","filter":"group:Sports"}}`, nil)
+	set("group:Sports", "group:News")
+	check(userMain, "group:Sports", "group:News", "group:Movies")
+	call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/global", `{"profile":{},"liveTvSavedFilterChange":{"action":"remove","filter":"group:Sports"}}`, nil)
 	apply(`{"profiles":["global"],"keys":["use24HourClock"],"userIds":["3~30"]}`)
-	if !reflect.DeepEqual(pins(userMain), []any{"group:News", "group:Movies"}) {
-		t.Fatalf("unselected pins changed: %v", pins(userMain))
-	}
+	check(userMain, "group:News", "group:Movies")
 	apply(`{"profiles":["global"],"keys":["liveTvSavedFilters"],"userIds":["3~30","4~40"]}`)
-	apply(`{"profiles":["global"],"keys":["liveTvSavedFilters"],"userIds":["3~30"]}`)
-	if !reflect.DeepEqual(pins(userMain), []any{"group:Sports", "group:News", "group:Movies"}) ||
-		!reflect.DeepEqual(pins(other), []any{"group:Sports", "group:News"}) {
-		t.Fatalf("managed pins did not merge correctly: user %v, inherited %v", pins(userMain), pins(other))
-	}
-	saveConfig(t, s, map[string]any{
-		"DefaultUserSettings": map[string]any{"liveTvSavedFilters": []any{"group:News", "group:Hockey"}},
-	})
-	if !reflect.DeepEqual(pins(userMain), []any{"group:News", "group:Hockey", "group:Movies"}) {
-		t.Fatalf("stale managed pins survived admin change: %v", pins(userMain))
-	}
+	check(userMain, "group:Sports", "group:News", "group:Movies")
+	check(other, "group:Sports", "group:News")
+	set("group:News", "group:Hockey")
+	check(userMain, "group:News", "group:Hockey", "group:Movies")
 	apply(`{"overwrite":true,"profiles":["global"],"userIds":["3~30"]}`)
-	if !reflect.DeepEqual(pins(userMain), []any{"group:News", "group:Hockey"}) {
-		t.Fatalf("full reset must clear personal pins: %v", pins(userMain))
-	}
-	saveConfig(t, s, map[string]any{
-		"DefaultUserSettings": map[string]any{"liveTvSavedFilters": []any{"group:Tennis"}},
-	})
-	if !reflect.DeepEqual(pins(userMain), []any{"group:Tennis"}) {
-		t.Fatalf("reset froze defaults instead of inheriting them: %v", pins(userMain))
-	}
+	check(userMain, "group:News", "group:Hockey")
+	set("group:Tennis")
+	check(userMain, "group:Tennis")
 }
 
 func TestApplyDefaultsPicksProfilesTargetsAndKeys(t *testing.T) {

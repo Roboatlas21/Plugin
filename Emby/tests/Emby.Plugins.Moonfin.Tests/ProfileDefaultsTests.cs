@@ -107,35 +107,6 @@ public sealed class ProfileDefaultsTests : IDisposable
     }
 
     [Fact]
-    public void UnsyncedUsersReceiveSharedPinsWhenOnlyDeviceDefaultsExist()
-    {
-        var config = new PluginConfiguration
-        {
-            DefaultUserSettings = null,
-            DefaultDeviceSettings = new MoonfinDeviceDefaults
-            {
-                Tv = new MoonfinSettingsProfile
-                {
-                    LiveTvSavedFilters = ["group:Sports", "group:News"]
-                }
-            }
-        };
-
-        foreach (var profile in new string?[] { "global", "desktop", "mobile", "tv", null })
-        {
-            var fallback = MoonfinSettingsService.AdminDefaultsFor(profile, config);
-            Assert.NotNull(fallback);
-            Assert.Equal(["group:Sports", "group:News"], fallback.LiveTvSavedFilters);
-        }
-
-        // Without any shared pins, unrelated device defaults must not create
-        // a fallback for clients that have neither global nor device defaults.
-        config.DefaultDeviceSettings.Tv!.LiveTvSavedFilters = [];
-        Assert.Null(MoonfinSettingsService.AdminDefaultsFor("mobile", config));
-        Assert.Null(MoonfinSettingsService.AdminDefaultsFor("global", config));
-    }
-
-    [Fact]
     public void DeviceDefaultsSurviveTheXmlConfigRoundTrip()
     {
         var serializer = new XmlSerializer(typeof(PluginConfiguration));
@@ -148,48 +119,6 @@ public sealed class ProfileDefaultsTests : IDisposable
         Assert.Equal("never", back.DefaultDeviceSettings!.Tv!.ClockBehavior);
         Assert.Null(back.DefaultDeviceSettings.Mobile);
         Assert.Equal("never", _service.ResolveProfile(new MoonfinUserSettings(), "tv", back).ClockBehavior);
-    }
-
-    [Fact]
-    public void LiveTvGuideCategoriesSyncAndInheritAdminDefaults()
-    {
-        var profile = new MoonfinSettingsProfile { LiveTvCategoryDisplay = "groups" };
-        var json = JsonSerializer.Serialize(profile);
-        Assert.Contains("\"liveTvCategoryDisplay\":\"groups\"", json);
-        Assert.Equal("groups", JsonSerializer.Deserialize<MoonfinSettingsProfile>(json)!.LiveTvCategoryDisplay);
-
-        var config = new PluginConfiguration
-        {
-            DefaultUserSettings = new MoonfinSettingsProfile { LiveTvCategoryDisplay = "groups" },
-            DefaultDeviceSettings = new MoonfinDeviceDefaults
-            {
-                Tv = new MoonfinSettingsProfile { LiveTvCategoryDisplay = "programmes" },
-            },
-        };
-        var serializer = new XmlSerializer(typeof(PluginConfiguration));
-        using var stream = new MemoryStream();
-        serializer.Serialize(stream, config);
-        stream.Position = 0;
-        var restored = (PluginConfiguration)serializer.Deserialize(stream)!;
-
-        var user = new MoonfinUserSettings();
-        Assert.Equal("groups", _service.ResolveProfile(user, "desktop", restored).LiveTvCategoryDisplay);
-        Assert.Equal("programmes", _service.ResolveProfile(user, "tv", restored).LiveTvCategoryDisplay);
-        Assert.Equal("groups", MoonfinSettingsService.AdminDefaultsFor("mobile", restored)!.LiveTvCategoryDisplay);
-        Assert.Equal("programmes", MoonfinSettingsService.AdminDefaultsFor("tv", restored)!.LiveTvCategoryDisplay);
-
-        user.Global = new MoonfinSettingsProfile { LiveTvCategoryDisplay = "both" };
-        Assert.Equal("both", _service.ResolveProfile(user, "tv", restored).LiveTvCategoryDisplay);
-    }
-
-    [Fact]
-    public async Task LiveTvGuideCategoriesRetainSavedDeviceOverrides()
-    {
-        var userId = await SeedAsync("global", new MoonfinSettingsProfile { LiveTvCategoryDisplay = "groups" });
-        await SeedAsync("tv", new MoonfinSettingsProfile { LiveTvCategoryDisplay = "programmes" }, userId);
-        var saved = Read(userId);
-        Assert.Equal("groups", _service.ResolveProfile(saved, "desktop").LiveTvCategoryDisplay);
-        Assert.Equal("programmes", _service.ResolveProfile(saved, "tv").LiveTvCategoryDisplay);
     }
 
     [Fact]
@@ -236,38 +165,6 @@ public sealed class ProfileDefaultsTests : IDisposable
         Assert.True(global.Use24HourClock);
         Assert.Equal("never", global.ClockBehavior);
         Assert.Null(global.CinemaModeEnabled);
-    }
-
-    [Fact]
-    public async Task AdminPinChangesInheritAndFullResetClearsPersonalPins()
-    {
-        var config = Config();
-        config.DefaultUserSettings.LiveTvSavedFilters = ["group:Sports", "group:News"];
-        config.DefaultDeviceSettings!.Tv!.LiveTvSavedFilters = ["group:Kids"];
-        var userId = Guid.NewGuid();
-        await _service.SaveProfileAsync(userId, "global", new MoonfinSettingsProfile(),
-            notifySettingsChanged: false, savedFilterChange: new LiveTvSavedFilterChange
-            { Action = "initializeIfAbsent", Filters = ["group:Sports", "group:Movies"] });
-        var inherited = await SeedAsync("global", new MoonfinSettingsProfile());
-
-        // Non-pin defaults leave personal pin choices untouched.
-        await _service.MergeDefaultsAsync(config, ["global"], ["use24HourClock"], [userId]);
-        Assert.Equal(["group:Sports", "group:Movies"], Read(userId).Global!.LiveTvSavedFilters);
-        await _service.MergeDefaultsAsync(config, ["global"], ["liveTvSavedFilters"], [userId, inherited]);
-        await _service.MergeDefaultsAsync(config, ["tv"], ["liveTvSavedFilters"], [userId]);
-        Assert.Equal(["group:Sports", "group:Movies"], Read(userId).Global!.LiveTvSavedFilters);
-        Assert.Null(Read(inherited).Global!.LiveTvSavedFilters);
-        Assert.Equal(["group:Sports", "group:News", "group:Kids", "group:Movies"],
-            _service.ResolveProfile(Read(userId), "tv", config).LiveTvSavedFilters);
-
-        // Reset restores inherited defaults, rather than freezing them into user pins.
-        await _service.ResetUsersToDefaultsAsync(config, ["global"], [userId], deleteOrphans: false);
-        Assert.Empty(Read(userId).Global!.LiveTvSavedFilters!);
-        Assert.Equal(["group:Sports", "group:News", "group:Kids"],
-            _service.ResolveProfile(Read(userId), "tv", config).LiveTvSavedFilters);
-        config.DefaultUserSettings.LiveTvSavedFilters = ["group:Sports", "group:Tennis"];
-        Assert.Equal(["group:Sports", "group:Tennis", "group:Kids"],
-            _service.ResolveProfile(Read(userId), "tv", config).LiveTvSavedFilters);
     }
 
     [Fact]

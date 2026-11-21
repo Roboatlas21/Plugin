@@ -4323,6 +4323,11 @@
                                 </select>
                             </div>
                             <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused">Default Pinned Channel Groups</label>
+                                <div id="DefaultPinnedGuideGroups" role="group" aria-label="Default pinned channel groups" style="max-height:210px;overflow:auto;padding:6px;border:1px solid rgba(128,128,128,.25);border-radius:5px;">Loading available groups…</div>
+                                <div class="fieldDescription">Initial shortcuts for users who have not customized their pins. They can remove or add pins themselves. Shared across devices.</div>
+                            </div>
+                            <div class="inputContainer">
                                 <label class="inputLabel inputLabelUnfocused" for="DefaultEpgMobileView">Guide View (mobile)</label>
                                 <select id="DefaultEpgMobileView" is="emby-select">
                                     <option value="">Not set (user decides)</option>
@@ -11373,9 +11378,93 @@
                     fillUploadedThemes(config.UploadedThemes);
                     populateDefaults(defaultsState.profiles.global);
                     refreshDefaultsActions();
+                    discoverDefaultGuideGroups();
 
                     Dashboard.hideLoadingMsg();
                 });
+
+                // Admin defaults share the same group identifiers that the guide saves.
+                var discoveredDefaultGuideGroups = [];
+                var defaultGuideGroupsMessage = 'Loading available groups…';
+
+                function renderDefaultGuideGroups(defaults) {
+                    var host = document.querySelector('#DefaultPinnedGuideGroups');
+                    if (!host) return;
+                    if (defaultsState.active !== 'global') {
+                        host.textContent = 'Shared pins are configured on the Global tab.';
+                        return;
+                    }
+                    var saved = Array.isArray(defaults.liveTvSavedFilters)
+                        ? defaults.liveTvSavedFilters.filter(function(key) { return typeof key === 'string' && key.indexOf('group:') === 0; })
+                        : [];
+                    var names = saved.map(function(key) { return key.slice(6); });
+                    discoveredDefaultGuideGroups.forEach(function(name) {
+                        if (names.indexOf(name) === -1) names.push(name);
+                    });
+                    if (!names.length) { host.textContent = defaultGuideGroupsMessage; return; }
+                    host.innerHTML = names.map(function(name) {
+                        var key = 'group:' + name;
+                        var checked = saved.indexOf(key) !== -1;
+                        return '<label style="display:flex;align-items:center;gap:8px;padding:5px 3px;">' +
+                            '<input type="checkbox" data-guide-filter="' + esc(key) + '"' + (checked ? ' checked' : '') + '>' +
+                            '<span>' + esc(name) + '</span></label>';
+                    }).join('');
+                }
+
+                function discoverDefaultGuideGroups() {
+                    ApiClient.ajax({type: 'GET', url: ApiClient.getUrl('Moonfin/Ping'), dataType: 'json'})
+                        .then(function(info) {
+                            var name = info.serverName || info.ServerName;
+                            if (name === 'Plex') {
+                                var headers = {'X-Plex-Provider-Version': '7.2'};
+                                return Promise.all([
+                                    fetch('https://epg.provider.plex.tv/', {headers: headers}),
+                                    fetch('https://epg.provider.plex.tv/lineups/plex/channels', {headers: headers})
+                                ]).then(function(responses) {
+                                    if (!responses.every(function(response) { return response.ok; }))
+                                        throw new Error('Plex Free TV is unavailable');
+                                    return Promise.all(responses.map(function(response) { return response.json(); }));
+                                }).then(function(data) {
+                                    var provider = data[0].MediaProvider || {};
+                                    var channels = (data[1].MediaContainer || {}).Channel || [];
+                                    var used = {};
+                                    channels.forEach(function(channel) {
+                                        (channel.genreRatingKeys || []).forEach(function(key) { used[String(key)] = true; });
+                                    });
+                                    var names = [];
+                                    (provider.Feature || []).forEach(function(feature) {
+                                        if (feature.type !== 'grid') return;
+                                        (feature.GridChannelFilter || []).forEach(function(group) {
+                                            if (used[String(group.genreRatingKey)] && group.title) names.push(group.title);
+                                        });
+                                    });
+                                    return names;
+                                });
+                            }
+                            if (name !== 'Jellyfin') return [];
+                            return ApiClient.ajax({
+                                type: 'GET', url: ApiClient.getUrl('Moonfin/LiveTv/ChannelGroups'), dataType: 'json'
+                            }).then(function(lineup) {
+                                var names = [];
+                                var byChannel = lineup.groups || lineup.Groups || {};
+                                Object.keys(byChannel).forEach(function(id) {
+                                    (byChannel[id] || []).forEach(function(name) { names.push(name); });
+                                });
+                                return names;
+                            });
+                        })
+                        .then(function(names) {
+                            discoveredDefaultGuideGroups = Array.from(new Set(names.filter(function(name) {
+                                return typeof name === 'string' && name.trim();
+                            }).map(function(name) { return name.trim(); }))).sort();
+                            defaultGuideGroupsMessage = 'No channel groups available.';
+                            renderDefaultGuideGroups(defaultsState.profiles[defaultsState.active] || {});
+                        })
+                        .catch(function() {
+                            defaultGuideGroupsMessage = 'Could not load groups. Reload this page to retry.';
+                            renderDefaultGuideGroups(defaultsState.profiles[defaultsState.active] || {});
+                        });
+                }
 
                 // Fills the User defaults form from one profile's defaults. The same form edits
                 // every profile, so switching profiles reads the form back first and refills it.
@@ -11678,6 +11767,7 @@
                     setSelectValue('#DefaultAudioSortOption', defaults.audioSortOption, 'Configured sort');
                     setSelectValue('#DefaultLiveTvChannelSortBy', defaults.liveTvChannelSortBy, 'Configured sort');
                     setSelectValue('#DefaultLiveTvCategoryDisplay', defaults.liveTvCategoryDisplay, 'Configured guide layout');
+                    renderDefaultGuideGroups(defaults);
                     setSelectValue('#DefaultEpgMobileView', defaults.epgMobileView, 'Configured view');
                     setSelectValue('#DefaultMediaBarOverlayColor', defaults.mediaBarOverlayColor, 'Configured color');
                     bindNullableRangeInput('#DefaultMediaBarOpacity', '%');
@@ -12700,6 +12790,12 @@
                     ds.audioSortOption = document.querySelector('#DefaultAudioSortOption').value || null;
                     ds.liveTvChannelSortBy = document.querySelector('#DefaultLiveTvChannelSortBy').value || null;
                     ds.liveTvCategoryDisplay = document.querySelector('#DefaultLiveTvCategoryDisplay').value || null;
+                    if (defaultsState.active === 'global') {
+                        var selectedGroups = Array.from(document.querySelectorAll('#DefaultPinnedGuideGroups input[data-guide-filter]'))
+                            .filter(function(input) { return input.checked; })
+                            .map(function(input) { return input.getAttribute('data-guide-filter'); });
+                        ds.liveTvSavedFilters = selectedGroups.length ? selectedGroups : null;
+                    }
                     ds.epgMobileView = document.querySelector('#DefaultEpgMobileView').value || null;
                     ds.mediaBarOverlayColor = document.querySelector('#DefaultMediaBarOverlayColor').value || null;
                     ds.mediaBarOpacity = getNullableRangeInput('#DefaultMediaBarOpacity');

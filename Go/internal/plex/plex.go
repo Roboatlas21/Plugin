@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -109,6 +110,65 @@ func New(cfg Config) (*Companion, error) {
 	})
 	c.startWatchParties()
 	return c, nil
+}
+
+// LiveTvFreeGroups supplies the admin picker with the same Plex Cloud genre
+// labels Moonfin uses, without making its browser call Plex across origins.
+func (c *Companion) LiveTvFreeGroups(ctx context.Context, token string) ([]string, error) {
+	get := func(path string, target any) error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://epg.provider.plex.tv"+path, nil)
+		if err != nil { return err }
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("X-Plex-Provider-Version", "7.2")
+		if token != "" { req.Header.Set("X-Plex-Token", token) }
+		res, err := c.http.Do(req)
+		if err != nil { return err }
+		defer res.Body.Close()
+		if res.StatusCode != http.StatusOK {
+			return fmt.Errorf("Plex guide replied %d", res.StatusCode)
+		}
+		return json.NewDecoder(io.LimitReader(res.Body, 4<<20)).Decode(target)
+	}
+	var provider struct {
+		MediaProvider struct {
+			Feature []struct {
+				Type string `json:"type"`
+				GridChannelFilter []struct {
+					Key any `json:"genreRatingKey"`
+					Title string `json:"title"`
+				} `json:"GridChannelFilter"`
+			} `json:"Feature"`
+		} `json:"MediaProvider"`
+	}
+	var lineup struct {
+		MediaContainer struct {
+			Channel []struct {
+				DRM bool `json:"drm"`
+				Keys []any `json:"genreRatingKeys"`
+			} `json:"Channel"`
+		} `json:"MediaContainer"`
+	}
+	if err := get("/", &provider); err != nil { return nil, err }
+	if err := get("/lineups/plex/channels", &lineup); err != nil { return nil, err }
+	used := map[string]bool{}
+	for _, channel := range lineup.MediaContainer.Channel {
+		if channel.DRM { continue }
+		for _, key := range channel.Keys { used[fmt.Sprint(key)] = true }
+	}
+	unique := map[string]bool{}
+	var groups []string
+	for _, feature := range provider.MediaProvider.Feature {
+		if feature.Type != "grid" { continue }
+		for _, group := range feature.GridChannelFilter {
+			name := strings.TrimSpace(group.Title)
+			if name != "" && used[fmt.Sprint(group.Key)] && !unique[name] {
+				unique[name] = true
+				groups = append(groups, name)
+			}
+		}
+	}
+	sort.Strings(groups)
+	return groups, nil
 }
 
 // loadOrCreateClientID keeps one X-Plex-Client-Identifier per install, so

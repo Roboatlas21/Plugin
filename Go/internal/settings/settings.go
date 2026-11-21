@@ -320,7 +320,7 @@ func applySavedFilterChange(env M, change SavedFilterChange) {
 	switch change.Action {
 	case "initializeIfAbsent":
 		for _, pin := range change.Filters {
-			if !slices.Contains(personal, pin) {
+			if !slices.Contains(personal, any(pin)) {
 				personal = append(personal, pin)
 			}
 		}
@@ -331,13 +331,13 @@ func applySavedFilterChange(env M, change SavedFilterChange) {
 			}
 		}
 	case "add":
-		if !slices.Contains(personal, change.Filter) {
+		if !slices.Contains(personal, any(change.Filter)) {
 			personal = append(personal, change.Filter)
 		}
 		excluded = slices.DeleteFunc(excluded, func(pin any) bool { return pin == change.Filter })
 	case "remove":
 		personal = slices.DeleteFunc(personal, func(pin any) bool { return pin == change.Filter })
-		if !slices.Contains(excluded, change.Filter) {
+		if !slices.Contains(excluded, any(change.Filter)) {
 			excluded = append(excluded, change.Filter)
 		}
 	}

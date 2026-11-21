@@ -54,6 +54,22 @@ public sealed class LiveTvSavedFiltersProfileTests : IDisposable
     }
 
     [Fact]
+    public void AdminPinsSeedFirstEditAndUsersCanClearEveryPin()
+    {
+        var stored = new MoonfinUserSettings();
+        var defaults = new List<string> { "group:Sports", "group:News" };
+        MoonfinSettingsService.ApplySavedFilterChange(stored,
+            new LiveTvSavedFilterChange { Action = "remove", Filter = "group:Sports" }, defaults);
+        Assert.Equal(new[] { "group:News" }, stored.Global!.LiveTvSavedFilters);
+        MoonfinSettingsService.ApplySavedFilterChange(stored,
+            new LiveTvSavedFilterChange { Action = "remove", Filter = "group:News" }, defaults);
+        Assert.Empty(stored.Global!.LiveTvSavedFilters!);
+        MoonfinSettingsService.ApplySavedFilterChange(stored,
+            new LiveTvSavedFilterChange { Action = "add", Filter = "group:Kids" }, defaults);
+        Assert.Equal(new[] { "group:Kids" }, stored.Global!.LiveTvSavedFilters);
+    }
+
+    [Fact]
     public async Task FirstImportIsConditionalAndExplicitEmptyIsNotReimported()
     {
         var userId = Guid.NewGuid();

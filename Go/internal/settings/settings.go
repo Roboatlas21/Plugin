@@ -153,9 +153,9 @@ func SaveEnvelope(existing, incoming M, mergeMode, clientID string, keys ServerK
 
 // SavedFilterChange is an intentional shared-filter edit in the profile POST.
 type SavedFilterChange struct {
-	Action  string
-	Filter  string
-	Filters []string
+	Action   string
+	Filter   string
+	Filters  []string
 	Defaults []any // Inherited admin pins for a first explicit add/remove.
 }
 

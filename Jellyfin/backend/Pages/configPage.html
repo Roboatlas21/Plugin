@@ -11414,9 +11414,8 @@
                             (result.channels || result.Channels || []).forEach(function(channel) {
                                 names.push.apply(names, channel.groups || channel.Groups || []);
                             });
-                            availableDefaultGuideGroups = Array.from(new Set(names.filter(function(name) {
-                                return typeof name === 'string' && name.trim();
-                            }).map(function(name) { return name.trim(); }))).sort();
+                            // The server has already cleaned each group's label.
+                            availableDefaultGuideGroups = Array.from(new Set(names)).sort();
                             defaultGuideGroupsMessage = 'No channel groups available.';
                         }).catch(function() {
                             defaultGuideGroupsMessage = 'Could not load groups. Reload to retry.';

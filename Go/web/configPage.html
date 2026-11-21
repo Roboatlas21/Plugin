@@ -11411,10 +11411,8 @@
                     ApiClient.ajax({
                         type: 'GET', url: ApiClient.getUrl('Moonfin/Defaults', {includeLiveTvGroups: 'true'}), dataType: 'json'
                     }).then(function(result) {
-                        var names = result.availableGuideGroups || result.AvailableGuideGroups || [];
-                        availableDefaultGuideGroups = Array.from(new Set(names.filter(function(name) {
-                            return typeof name === 'string' && name.trim();
-                        }).map(function(name) { return name.trim(); }))).sort();
+                        // The Plex companion already returns unique, sorted labels.
+                        availableDefaultGuideGroups = result.availableGuideGroups || result.AvailableGuideGroups || [];
                         defaultGuideGroupsMessage = 'No channel groups available.';
                     }).catch(function() {
                         defaultGuideGroupsMessage = 'Could not load groups. Reload to retry.';

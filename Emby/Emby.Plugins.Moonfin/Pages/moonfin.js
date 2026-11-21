@@ -3715,7 +3715,13 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
             var selectedGroups = Array.from(view.querySelectorAll('#DefaultPinnedGuideGroups input[data-guide-filter]'))
                 .filter(function(input) { return input.checked; })
                 .map(function(input) { return input.getAttribute('data-guide-filter'); });
-            d.liveTvSavedFilters = selectedGroups.length ? selectedGroups : null;
+            // Keep category and other non-group shortcuts in their original order.
+            var existingPins = Array.isArray(d.liveTvSavedFilters) ? d.liveTvSavedFilters : [];
+            var keptPins = existingPins.filter(function(key) {
+                return typeof key === 'string' && (!key.startsWith('group:') || selectedGroups.includes(key));
+            });
+            selectedGroups.forEach(function(key) { if (!keptPins.includes(key)) keptPins.push(key); });
+            d.liveTvSavedFilters = keptPins.length ? keptPins : null;
         }
         d.epgMobileView = view.querySelector('#DefaultEpgMobileView').value || null;
         d.mediaBarOverlayColor = view.querySelector('#DefaultMediaBarOverlayColor').value || null;

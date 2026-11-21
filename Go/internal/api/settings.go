@@ -261,6 +261,8 @@ func (s *Server) handlePostProfile(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "Invalid saved Live TV filter change")
 			return
 		}
+		// Defaults are only used if this user has never customized the pins.
+		change.Defaults = settings.StoredSavedFilters(M{"global": s.config(r.Context()).Defaults})
 		extra := M{}
 		s.save(w, r, func(env M) M {
 			updated := settings.SaveProfile(env, name, cleaned, clientID, serverKeys(s.config(r.Context())), time.Now(), change)

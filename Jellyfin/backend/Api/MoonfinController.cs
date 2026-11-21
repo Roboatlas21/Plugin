@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moonfin.Calendar;
+using Moonfin.LiveTv;
 using Moonfin.Server.Helpers;
 using Moonfin.Server.Models;
 using Moonfin.Server.Services;

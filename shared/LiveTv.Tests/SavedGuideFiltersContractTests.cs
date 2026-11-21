@@ -1,6 +1,7 @@
 using System.Linq;
 using System.Text.Json;
 using System.Xml.Serialization;
+using Moonfin.LiveTv;
 using Xunit;
 #if MOONFIN_EMBY_TESTS
 using Emby.Plugins.Moonfin.Models;

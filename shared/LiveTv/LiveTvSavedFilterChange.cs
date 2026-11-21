@@ -1,8 +1,7 @@
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
-using Moonfin.LiveTv;
 
-namespace Moonfin.Server.Models;
+namespace Moonfin.LiveTv;
 
 /// <summary>An intentional atomic change to shared guide shortcuts.</summary>
 public sealed class LiveTvSavedFilterChange

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using Emby.Plugins.Moonfin.Models;
+using Moonfin.LiveTv;
 
 namespace Emby.Plugins.Moonfin.Api
 {

@@ -363,9 +363,11 @@ public class MoonfinSettingsService
             string? storedHiddenContinueWatching = null;
             string? storedHiddenNextUp = null;
 
+            var existingSettingsForPins = ReadSettingsWithRecovery(filePath);
+            var storedSavedFilters = existingSettingsForPins?.Global?.LiveTvSavedFilters?.ToList();
             if (mergeMode == "merge")
             {
-                var existingSettings = ReadSettingsWithRecovery(filePath);
+                var existingSettings = existingSettingsForPins;
 
                 // Migrate v1 if needed
                 if (existingSettings != null && existingSettings.NeedsMigration)
@@ -392,10 +394,7 @@ public class MoonfinSettingsService
             finalSettings.LastUpdatedBy = clientId ?? "unknown";
             finalSettings.SchemaVersion = 2;
 
-            MoveLiveTvSavedFiltersToGlobal(
-                finalSettings,
-                settings.Global?.LiveTvSavedFilters ?? settings.Tv?.LiveTvSavedFilters
-                    ?? settings.Mobile?.LiveTvSavedFilters ?? settings.Desktop?.LiveTvSavedFilters);
+            PreserveSavedFilters(finalSettings, storedSavedFilters);
             MoveContentHidingToGlobal(finalSettings, storedHiddenContinueWatching, storedHiddenNextUp);
             PropagateCustomHomeSectionsAcrossProfiles(
                 finalSettings,
@@ -428,7 +427,8 @@ public class MoonfinSettingsService
           MoonfinSettingsProfile profile,
           string? clientId = null,
           bool notifySettingsChanged = true,
-          bool replace = false)
+          bool replace = false,
+          LiveTvSavedFilterChange? savedFilterChange = null)
     {
         var filePath = GetUserSettingsPath(userId);
         bool settingsChanged;
@@ -437,6 +437,9 @@ public class MoonfinSettingsService
         try
         {
             var settings = ReadSettingsWithRecovery(filePath) ?? new MoonfinUserSettings();
+            var storedSavedFilters = settings.Global?.LiveTvSavedFilters?.ToList();
+            // Full-profile saves must not mutate the shared shortcut list.
+            profile.LiveTvSavedFilters = null;
 
             if (settings.NeedsMigration)
             {
@@ -484,7 +487,8 @@ public class MoonfinSettingsService
 
             var savedProfile = existingProfile ?? profile;
 
-            MoveLiveTvSavedFiltersToGlobal(settings, profile.LiveTvSavedFilters);
+            PreserveSavedFilters(settings, storedSavedFilters);
+            ApplySavedFilterChange(settings, savedFilterChange);
 
             // Update metadata
             StripServerWideKeys(settings);
@@ -751,25 +755,41 @@ public class MoonfinSettingsService
         ("tv", s => s.Tv),
     };
 
-    /// <summary>
-    /// Pinned guide shortcuts belong to the user, not to a TV or mobile profile.
-    /// An explicit empty list clears them; a missing field leaves them unchanged.
-    /// </summary>
-    private static void MoveLiveTvSavedFiltersToGlobal(
-        MoonfinUserSettings settings, List<string>? incoming = null)
+    /// <summary>Do not let ordinary full-profile writes change shared pins.</summary>
+    private static void PreserveSavedFilters(MoonfinUserSettings settings, List<string>? stored)
     {
-        var filters = incoming ?? settings.Global?.LiveTvSavedFilters
-            ?? settings.Tv?.LiveTvSavedFilters
-            ?? settings.Mobile?.LiveTvSavedFilters
-            ?? settings.Desktop?.LiveTvSavedFilters;
-        if (filters != null)
-        {
-            settings.Global ??= new MoonfinSettingsProfile();
-            settings.Global.LiveTvSavedFilters = new List<string>(filters);
-        }
+        if (stored != null) settings.Global ??= new MoonfinSettingsProfile();
+        if (settings.Global != null)
+            settings.Global.LiveTvSavedFilters = stored == null ? null : new List<string>(stored);
         if (settings.Tv != null) settings.Tv.LiveTvSavedFilters = null;
         if (settings.Mobile != null) settings.Mobile.LiveTvSavedFilters = null;
         if (settings.Desktop != null) settings.Desktop.LiveTvSavedFilters = null;
+    }
+
+    /// <summary>Apply a pin operation while holding the settings-file lock.</summary>
+    private static void ApplySavedFilterChange(MoonfinUserSettings settings, LiveTvSavedFilterChange? change)
+    {
+        if (change == null) return;
+        if (!change.IsValid()) throw new ArgumentException("Invalid saved guide filter change", nameof(change));
+        var current = settings.Global?.LiveTvSavedFilters;
+        if (change.Action == "initializeIfAbsent")
+        {
+            if (current != null) return;
+            current = new List<string>();
+            foreach (var value in change.Filters!)
+                if (!current.Contains(value)) current.Add(value);
+        }
+        else
+        {
+            current ??= new List<string>();
+            if (change.Action == "add")
+            {
+                if (!current.Contains(change.Filter!)) current.Add(change.Filter!);
+            }
+            else current.RemoveAll(value => string.Equals(value, change.Filter, StringComparison.Ordinal));
+        }
+        settings.Global ??= new MoonfinSettingsProfile();
+        settings.Global.LiveTvSavedFilters = current;
     }
 
     /// <summary>

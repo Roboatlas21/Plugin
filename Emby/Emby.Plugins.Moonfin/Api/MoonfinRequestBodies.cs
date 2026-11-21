@@ -15,6 +15,7 @@ namespace Emby.Plugins.Moonfin.Api
     {
         [JsonPropertyName("profile")] public MoonfinSettingsProfile? Profile { get; set; }
         [JsonPropertyName("clientId")] public string? ClientId { get; set; }
+        [JsonPropertyName("liveTvSavedFilterChange")] public LiveTvSavedFilterChange? LiveTvSavedFilterChange { get; set; }
     }
 
     internal class SaveDetailsBlurBody

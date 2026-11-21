@@ -1021,16 +1021,25 @@ public class MoonfinController : ControllerBase
         {
             return BadRequest(new { Error = "Profile settings are required" });
         }
+        if (request.LiveTvSavedFilterChange is { } change && !change.IsValid())
+        {
+            return BadRequest(new { Error = "Invalid saved Live TV filter change" });
+        }
 
         var existed = _settingsService.UserSettingsExist(userId.Value);
 
-        await _settingsService.SaveProfileAsync(userId.Value, profile, request.Profile, request.ClientId);
+        await _settingsService.SaveProfileAsync(userId.Value, profile, request.Profile, request.ClientId,
+            savedFilterChange: request.LiveTvSavedFilterChange);
+        var updatedPins = request.LiveTvSavedFilterChange == null
+            ? null
+            : (await _settingsService.GetUserSettingsAsync(userId.Value))?.Global?.LiveTvSavedFilters ?? new List<string>();
 
         return Ok(new MoonfinSaveResponse
         {
             Success = true,
             Created = !existed,
-            UserId = userId.Value
+            UserId = userId.Value,
+            LiveTvSavedFilters = updatedPins
         });
     }
 
@@ -1920,6 +1929,8 @@ public class MoonfinProfileSaveRequest
 {
     public MoonfinSettingsProfile? Profile { get; set; }
     public string? ClientId { get; set; }
+    [JsonPropertyName("liveTvSavedFilterChange")]
+    public LiveTvSavedFilterChange? LiveTvSavedFilterChange { get; set; }
 }
 
 /// <summary>
@@ -1930,6 +1941,8 @@ public class MoonfinSaveResponse
     public bool Success { get; set; }
     public bool Created { get; set; }
     public Guid UserId { get; set; }
+    [JsonPropertyName("liveTvSavedFilters")]
+    public List<string>? LiveTvSavedFilters { get; set; }
 }
 
 public class MoonfinDetailsScreenBlurRequest

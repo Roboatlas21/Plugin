@@ -2918,13 +2918,17 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
     var availableDefaultGuideGroups = [];
     var defaultGuideGroupsMessage = 'Loading available groups…';
 
-    function renderDefaultGuideGroups(view, defaults) {
+    function renderDefaultGuideGroups(view, defaults, preserveSelection) {
         var host = view.querySelector('#DefaultPinnedGuideGroups');
         if (!host) return;
         if (defaultsState.active !== 'global') {
             host.textContent = 'Shared pins are configured on the Global tab.';
             return;
         }
+        var current = preserveSelection
+            ? new Map(Array.from(host.querySelectorAll('input[data-guide-filter]'), function(input) {
+                return [input.getAttribute('data-guide-filter'), input.checked];
+            })) : null;
         var saved = Array.isArray(defaults.liveTvSavedFilters)
             ? defaults.liveTvSavedFilters.filter(function(key) { return typeof key === 'string' && key.startsWith('group:'); })
             : [];
@@ -2933,7 +2937,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
             var key = 'group:' + name;
             return '<label style="display:flex;align-items:center;gap:8px;padding:5px 3px;">' +
                 '<input type="checkbox" data-guide-filter="' + esc(key) + '"' +
-                (saved.includes(key) ? ' checked' : '') + '><span>' + esc(name) + '</span></label>';
+                (current && current.has(key) ? current.get(key) : saved.includes(key) ? true : false) ? ' checked' : '' + '><span>' + esc(name) + '</span></label>';
         }).join('') : defaultGuideGroupsMessage;
     }
 
@@ -2956,7 +2960,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
         }).catch(function() {
             defaultGuideGroupsMessage = 'Could not load channel tags. Reload to retry.';
         }).finally(function() {
-            renderDefaultGuideGroups(view, defaultsState.profiles[defaultsState.active] || {});
+            renderDefaultGuideGroups(view, defaultsState.profiles[defaultsState.active] || {}, true);
         });
     }
 

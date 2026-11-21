@@ -2914,8 +2914,8 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
         }).catch(reportConfigError);
     }
 
-    // The admin selects from Emby's native channel tags, just like the guide.
-    var discoveredDefaultGuideGroups = [];
+    // The admin selects the same native channel tags used by the guide.
+    var availableDefaultGuideGroups = [];
     var defaultGuideGroupsMessage = 'Loading available groups…';
 
     function renderDefaultGuideGroups(view, defaults) {
@@ -2926,45 +2926,36 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
             return;
         }
         var saved = Array.isArray(defaults.liveTvSavedFilters)
-            ? defaults.liveTvSavedFilters.filter(function(key) { return typeof key === 'string' && key.indexOf('group:') === 0; })
+            ? defaults.liveTvSavedFilters.filter(function(key) { return typeof key === 'string' && key.startsWith('group:'); })
             : [];
-        var names = saved.map(function(key) { return key.slice(6); });
-        discoveredDefaultGuideGroups.forEach(function(name) {
-            if (names.indexOf(name) === -1) names.push(name);
-        });
-        if (!names.length) { host.textContent = defaultGuideGroupsMessage; return; }
-        host.innerHTML = names.map(function(name) {
+        var names = Array.from(new Set(saved.map(function(key) { return key.slice(6); }).concat(availableDefaultGuideGroups)));
+        host.innerHTML = names.length ? names.map(function(name) {
             var key = 'group:' + name;
             return '<label style="display:flex;align-items:center;gap:8px;padding:5px 3px;">' +
                 '<input type="checkbox" data-guide-filter="' + esc(key) + '"' +
-                (saved.indexOf(key) !== -1 ? ' checked' : '') + '>' +
-                '<span>' + esc(name) + '</span></label>';
-        }).join('');
+                (saved.includes(key) ? ' checked' : '') + '><span>' + esc(name) + '</span></label>';
+        }).join('') : defaultGuideGroupsMessage;
     }
 
     function discoverDefaultGuideGroups(view) {
         ApiClient.ajax({
             type: 'GET',
-            url: ApiClient.getUrl('LiveTv/Channels', {
-                Fields: 'ImageTags,UserData,Tags', EnableTotalRecordCount: false
-            }),
+            url: ApiClient.getUrl('LiveTv/Channels', {Fields: 'ImageTags,UserData,Tags', EnableTotalRecordCount: false}),
             dataType: 'json'
-        }).then(function(lineup) {
+        }).then(function(result) {
             var names = [];
-            (lineup.Items || lineup.items || []).forEach(function(channel) {
-                var tags = channel.TagItems || channel.tagItems || [];
-                var labels = tags.map(function(tag) { return tag.Name || tag.name; })
+            (result.Items || result.items || []).forEach(function(channel) {
+                var tags = (channel.TagItems || channel.tagItems || []).map(function(tag) { return tag.Name || tag.name; })
                     .filter(function(name) { return typeof name === 'string' && name.trim(); });
-                if (!labels.length) labels = channel.Tags || channel.tags || [];
-                labels.forEach(function(name) { names.push(name); });
+                names.push.apply(names, tags.length ? tags : channel.Tags || channel.tags || []);
             });
-            discoveredDefaultGuideGroups = Array.from(new Set(names.filter(function(name) {
+            availableDefaultGuideGroups = Array.from(new Set(names.filter(function(name) {
                 return typeof name === 'string' && name.trim();
             }).map(function(name) { return name.trim(); }))).sort();
             defaultGuideGroupsMessage = 'No channel tags available.';
-            renderDefaultGuideGroups(view, defaultsState.profiles[defaultsState.active] || {});
         }).catch(function() {
-            defaultGuideGroupsMessage = 'Could not load channel tags. Reload this page to retry.';
+            defaultGuideGroupsMessage = 'Could not load channel tags. Reload to retry.';
+        }).finally(function() {
             renderDefaultGuideGroups(view, defaultsState.profiles[defaultsState.active] || {});
         });
     }

@@ -120,6 +120,12 @@ func (c *Companion) LiveTvFreeGroups(ctx context.Context, token string) ([]strin
 		if err != nil {
 			return err
 		}
+		query := req.URL.Query()
+		query.Set("X-Plex-Product", "Moonbase")
+		query.Set("X-Plex-Version", c.cfg.Version)
+		query.Set("X-Plex-Client-Identifier", c.clientID)
+		query.Set("X-Plex-Device-Name", "Moonbase")
+		req.URL.RawQuery = query.Encode()
 		req.Header.Set("Accept", "application/json")
 		req.Header.Set("X-Plex-Provider-Version", "7.2")
 		if token != "" {

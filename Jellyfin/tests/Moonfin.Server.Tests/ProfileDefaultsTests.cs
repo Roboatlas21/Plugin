@@ -207,6 +207,31 @@ public sealed class ProfileDefaultsTests : IDisposable
     }
 
     [Fact]
+    public async Task ApplyingGuidePinDefaultsAddsMissingGroupsWithoutOverwritingUsers()
+    {
+        var config = Config();
+        config.DefaultUserSettings.LiveTvSavedFilters = ["group:Sports", "group:News"];
+        config.DefaultDeviceSettings!.Tv!.LiveTvSavedFilters = ["group:Kids"];
+        var userId = Guid.NewGuid();
+        await _service.SaveProfileAsync(userId, "global", new MoonfinSettingsProfile(),
+            notifySettingsChanged: false, savedFilterChange: new LiveTvSavedFilterChange
+            { Action = "initializeIfAbsent", Filters = ["group:Sports", "group:Movies"] });
+        var inherited = await SeedAsync("global", new MoonfinSettingsProfile());
+
+        await _service.MergeDefaultsAsync(config, ["global"], ["use24HourClock"], [userId]);
+        Assert.Equal(["group:Sports", "group:Movies"], Read(userId).Global!.LiveTvSavedFilters);
+        await _service.MergeDefaultsAsync(config, ["global"], ["liveTvSavedFilters"], [userId, inherited]);
+        await _service.MergeDefaultsAsync(config, ["global"], ["liveTvSavedFilters"], [userId]);
+        Assert.Equal(["group:Sports", "group:Movies", "group:News"], Read(userId).Global!.LiveTvSavedFilters);
+        Assert.Null(Read(inherited).Global!.LiveTvSavedFilters);
+
+        await _service.MergeDefaultsAsync(config, ["tv"], ["liveTvSavedFilters"], [userId]);
+        Assert.Equal(["group:Sports", "group:Movies", "group:News", "group:Kids"], Read(userId).Global!.LiveTvSavedFilters);
+        await _service.ResetUsersToDefaultsAsync(config, ["global"], [userId], deleteOrphans: false);
+        Assert.Equal(["group:Sports", "group:News"], Read(userId).Global!.LiveTvSavedFilters);
+    }
+
+    [Fact]
     public async Task PushingOnlyUnknownKeysChangesNothing()
     {
         await SeedAsync("global", new MoonfinSettingsProfile());

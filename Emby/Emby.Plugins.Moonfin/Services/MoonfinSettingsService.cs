@@ -428,7 +428,7 @@ namespace Emby.Plugins.Moonfin.Services
                     settings.SetProfile(profileName, profile);
 
                 PreserveSavedFilters(settings, storedSavedFilters);
-                ApplySavedFilterChange(settings, savedFilterChange);
+                ApplySavedFilterChange(settings, savedFilterChange, Plugin.Instance?.Configuration?.DefaultUserSettings?.LiveTvSavedFilters);
                 StripServerWideKeys(settings);
                 settings.LastUpdated = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 settings.LastUpdatedBy = clientId ?? "unknown";
@@ -1053,7 +1053,7 @@ namespace Emby.Plugins.Moonfin.Services
         }
 
         /// <summary>Apply a pin operation while holding the settings-file lock.</summary>
-        private static void ApplySavedFilterChange(MoonfinUserSettings settings, LiveTvSavedFilterChange? change)
+        private static void ApplySavedFilterChange(MoonfinUserSettings settings, LiveTvSavedFilterChange? change, List<string>? defaults)
         {
             if (change == null) return;
             if (!change.IsValid()) throw new ArgumentException("Invalid saved guide filter change", nameof(change));
@@ -1067,7 +1067,8 @@ namespace Emby.Plugins.Moonfin.Services
             }
             else
             {
-                current ??= new List<string>();
+                // A first edit starts from inherited defaults, then becomes the user's list.
+                current ??= defaults?.ToList() ?? new List<string>();
                 if (change.Action == "add")
                 {
                     if (!current.Contains(change.Filter!)) current.Add(change.Filter!);

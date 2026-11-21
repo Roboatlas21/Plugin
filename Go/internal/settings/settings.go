@@ -69,10 +69,11 @@ func Clean(in M) M {
 
 // SaveProfile merges incoming into one profile of env (nil for a new user)
 // and returns the envelope to store.
-func SaveProfile(env M, name string, incoming M, clientID string, keys ServerKeys, now time.Time) M {
+func SaveProfile(env M, name string, incoming M, clientID string, keys ServerKeys, now time.Time, changes ...SavedFilterChange) M {
 	if env == nil {
 		env = M{"schemaVersion": 2, "syncEnabled": true}
 	}
+	pins := savedGlobalFilters(env)
 	stored := storedHidden(env)
 	if existing, ok := env[name].(M); ok {
 		mergeProfile(existing, incoming)
@@ -80,7 +81,8 @@ func SaveProfile(env M, name string, incoming M, clientID string, keys ServerKey
 		env[name] = incoming
 	}
 	finish(env, clientID, keys, now, stored)
-	moveLiveTvSavedFiltersToGlobal(env, incoming["liveTvSavedFilters"])
+	preserveSavedFilters(env, pins)
+	if len(changes) != 0 { applySavedFilterChange(env, changes[0]) }
 	return env
 }
 
@@ -94,6 +96,7 @@ func ReplaceProfile(env M, name string, incoming M, clientID string, keys Server
 	if env == nil {
 		env = M{"schemaVersion": 2, "syncEnabled": true}
 	}
+	pins := savedGlobalFilters(env)
 	stored := storedHidden(env)
 	if existing, ok := env[name].(M); ok {
 		for _, k := range PersonalKeys {
@@ -102,14 +105,9 @@ func ReplaceProfile(env M, name string, incoming M, clientID string, keys Server
 			}
 		}
 	}
-	previous := savedFiltersFromEnvelope(env)
 	env[name] = incoming
 	finish(env, clientID, keys, now, stored)
-	chosen := incoming["liveTvSavedFilters"]
-	if chosen == nil {
-		chosen = previous
-	}
-	moveLiveTvSavedFiltersToGlobal(env, chosen)
+	preserveSavedFilters(env, pins)
 	return env
 }
 
@@ -123,13 +121,13 @@ func SaveEnvelope(existing, incoming M, mergeMode, clientID string, keys ServerK
 		}
 	}
 	delete(incoming, "hiddenContentBaselines")
-	pinned := savedFiltersFromEnvelope(incoming)
+	pins := savedGlobalFilters(existing)
 	if _, ok := incoming["syncEnabled"].(bool); !ok {
 		incoming["syncEnabled"] = true
 	}
 	if mergeMode != "merge" || existing == nil {
 		finish(incoming, clientID, keys, now, nil)
-		moveLiveTvSavedFiltersToGlobal(incoming, pinned)
+		preserveSavedFilters(incoming, pins)
 		return incoming
 	}
 	stored := storedHidden(existing)
@@ -147,74 +145,116 @@ func SaveEnvelope(existing, incoming M, mergeMode, clientID string, keys ServerK
 		existing[k] = v
 	}
 	finish(existing, clientID, keys, now, stored)
-	moveLiveTvSavedFiltersToGlobal(existing, pinned)
+	preserveSavedFilters(existing, pins)
 	return existing
 }
 
-// savedFiltersFromEnvelope reads an explicitly supplied list before a merge
-// makes it indistinguishable from an older profile's values.
-func savedFiltersFromEnvelope(env M) any {
-	for _, name := range Profiles {
-		if profile, ok := env[name].(M); ok {
-			if value := profile["liveTvSavedFilters"]; value != nil {
-				return value
-			}
-		}
-	}
-	return nil
+// SavedFilterChange is an intentional shared-filter edit in the profile POST.
+type SavedFilterChange struct {
+	Action string
+	Filter string
+	Filters []string
 }
 
-// pinnedStrings validates JSON string arrays without splitting commas or pipes.
-// An empty array is an explicit request to remove every pinned shortcut.
+func validSavedFilter(key string) bool {
+	return len(key) <= 1024 && ((strings.HasPrefix(key, "group:") && len(key) > 6) ||
+		(strings.HasPrefix(key, "category:") && len(key) > 9))
+}
+
+func ParseSavedFilterChange(raw any) (SavedFilterChange, bool) {
+	obj, ok := raw.(M)
+	if !ok { return SavedFilterChange{}, false }
+	action, _ := obj["action"].(string)
+	switch action {
+	case "add", "remove":
+		key, _ := obj["filter"].(string)
+		if !validSavedFilter(key) { return SavedFilterChange{}, false }
+		return SavedFilterChange{Action: action, Filter: key}, true
+	case "initializeIfAbsent":
+		rawFilters, ok := obj["filters"].([]any)
+		if !ok || len(rawFilters) > 1000 { return SavedFilterChange{}, false }
+		filters := make([]string, 0, len(rawFilters))
+		for _, item := range rawFilters {
+			key, ok := item.(string)
+			if !ok || !validSavedFilter(key) { return SavedFilterChange{}, false }
+			filters = append(filters, key)
+		}
+		return SavedFilterChange{Action: action, Filters: filters}, true
+	}
+	return SavedFilterChange{}, false
+}
+
+// Empty arrays mean an intentional clear; missing fields must not be replaced.
 func pinnedStrings(value any) ([]any, bool) {
 	var items []any
 	switch v := value.(type) {
 	case []any:
 		items = v
 	case []string:
-		for _, item := range v {
-			items = append(items, item)
-		}
+		for _, item := range v { items = append(items, item) }
 	default:
 		return nil, false
 	}
 	for _, item := range items {
-		if _, ok := item.(string); !ok {
-			return nil, false
-		}
+		if _, ok := item.(string); !ok { return nil, false }
 	}
 	return append([]any{}, items...), true
 }
 
-// Pinned guide filters are shared across all device profiles for one PMS user.
-// Missing fields leave the saved list alone; an explicit empty list clears it.
-func moveLiveTvSavedFiltersToGlobal(env M, incoming any) {
+func savedGlobalFilters(env M) []any {
+	if global, ok := env["global"].(M); ok {
+		if pins, valid := pinnedStrings(global["liveTvSavedFilters"]); valid { return pins }
+	}
+	return nil
+}
+
+func StoredSavedFilters(env M) []any {
+	if pins := savedGlobalFilters(env); pins != nil { return pins }
+	return []any{}
+}
+
+// Full-profile updates never change the canonical list.
+func preserveSavedFilters(env M, stored []any) {
 	global, _ := env["global"].(M)
-	filters, ok := pinnedStrings(incoming)
-	if !ok && global != nil {
-		filters, ok = pinnedStrings(global["liveTvSavedFilters"])
-	}
-	if !ok {
-		for _, name := range []string{"tv", "mobile", "desktop"} {
-			if profile, exists := env[name].(M); exists {
-				if filters, ok = pinnedStrings(profile["liveTvSavedFilters"]); ok {
-					break
-				}
-			}
-		}
-	}
-	if ok {
+	if stored != nil {
 		if global == nil {
 			global = M{}
 			env["global"] = global
 		}
-		global["liveTvSavedFilters"] = filters
-	}
+		global["liveTvSavedFilters"] = append([]any{}, stored...)
+	} else if global != nil { delete(global, "liveTvSavedFilters") }
 	for _, name := range Profiles[1:] {
-		if profile, exists := env[name].(M); exists {
-			delete(profile, "liveTvSavedFilters")
-		}
+		if profile, ok := env[name].(M); ok { delete(profile, "liveTvSavedFilters") }
 	}
+}
+
+// The API invokes this under its per-user settings lock.
+func applySavedFilterChange(env M, change SavedFilterChange) {
+	current := savedGlobalFilters(env)
+	if change.Action == "initializeIfAbsent" && current != nil { return }
+	if current == nil { current = []any{} }
+	switch change.Action {
+	case "initializeIfAbsent":
+		for _, key := range change.Filters {
+			present := false
+			for _, old := range current { if old == key { present = true; break } }
+			if !present { current = append(current, key) }
+		}
+	case "add":
+		present := false
+		for _, old := range current { if old == change.Filter { present = true; break } }
+		if !present { current = append(current, change.Filter) }
+	case "remove":
+		remaining := make([]any, 0, len(current))
+		for _, key := range current { if key != change.Filter { remaining = append(remaining, key) } }
+		current = remaining
+	}
+	global, ok := env["global"].(M)
+	if !ok {
+		global = M{}
+		env["global"] = global
+	}
+	global["liveTvSavedFilters"] = current
 }
 
 func mergeProfile(existing, incoming M) {

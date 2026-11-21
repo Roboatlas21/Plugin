@@ -329,6 +329,41 @@ func TestSavedLiveTvFiltersUseExistingProfileEndpoint(t *testing.T) {
 	}
 }
 
+func TestAdminDefaultGuidePinsSeedFirstEditButDoNotOverwriteUsers(t *testing.T) {
+	s := newTestServer()
+	saveConfig(t, s, map[string]any{
+		"DefaultUserSettings": map[string]any{
+			"liveTvSavedFilters": []any{"group:Sports", "group:News"},
+		},
+	})
+	code, value := call(t, s, userMain, "GET", "/Moonfin/Settings/Resolved/tv", "", nil)
+	if code != 200 || !reflect.DeepEqual(value["liveTvSavedFilters"], []any{"group:Sports", "group:News"}) {
+		t.Fatalf("initial inherited pins: %d %v", code, value)
+	}
+	code, value = call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv",
+		`{"profile":{},"liveTvSavedFilterChange":{"action":"remove","filter":"group:Sports"}}`, nil)
+	if code != 200 || !reflect.DeepEqual(value["liveTvSavedFilters"], []any{"group:News"}) {
+		t.Fatalf("first edit should keep the other inherited pin: %d %v", code, value)
+	}
+	saveConfig(t, s, map[string]any{
+		"DefaultUserSettings": map[string]any{"liveTvSavedFilters": []any{"group:Movies"}},
+	})
+	code, value = call(t, s, userMain, "GET", "/Moonfin/Settings/Resolved/mobile", "", nil)
+	if code != 200 || !reflect.DeepEqual(value["liveTvSavedFilters"], []any{"group:News"}) {
+		t.Fatalf("admin changes must not rewrite customized pins: %d %v", code, value)
+	}
+	// A local list pre-dating Moonbase wins over defaults on first import.
+	other := newTestServer()
+	saveConfig(t, other, map[string]any{
+		"DefaultUserSettings": map[string]any{"liveTvSavedFilters": []any{"group:Sports"}},
+	})
+	code, value = call(t, other, userMain, "POST", "/Moonfin/Settings/Profile/tv",
+		`{"profile":{},"liveTvSavedFilterChange":{"action":"initializeIfAbsent","filters":["group:Local"]}}`, nil)
+	if code != 200 || !reflect.DeepEqual(value["liveTvSavedFilters"], []any{"group:Local"}) {
+		t.Fatalf("local first import should win: %d %v", code, value)
+	}
+}
+
 func TestLiveTvCategoryDisplaySettingsAndDefaults(t *testing.T) {
 	s := newTestServer()
 	saveConfig(t, s, map[string]any{

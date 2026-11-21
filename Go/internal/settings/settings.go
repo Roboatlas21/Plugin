@@ -156,6 +156,7 @@ type SavedFilterChange struct {
 	Action  string
 	Filter  string
 	Filters []string
+	Defaults []any // Inherited admin pins for a first explicit add/remove.
 }
 
 func validSavedFilter(key string) bool {
@@ -258,6 +259,9 @@ func applySavedFilterChange(env M, change SavedFilterChange) {
 	}
 	if current == nil {
 		current = []any{}
+		if change.Action != "initializeIfAbsent" {
+			current = append(current, change.Defaults...)
+		}
 	}
 	switch change.Action {
 	case "initializeIfAbsent":

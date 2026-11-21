@@ -967,6 +967,41 @@ func TestAdminUsersWithoutProfiles(t *testing.T) {
 	}
 }
 
+func TestApplyDefaultsAddsGuideGroupsWithoutReplacingPins(t *testing.T) {
+    s := newTestServer()
+    call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/global",
+        `{"profile":{},"liveTvSavedFilterChange":{"action":"initializeIfAbsent","filters":["group:Sports","group:Movies"]}}`, nil)
+    call(t, s, other, "POST", "/Moonfin/Settings/Profile/global", `{"profile":{"cinemaModeEnabled":true}}`, nil)
+    saveConfig(t, s, map[string]any{
+        "DefaultUserSettings": map[string]any{
+            "liveTvSavedFilters": []any{"group:Sports", "group:News"}, "use24HourClock": true,
+        },
+    })
+    pins := func(c caller) any {
+        _, got := call(t, s, c, "GET", "/Moonfin/Settings", "", nil)
+        return got["global"].(map[string]any)["liveTvSavedFilters"]
+    }
+    apply := func(body string) {
+        t.Helper()
+        if code, _ := call(t, s, adminMain, "POST", "/Moonfin/Admin/ApplyDefaults", body, nil); code != 200 {
+            t.Fatalf("Apply Defaults failed: %s (%d)", body, code)
+        }
+    }
+    apply(`{"profiles":["global"],"keys":["use24HourClock"],"userIds":["3~30"]}`)
+    if !reflect.DeepEqual(pins(userMain), []any{"group:Sports", "group:Movies"}) {
+        t.Fatalf("unselected pins changed: %v", pins(userMain))
+    }
+    apply(`{"profiles":["global"],"keys":["liveTvSavedFilters"],"userIds":["3~30","4~40"]}`)
+    apply(`{"profiles":["global"],"keys":["liveTvSavedFilters"],"userIds":["3~30"]}`)
+    if !reflect.DeepEqual(pins(userMain), []any{"group:Sports", "group:Movies", "group:News"}) || pins(other) != nil {
+        t.Fatalf("merged pins or inherited defaults wrong: user %v, inherited %v", pins(userMain), pins(other))
+    }
+    apply(`{"overwrite":true,"profiles":["global"],"userIds":["3~30"]}`)
+    if !reflect.DeepEqual(pins(userMain), []any{"group:Sports", "group:News"}) {
+        t.Fatalf("full reset should replace pins: %v", pins(userMain))
+    }
+}
+
 func TestApplyDefaultsPicksProfilesTargetsAndKeys(t *testing.T) {
 	s := newTestServer()
 	call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv", `{"profile":{"clockBehavior":"inMenus"}}`, nil)

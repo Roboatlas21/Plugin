@@ -54,19 +54,71 @@ public sealed class LiveTvSavedFiltersProfileTests : IDisposable
     }
 
     [Fact]
-    public void AdminPinsSeedFirstEditAndUsersCanClearEveryPin()
+    public void AdminPinsAreInheritedAndUsersCanClearEveryPin()
     {
         var stored = new MoonfinUserSettings();
         var defaults = new List<string> { "group:Sports", "group:News" };
+        var config = new PluginConfiguration {
+            DefaultUserSettings = new MoonfinSettingsProfile { LiveTvSavedFilters = defaults }
+        };
+        Assert.Equal(defaults, _service.ResolveProfile(stored, "tv", config).LiveTvSavedFilters);
+
         MoonfinSettingsService.ApplySavedFilterChange(stored,
             new LiveTvSavedFilterChange { Action = "remove", Filter = "group:Sports" }, defaults);
-        Assert.Equal(new[] { "group:News" }, stored.Global!.LiveTvSavedFilters);
+        Assert.Equal(new[] { "group:News" }, _service.ResolveProfile(stored, "tv", config).LiveTvSavedFilters);
         MoonfinSettingsService.ApplySavedFilterChange(stored,
             new LiveTvSavedFilterChange { Action = "remove", Filter = "group:News" }, defaults);
-        Assert.Empty(stored.Global!.LiveTvSavedFilters!);
+        Assert.Empty(_service.ResolveProfile(stored, "tv", config).LiveTvSavedFilters!);
         MoonfinSettingsService.ApplySavedFilterChange(stored,
             new LiveTvSavedFilterChange { Action = "add", Filter = "group:Kids" }, defaults);
-        Assert.Equal(new[] { "group:Kids" }, stored.Global!.LiveTvSavedFilters);
+        Assert.Equal(new[] { "group:Kids" }, _service.ResolveProfile(stored, "tv", config).LiveTvSavedFilters);
+    }
+
+    [Fact]
+    public void ChangingAdminPinsUpdatesExistingUsersWithoutLosingPersonalChoices()
+    {
+        var stored = new MoonfinUserSettings();
+        var config = new PluginConfiguration {
+            DefaultUserSettings = new MoonfinSettingsProfile {
+                LiveTvSavedFilters = new List<string> { "group:Sports", "group:News" }
+            }
+        };
+        MoonfinSettingsService.ApplySavedFilterChange(stored,
+            new LiveTvSavedFilterChange { Action = "add", Filter = "group:Formula 1" }, config.DefaultUserSettings.LiveTvSavedFilters);
+        MoonfinSettingsService.ApplySavedFilterChange(stored,
+            new LiveTvSavedFilterChange { Action = "remove", Filter = "group:Sports" }, config.DefaultUserSettings.LiveTvSavedFilters);
+
+        config.DefaultUserSettings.LiveTvSavedFilters = new List<string> { "group:News", "group:Hockey" };
+        Assert.Equal(new[] { "group:News", "group:Hockey", "group:Formula 1" },
+            _service.ResolveProfile(stored, "tv", config).LiveTvSavedFilters);
+
+        // A removed group stays hidden if the admin brings it back.
+        config.DefaultUserSettings.LiveTvSavedFilters = new List<string> { "group:Sports", "group:Hockey" };
+        Assert.Equal(new[] { "group:Hockey", "group:Formula 1" },
+            _service.ResolveProfile(stored, "mobile", config).LiveTvSavedFilters);
+
+        // Re-pinning a default is a personal choice, preserved after the admin removes it.
+        MoonfinSettingsService.ApplySavedFilterChange(stored,
+            new LiveTvSavedFilterChange { Action = "add", Filter = "group:Sports" }, config.DefaultUserSettings.LiveTvSavedFilters);
+        config.DefaultUserSettings.LiveTvSavedFilters = new List<string> { "group:Hockey" };
+        Assert.Equal(new[] { "group:Hockey", "group:Formula 1", "group:Sports" },
+            _service.ResolveProfile(stored, "global", config).LiveTvSavedFilters);
+    }
+
+    [Fact]
+    public void FirstLocalImportRemainsPersonalWhileNewDefaultsStillInherit()
+    {
+        var stored = new MoonfinUserSettings();
+        var defaults = new List<string> { "group:Sports" };
+        var config = new PluginConfiguration {
+            DefaultUserSettings = new MoonfinSettingsProfile { LiveTvSavedFilters = defaults }
+        };
+        MoonfinSettingsService.ApplySavedFilterChange(stored,
+            new LiveTvSavedFilterChange { Action = "initializeIfAbsent", Filters = new List<string> { "group:Local" } }, defaults);
+        Assert.Equal(new[] { "group:Local" }, _service.ResolveProfile(stored, "tv", config).LiveTvSavedFilters);
+        config.DefaultUserSettings.LiveTvSavedFilters = new List<string> { "group:Movies" };
+        Assert.Equal(new[] { "group:Movies", "group:Local" },
+            _service.ResolveProfile(stored, "tv", config).LiveTvSavedFilters);
     }
 
     [Fact]

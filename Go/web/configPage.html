@@ -11383,8 +11383,8 @@
                     Dashboard.hideLoadingMsg();
                 });
 
-                // Admin defaults share the same group identifiers that the guide saves.
-                var discoveredDefaultGuideGroups = [];
+                // Use the same group identifiers as the guide's saved shortcuts.
+                var availableDefaultGuideGroups = [];
                 var defaultGuideGroupsMessage = 'Loading available groups…';
 
                 function renderDefaultGuideGroups(defaults) {
@@ -11395,60 +11395,32 @@
                         return;
                     }
                     var saved = Array.isArray(defaults.liveTvSavedFilters)
-                        ? defaults.liveTvSavedFilters.filter(function(key) { return typeof key === 'string' && key.indexOf('group:') === 0; })
+                        ? defaults.liveTvSavedFilters.filter(function(key) { return typeof key === 'string' && key.startsWith('group:'); })
                         : [];
-                    var names = saved.map(function(key) { return key.slice(6); });
-                    discoveredDefaultGuideGroups.forEach(function(name) {
-                        if (names.indexOf(name) === -1) names.push(name);
-                    });
-                    if (!names.length) { host.textContent = defaultGuideGroupsMessage; return; }
-                    host.innerHTML = names.map(function(name) {
+                    var names = Array.from(new Set(saved.map(function(key) { return key.slice(6); }).concat(availableDefaultGuideGroups)));
+                    host.innerHTML = names.length ? names.map(function(name) {
                         var key = 'group:' + name;
-                        var checked = saved.indexOf(key) !== -1;
                         return '<label style="display:flex;align-items:center;gap:8px;padding:5px 3px;">' +
-                            '<input type="checkbox" data-guide-filter="' + esc(key) + '"' + (checked ? ' checked' : '') + '>' +
-                            '<span>' + esc(name) + '</span></label>';
-                    }).join('');
+                            '<input type="checkbox" data-guide-filter="' + esc(key) + '"' +
+                            (saved.includes(key) ? ' checked' : '') + '><span>' + esc(name) + '</span></label>';
+                    }).join('') : defaultGuideGroupsMessage;
                 }
 
                 function discoverDefaultGuideGroups() {
-                    ApiClient.ajax({type: 'GET', url: ApiClient.getUrl('Moonfin/Ping'), dataType: 'json'})
-                        .then(function(info) {
-                            var name = info.serverName || info.ServerName;
-                            if (name === 'Plex') {
-                                // The companion fetches Plex Cloud on the server: browsers
-                                // cannot reliably call its EPG service across origins.
-                                return ApiClient.ajax({
-                                    type: 'GET',
-                                    url: ApiClient.getUrl('Moonfin/Defaults', {includeLiveTvGroups: 'true'}),
-                                    dataType: 'json'
-                                }).then(function(result) {
-                                    return result.availableGuideGroups || result.AvailableGuideGroups || [];
-                                });
-                            }
-                            if (name !== 'Jellyfin') return [];
-                            return ApiClient.ajax({
-                                type: 'GET', url: ApiClient.getUrl('Moonfin/LiveTv/ChannelGroups'), dataType: 'json'
-                            }).then(function(lineup) {
-                                var names = [];
-                                var byChannel = lineup.groups || lineup.Groups || {};
-                                Object.keys(byChannel).forEach(function(id) {
-                                    (byChannel[id] || []).forEach(function(name) { names.push(name); });
-                                });
-                                return names;
-                            });
-                        })
-                        .then(function(names) {
-                            discoveredDefaultGuideGroups = Array.from(new Set(names.filter(function(name) {
-                                return typeof name === 'string' && name.trim();
-                            }).map(function(name) { return name.trim(); }))).sort();
-                            defaultGuideGroupsMessage = 'No channel groups available.';
-                            renderDefaultGuideGroups(defaultsState.profiles[defaultsState.active] || {});
-                        })
-                        .catch(function() {
-                            defaultGuideGroupsMessage = 'Could not load groups. Reload this page to retry.';
-                            renderDefaultGuideGroups(defaultsState.profiles[defaultsState.active] || {});
-                        });
+                    // The Plex companion reads the Cloud catalog, avoiding browser CORS.
+                    ApiClient.ajax({
+                        type: 'GET', url: ApiClient.getUrl('Moonfin/Defaults', {includeLiveTvGroups: 'true'}), dataType: 'json'
+                    }).then(function(result) {
+                        var names = result.availableGuideGroups || result.AvailableGuideGroups || [];
+                        availableDefaultGuideGroups = Array.from(new Set(names.filter(function(name) {
+                            return typeof name === 'string' && name.trim();
+                        }).map(function(name) { return name.trim(); }))).sort();
+                        defaultGuideGroupsMessage = 'No channel groups available.';
+                    }).catch(function() {
+                        defaultGuideGroupsMessage = 'Could not load groups. Reload to retry.';
+                    }).finally(function() {
+                        renderDefaultGuideGroups(defaultsState.profiles[defaultsState.active] || {});
+                    });
                 }
 
                 // Fills the User defaults form from one profile's defaults. The same form edits

@@ -11387,13 +11387,17 @@
                 var availableDefaultGuideGroups = [];
                 var defaultGuideGroupsMessage = 'Loading available groups…';
 
-                function renderDefaultGuideGroups(defaults) {
+                function renderDefaultGuideGroups(defaults, preserveSelection) {
                     var host = document.querySelector('#DefaultPinnedGuideGroups');
                     if (!host) return;
                     if (defaultsState.active !== 'global') {
                         host.textContent = 'Shared pins are configured on the Global tab.';
                         return;
                     }
+                    var current = preserveSelection
+                        ? new Map(Array.from(host.querySelectorAll('input[data-guide-filter]'), function(input) {
+                            return [input.getAttribute('data-guide-filter'), input.checked];
+                        })) : null;
                     var saved = Array.isArray(defaults.liveTvSavedFilters)
                         ? defaults.liveTvSavedFilters.filter(function(key) { return typeof key === 'string' && key.startsWith('group:'); })
                         : [];
@@ -11402,7 +11406,7 @@
                         var key = 'group:' + name;
                         return '<label style="display:flex;align-items:center;gap:8px;padding:5px 3px;">' +
                             '<input type="checkbox" data-guide-filter="' + esc(key) + '"' +
-                            (saved.includes(key) ? ' checked' : '') + '><span>' + esc(name) + '</span></label>';
+                            (current && current.has(key) ? current.get(key) : saved.includes(key)) ? ' checked' : '' + '><span>' + esc(name) + '</span></label>';
                     }).join('') : defaultGuideGroupsMessage;
                 }
 
@@ -11417,7 +11421,7 @@
                     }).catch(function() {
                         defaultGuideGroupsMessage = 'Could not load groups. Reload to retry.';
                     }).finally(function() {
-                        renderDefaultGuideGroups(defaultsState.profiles[defaultsState.active] || {});
+                        renderDefaultGuideGroups(defaultsState.profiles[defaultsState.active] || {}, true);
                     });
                 }
 

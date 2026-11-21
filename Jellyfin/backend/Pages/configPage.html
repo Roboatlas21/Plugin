@@ -12752,7 +12752,13 @@
                         var selectedGroups = Array.from(document.querySelectorAll('#DefaultPinnedGuideGroups input[data-guide-filter]'))
                             .filter(function(input) { return input.checked; })
                             .map(function(input) { return input.getAttribute('data-guide-filter'); });
-                        ds.liveTvSavedFilters = selectedGroups.length ? selectedGroups : null;
+                        // Keep category and other non-group shortcuts in their original order.
+                        var existingPins = Array.isArray(ds.liveTvSavedFilters) ? ds.liveTvSavedFilters : [];
+                        var keptPins = existingPins.filter(function(key) {
+                            return typeof key === 'string' && (!key.startsWith('group:') || selectedGroups.includes(key));
+                        });
+                        selectedGroups.forEach(function(key) { if (!keptPins.includes(key)) keptPins.push(key); });
+                        ds.liveTvSavedFilters = keptPins.length ? keptPins : null;
                     }
                     ds.epgMobileView = document.querySelector('#DefaultEpgMobileView').value || null;
                     ds.mediaBarOverlayColor = document.querySelector('#DefaultMediaBarOverlayColor').value || null;

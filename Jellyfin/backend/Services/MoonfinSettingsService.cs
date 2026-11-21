@@ -267,7 +267,8 @@ public class MoonfinSettingsService
     {
         var global = config?.DefaultUserSettings;
         var device = IsDeviceProfile(profileName) ? config?.GetDefaultsFor(profileName) : null;
-        if (device == null && global == null) return null;
+        var sharedPins = AdminGuidePins(config);
+        if (device == null && global == null && sharedPins.Count == 0) return null;
 
         var merged = new MoonfinSettingsProfile();
         foreach (var prop in ProfileProps)
@@ -283,7 +284,7 @@ public class MoonfinSettingsService
         var layout = HasHomeLayout(device) ? device : global;
         merged.HomeSections = layout?.HomeSections;
         merged.HomeRowOrder = layout?.HomeRowOrder;
-        merged.LiveTvSavedFilters = AdminGuidePins(config);
+        merged.LiveTvSavedFilters = sharedPins;
         return merged;
     }
 

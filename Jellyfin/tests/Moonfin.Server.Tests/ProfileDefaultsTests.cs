@@ -110,6 +110,35 @@ public sealed class ProfileDefaultsTests : IDisposable
     }
 
     [Fact]
+    public void UnsyncedUsersReceiveSharedPinsWhenOnlyDeviceDefaultsExist()
+    {
+        var config = new PluginConfiguration
+        {
+            DefaultUserSettings = null,
+            DefaultDeviceSettings = new MoonfinDeviceDefaults
+            {
+                Tv = new MoonfinSettingsProfile
+                {
+                    LiveTvSavedFilters = ["group:Sports", "group:News"]
+                }
+            }
+        };
+
+        foreach (var profile in new string?[] { "global", "desktop", "mobile", "tv", null })
+        {
+            var fallback = MoonfinSettingsService.AdminDefaultsFor(profile, config);
+            Assert.NotNull(fallback);
+            Assert.Equal(["group:Sports", "group:News"], fallback.LiveTvSavedFilters);
+        }
+
+        // Without any shared pins, unrelated device defaults must not create
+        // a fallback for clients that have neither global nor device defaults.
+        config.DefaultDeviceSettings.Tv!.LiveTvSavedFilters = [];
+        Assert.Null(MoonfinSettingsService.AdminDefaultsFor("mobile", config));
+        Assert.Null(MoonfinSettingsService.AdminDefaultsFor("global", config));
+    }
+
+    [Fact]
     public void DeviceDefaultsSurviveTheXmlConfigRoundTrip()
     {
         var serializer = new XmlSerializer(typeof(PluginConfiguration));

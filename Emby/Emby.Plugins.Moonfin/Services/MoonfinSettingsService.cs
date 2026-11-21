@@ -391,7 +391,7 @@ namespace Emby.Plugins.Moonfin.Services
             if (settingsChanged) NotifySettingsChanged(userId);
         }
 
-        public async Task SaveProfileAsync(Guid userId, string profileName, MoonfinSettingsProfile profile, string? clientId = null, bool notifySettingsChanged = true, bool replace = false, LiveTvSavedFilterChange? savedFilterChange = null)
+        public async Task SaveProfileAsync(Guid userId, string profileName, MoonfinSettingsProfile profile, string? clientId = null, bool notifySettingsChanged = true, bool replace = false, LiveTvSavedFilterChange? savedFilterChange = null, bool mergeAdminGuidePins = false)
         {
             var filePath = GetUserSettingsPath(userId);
             bool settingsChanged;
@@ -401,6 +401,9 @@ namespace Emby.Plugins.Moonfin.Services
                 var settings = await Task.Run(() => ReadSettingsWithRecovery(filePath)).ConfigureAwait(false)
                     ?? new MoonfinUserSettings();
                 var storedSavedFilters = settings.Global?.LiveTvSavedFilters?.ToList();
+                if (mergeAdminGuidePins && storedSavedFilters != null && profile.LiveTvSavedFilters != null)
+                    foreach (var pin in profile.LiveTvSavedFilters)
+                        if (!storedSavedFilters.Contains(pin)) storedSavedFilters.Add(pin);
                 // Full-profile saves must not mutate the shared shortcut list.
                 profile.LiveTvSavedFilters = null;
                 if (settings.NeedsMigration) settings = MigrateV1ToV2(settings);
@@ -695,7 +698,7 @@ namespace Emby.Plugins.Moonfin.Services
                 if (layer == null || !HasAnyProfileValues(layer)) continue;
 
                 // SaveProfileAsync changes what it's handed, so each profile gets its own copy.
-                await SaveProfileAsync(userId, profileName, CloneProfile(layer), "admin-default-push", notifySettingsChanged: false).ConfigureAwait(false);
+                await SaveProfileAsync(userId, profileName, CloneProfile(layer), "admin-default-push", notifySettingsChanged: false, mergeAdminGuidePins: true).ConfigureAwait(false);
             }
         }
 

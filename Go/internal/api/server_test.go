@@ -336,7 +336,7 @@ func TestGuidePinsUseGlobalDefaultsAndAtomicProfileEdits(t *testing.T) {
 		`{"action":"remove","filter":"group:Sports"}`,
 	} {
 		call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv",
-			`{"profile":{},"liveTvSavedFilterChange":` + change + `}`, nil)
+			`{"profile":{},"liveTvSavedFilterChange":`+change+`}`, nil)
 	}
 	call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/mobile", `{"profile":{"liveTvSavedFilters":[]}}`, nil)
 	check("group:News", "group:Movies")

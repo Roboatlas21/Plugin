@@ -13,9 +13,9 @@ import (
 	"testing"
 )
 
-type guideRoundTripper func(*http.Request) (*http.Response, error)
+type guideRoundTripper struct{}
 
-func (f guideRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+func (guideRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	if req.Header.Get("X-Plex-Token") != "owner" || req.Header.Get("X-Plex-Provider-Version") != "7.2" {
 		return &http.Response{StatusCode: 403, Body: io.NopCloser(strings.NewReader(""))}, nil
 	}
@@ -27,7 +27,7 @@ func (f guideRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 }
 
 func TestAdminGroupsMatchPlayablePlexFreeTvGenres(t *testing.T) {
-	c := &Companion{http: &http.Client{Transport: guideRoundTripper(guideRoundTripper.RoundTrip)}}
+	c := &Companion{http: &http.Client{Transport: guideRoundTripper{}}}
 	groups, err := c.LiveTvFreeGroups(context.Background(), "owner")
 	if err != nil || strings.Join(groups, ",") != "News" {
 		t.Fatalf("playable Plex groups: %v, %v", groups, err)

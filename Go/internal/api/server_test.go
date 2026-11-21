@@ -332,38 +332,28 @@ func TestSavedLiveTvFiltersUseExistingProfileEndpoint(t *testing.T) {
 func TestSavedLiveTvFiltersNotifyOnlyOnChangedPins(t *testing.T) {
 	s := newTestServer()
 	s.notify.on = true
-	updates, unrelated := make(chan []byte, 4), make(chan []byte, 1)
+	updates, unrelated := make(chan []byte, 2), make(chan []byte, 1)
 	s.notify.streams = map[int]map[chan []byte]struct{}{
-		userMain.user: {updates: {}},
-		other.user: {unrelated: {}},
+		userMain.user: {updates: {}}, other.user: {unrelated: {}},
 	}
-	post := func(change string) {
-		t.Helper()
-		body := `{"profile":{},"liveTvSavedFilterChange":` + change + `}`
-		if code, _ := call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv", body, nil); code != 200 {
-			t.Fatalf("pin save returned %d", code)
+	for _, tc := range []struct{ change string; notify bool }{
+		{`{"action":"initializeIfAbsent","filters":["group:Sports"]}`, true},
+		{`{"action":"initializeIfAbsent","filters":["group:News"]}`, false},
+		{`{"action":"add","filter":"group:Sports"}`, false},
+		{`{"action":"remove","filter":"group:Sports"}`, true},
+		{`{"action":"remove","filter":"group:Sports"}`, false},
+	} {
+		body := `{"profile":{},"liveTvSavedFilterChange":` + tc.change + `}`
+		code, _ := call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv", body, nil)
+		if code != 200 || (len(updates) != 0) != tc.notify || len(unrelated) != 0 {
+			t.Fatalf("pin change %s: status %d, events %d, unrelated %d", tc.change, code, len(updates), len(unrelated))
 		}
-	}
-	checkUpdate := func() {
-		t.Helper()
-		if len(updates) != 1 {
-			t.Fatalf("expected one settings event, got %d", len(updates))
+		if tc.notify {
+			var event M
+			if err := json.Unmarshal(<-updates, &event); err != nil || event["type"] != "settingsUpdated" {
+				t.Fatalf("unexpected settings event: %v (%v)", event, err)
+			}
 		}
-		var event M
-		if err := json.Unmarshal(<-updates, &event); err != nil || event["type"] != "settingsUpdated" {
-			t.Fatalf("unexpected settings event: %v (%v)", event, err)
-		}
-	}
-	post(`{"action":"initializeIfAbsent","filters":["group:Sports"]}`)
-	checkUpdate()
-	post(`{"action":"initializeIfAbsent","filters":["group:News"]}`)
-	post(`{"action":"add","filter":"group:Sports"}`)
-	if len(updates) != 0 { t.Fatal("unchanged pins sent another event") }
-	post(`{"action":"remove","filter":"group:Sports"}`)
-	checkUpdate()
-	post(`{"action":"remove","filter":"group:Sports"}`)
-	if len(updates) != 0 || len(unrelated) != 0 {
-		t.Fatal("duplicate or cross-account settings event")
 	}
 }
 

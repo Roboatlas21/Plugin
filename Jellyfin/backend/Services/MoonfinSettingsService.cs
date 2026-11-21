@@ -488,7 +488,7 @@ public class MoonfinSettingsService
             var savedProfile = existingProfile ?? profile;
 
             PreserveSavedFilters(settings, storedSavedFilters);
-            ApplySavedFilterChange(settings, savedFilterChange);
+            ApplySavedFilterChange(settings, savedFilterChange, MoonfinPlugin.Instance?.Configuration?.DefaultUserSettings?.LiveTvSavedFilters);
 
             // Update metadata
             StripServerWideKeys(settings);
@@ -767,7 +767,7 @@ public class MoonfinSettingsService
     }
 
     /// <summary>Apply a pin operation while holding the settings-file lock.</summary>
-    private static void ApplySavedFilterChange(MoonfinUserSettings settings, LiveTvSavedFilterChange? change)
+    private static void ApplySavedFilterChange(MoonfinUserSettings settings, LiveTvSavedFilterChange? change, List<string>? defaults)
     {
         if (change == null) return;
         if (!change.IsValid()) throw new ArgumentException("Invalid saved guide filter change", nameof(change));
@@ -781,7 +781,9 @@ public class MoonfinSettingsService
         }
         else
         {
-            current ??= new List<string>();
+            // A first edit starts from inherited admin pins; the user's own list
+            // becomes authoritative from that point on (including an empty list).
+            current ??= defaults?.ToList() ?? new List<string>();
             if (change.Action == "add")
             {
                 if (!current.Contains(change.Filter!)) current.Add(change.Filter!);

@@ -262,11 +262,12 @@ func (s *Server) handlePostProfile(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Defaults are only used if this user has never customized the pins.
-		change.Defaults = settings.StoredSavedFilters(M{"global": s.config(r.Context()).Defaults})
+		cfg := s.config(r.Context())
+		change.Defaults = settings.AdminSavedFilters(cfg.Defaults, cfg.DeviceDefaults)
 		extra := M{}
 		s.save(w, r, func(env M) M {
 			updated := settings.SaveProfile(env, name, cleaned, clientID, serverKeys(s.config(r.Context())), time.Now(), change)
-			extra["liveTvSavedFilters"] = settings.StoredSavedFilters(updated)
+			extra["liveTvSavedFilters"] = settings.EffectiveSavedFilters(updated, change.Defaults)
 			return updated
 		}, extra)
 		return
@@ -356,7 +357,10 @@ func (s *Server) resolve(r *http.Request, name string, record bool) (M, error) {
 		return nil, err
 	}
 	cfg := configFrom(stored)
-	resolved := settings.Resolve(env, name, cfg.DefaultsFor(name), serverKeys(cfg))
+	defaults := settings.LayerDefaults(cfg.DefaultsFor(name), M{
+		"liveTvSavedFilters": settings.AdminSavedFilters(cfg.Defaults, cfg.DeviceDefaults),
+	})
+	resolved := settings.Resolve(env, name, defaults, serverKeys(cfg))
 	if record && env != nil && settings.RecordBaseline(env, name, resolved) {
 		if err := s.storeEnvelope(r.Context(), id, env); err != nil {
 			logError(r, "record hidden content baseline", err)
@@ -533,6 +537,9 @@ func (s *Server) applyDefaults(w http.ResponseWriter, r *http.Request, req apply
 					env[p] = clone(d)
 				}
 			}
+			// Full reset clears personal pins while keeping future admin changes inherited.
+			env["global"].(M)["liveTvSavedFilters"] = []any{}
+			env["liveTvSavedFilterExclusions"] = []any{}
 		} else {
 			if raw := current[e.key()]; len(bytes.TrimSpace(raw)) > 0 {
 				if err := json.Unmarshal(raw, &env); err != nil {

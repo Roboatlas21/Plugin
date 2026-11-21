@@ -2937,7 +2937,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
             var key = 'group:' + name;
             return '<label style="display:flex;align-items:center;gap:8px;padding:5px 3px;">' +
                 '<input type="checkbox" data-guide-filter="' + esc(key) + '"' +
-                (current && current.has(key) ? current.get(key) : saved.includes(key)) ? ' checked' : '' + '><span>' + esc(name) + '</span></label>';
+                ((current && current.has(key) ? current.get(key) : saved.includes(key)) ? ' checked' : '') + '><span>' + esc(name) + '</span></label>';
         }).join('') : defaultGuideGroupsMessage;
     }
 

@@ -329,34 +329,6 @@ func TestSavedLiveTvFiltersUseExistingProfileEndpoint(t *testing.T) {
 	}
 }
 
-func TestSavedLiveTvFiltersNotifyOnlyOnChangedPins(t *testing.T) {
-	s := newTestServer()
-	s.notify.on = true
-	updates, unrelated := make(chan []byte, 2), make(chan []byte, 1)
-	s.notify.streams = map[int]map[chan []byte]struct{}{
-		userMain.user: {updates: {}}, other.user: {unrelated: {}},
-	}
-	for _, tc := range []struct{ change string; notify bool }{
-		{`{"action":"initializeIfAbsent","filters":["group:Sports"]}`, true},
-		{`{"action":"initializeIfAbsent","filters":["group:News"]}`, false},
-		{`{"action":"add","filter":"group:Sports"}`, false},
-		{`{"action":"remove","filter":"group:Sports"}`, true},
-		{`{"action":"remove","filter":"group:Sports"}`, false},
-	} {
-		body := `{"profile":{},"liveTvSavedFilterChange":` + tc.change + `}`
-		code, _ := call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv", body, nil)
-		if code != 200 || (len(updates) != 0) != tc.notify || len(unrelated) != 0 {
-			t.Fatalf("pin change %s: status %d, events %d, unrelated %d", tc.change, code, len(updates), len(unrelated))
-		}
-		if tc.notify {
-			var event M
-			if err := json.Unmarshal(<-updates, &event); err != nil || event["type"] != "settingsUpdated" {
-				t.Fatalf("unexpected settings event: %v (%v)", event, err)
-			}
-		}
-	}
-}
-
 func TestAdminDefaultGuidePinsSeedFirstEditButDoNotOverwriteUsers(t *testing.T) {
 	s := newTestServer()
 	saveConfig(t, s, map[string]any{

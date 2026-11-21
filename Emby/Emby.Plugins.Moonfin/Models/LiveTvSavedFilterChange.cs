@@ -1,7 +1,6 @@
-using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json.Serialization;
+using Moonfin.LiveTv;
 
 namespace Emby.Plugins.Moonfin.Models
 {
@@ -13,16 +12,6 @@ namespace Emby.Plugins.Moonfin.Models
         [JsonPropertyName("filter")] public string? Filter { get; set; }
         [JsonPropertyName("filters")] public List<string>? Filters { get; set; }
 
-        private static bool ValidFilter(string? value) =>
-            value != null && value.Length <= 1024 &&
-            ((value.StartsWith("group:", StringComparison.Ordinal) && value.Length > 6) ||
-             (value.StartsWith("category:", StringComparison.Ordinal) && value.Length > 9));
-
-        public bool IsValid() => Action switch
-        {
-            "add" or "remove" => ValidFilter(Filter),
-            "initializeIfAbsent" => Filters is { Count: <= 1000 } && Filters.All(ValidFilter),
-            _ => false,
-        };
+        public bool IsValid() => GuidePinRules.ValidChange(Action, Filter, Filters);
     }
 }

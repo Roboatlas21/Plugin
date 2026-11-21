@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text.Json;
 using System.Xml.Serialization;
 using Xunit;
@@ -37,6 +38,31 @@ public sealed class SavedGuideFiltersContractTests : IDisposable
     private static void Change(MoonfinUserSettings user, string action, string pin, List<string> defaults) =>
         MoonfinSettingsService.ApplySavedFilterChange(user,
             new LiveTvSavedFilterChange { Action = action, Filter = pin }, defaults);
+
+    [Theory]
+    [InlineData("add", "group:News", true)]
+    [InlineData("remove", "category:sports", true)]
+    [InlineData("add", "group:", false)]
+    [InlineData("remove", "category:", false)]
+    [InlineData("add", "News", false)]
+    [InlineData("replace", "group:News", false)]
+    public void PinChangeValidationKeepsTheExistingContract(string action, string pin, bool valid)
+    {
+        Assert.Equal(valid, new LiveTvSavedFilterChange { Action = action, Filter = pin }.IsValid());
+    }
+
+    [Fact]
+    public void InitialPinImportValidatesListLengthAndContents()
+    {
+        var change = new LiveTvSavedFilterChange { Action = "initializeIfAbsent", Filters = [] };
+        Assert.True(change.IsValid());
+        change.Filters = [null!];
+        Assert.False(change.IsValid());
+        change.Filters = ["group:" + new string('x', 1020)];
+        Assert.False(change.IsValid());
+        change.Filters = Enumerable.Repeat("group:Sports", 1001).ToList();
+        Assert.False(change.IsValid());
+    }
 
     [Fact]
     public async Task AtomicEditsFromDifferentDevicesSurviveStaleProfileSaves()

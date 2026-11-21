@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Moonfin.LiveTv;
 using System.Threading;
 using System.Threading.Tasks;
 using Emby.Plugins.Moonfin.Models;
@@ -211,7 +212,8 @@ namespace Emby.Plugins.Moonfin.Services
             // Home layout (sections + row order) resolves as a unit from a single profile layer
             // rather than field-by-field, so a client's sections and order never come from
             // different profiles.
-            resolved.LiveTvSavedFilters = EffectiveGuidePins(settings, AdminGuidePins(config));
+            resolved.LiveTvSavedFilters = GuidePinRules.EffectivePins(AdminGuidePins(config),
+                    settings.LiveTvSavedFilterExclusions, settings.Global?.LiveTvSavedFilters);
 
             var homeLayout = ResolveHomeLayout(deviceProfile, global, HasHomeLayout(adminDevice) ? adminDevice : null, adminDefaults);
             resolved.HomeSections = homeLayout.HomeSections;
@@ -259,29 +261,13 @@ namespace Emby.Plugins.Moonfin.Services
             return merged;
         }
 
-        // Guide pins are shared across devices, including defaults configured for a device.
-        private static List<string> AdminGuidePins(PluginConfiguration? config)
-        {
-            var pins = new List<string>();
-            if (config == null) return pins;
-            foreach (var profile in new[] { config.DefaultUserSettings, config.GetDefaultsFor("desktop"),
-                         config.GetDefaultsFor("mobile"), config.GetDefaultsFor("tv") })
-                if (profile?.LiveTvSavedFilters != null)
-                    foreach (var pin in profile.LiveTvSavedFilters)
-                        if (!pins.Contains(pin)) pins.Add(pin);
-            return pins;
-        }
-
-        private static List<string> EffectiveGuidePins(MoonfinUserSettings settings, List<string> defaults)
-        {
-            var pins = new List<string>();
-            foreach (var pin in defaults)
-                if (settings.LiveTvSavedFilterExclusions?.Contains(pin) != true && !pins.Contains(pin))
-                    pins.Add(pin);
-            foreach (var pin in settings.Global?.LiveTvSavedFilters ?? new List<string>())
-                if (!pins.Contains(pin)) pins.Add(pin);
-            return pins;
-        }
+        // Gather the administrator's shared pins across every device profile.
+        private static List<string> AdminGuidePins(PluginConfiguration? config) =>
+            GuidePinRules.AdminPins(
+                config?.DefaultUserSettings?.LiveTvSavedFilters,
+                config?.GetDefaultsFor("desktop")?.LiveTvSavedFilters,
+                config?.GetDefaultsFor("mobile")?.LiveTvSavedFilters,
+                config?.GetDefaultsFor("tv")?.LiveTvSavedFilters);
 
         private static bool IsDeviceProfile(string? profileName) =>
             !string.IsNullOrEmpty(profileName) && !string.Equals(profileName, "global", StringComparison.OrdinalIgnoreCase);
@@ -1093,32 +1079,12 @@ namespace Emby.Plugins.Moonfin.Services
         {
             if (change == null) return;
             if (!change.IsValid()) throw new ArgumentException("Invalid saved guide filter change", nameof(change));
-            // Global.LiveTvSavedFilters now records personal additions, not the resolved list.
-            var personal = settings.Global?.LiveTvSavedFilters;
-            if (change.Action == "initializeIfAbsent" && personal != null) return;
-            personal ??= new List<string>();
-            var excluded = settings.LiveTvSavedFilterExclusions ?? new List<string>();
-            if (change.Action == "initializeIfAbsent")
-            {
-                foreach (var pin in change.Filters!)
-                    if (!personal.Contains(pin)) personal.Add(pin);
-                // Preserve a pre-Moonbase local selection on first import.
-                foreach (var pin in defaults ?? new List<string>())
-                    if (!personal.Contains(pin) && !excluded.Contains(pin)) excluded.Add(pin);
-            }
-            else if (change.Action == "add")
-            {
-                if (!personal.Contains(change.Filter!)) personal.Add(change.Filter!);
-                excluded.RemoveAll(pin => pin == change.Filter);
-            }
-            else
-            {
-                personal.RemoveAll(pin => pin == change.Filter);
-                if (!excluded.Contains(change.Filter!)) excluded.Add(change.Filter!);
-            }
+            var updated = GuidePinRules.Apply(change.Action!, change.Filter, change.Filters, defaults,
+                settings.Global?.LiveTvSavedFilters, settings.LiveTvSavedFilterExclusions);
+            if (updated == null) return;
             settings.Global ??= new MoonfinSettingsProfile();
-            settings.Global.LiveTvSavedFilters = personal;
-            settings.LiveTvSavedFilterExclusions = excluded;
+            settings.Global.LiveTvSavedFilters = updated.Value.Personal;
+            settings.LiveTvSavedFilterExclusions = updated.Value.Exclusions;
         }
 
         /// <summary>

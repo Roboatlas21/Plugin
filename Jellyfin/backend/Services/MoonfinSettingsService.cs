@@ -428,7 +428,8 @@ public class MoonfinSettingsService
           string? clientId = null,
           bool notifySettingsChanged = true,
           bool replace = false,
-          LiveTvSavedFilterChange? savedFilterChange = null)
+          LiveTvSavedFilterChange? savedFilterChange = null,
+          bool mergeAdminGuidePins = false)
     {
         var filePath = GetUserSettingsPath(userId);
         bool settingsChanged;
@@ -438,6 +439,9 @@ public class MoonfinSettingsService
         {
             var settings = ReadSettingsWithRecovery(filePath) ?? new MoonfinUserSettings();
             var storedSavedFilters = settings.Global?.LiveTvSavedFilters?.ToList();
+            if (mergeAdminGuidePins && storedSavedFilters != null && profile.LiveTvSavedFilters != null)
+                foreach (var pin in profile.LiveTvSavedFilters)
+                    if (!storedSavedFilters.Contains(pin)) storedSavedFilters.Add(pin);
             // Full-profile saves must not mutate the shared shortcut list.
             profile.LiveTvSavedFilters = null;
 
@@ -1347,7 +1351,8 @@ public class MoonfinSettingsService
                 profileName,
                 CloneProfile(layer),
                 "admin-default-merge",
-                notifySettingsChanged: false);
+                notifySettingsChanged: false,
+                mergeAdminGuidePins: true);
         }
     }
 

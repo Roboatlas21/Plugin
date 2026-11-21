@@ -232,6 +232,18 @@ func StoredSavedFilters(env M) []any {
 	return []any{}
 }
 
+// Merge admin group defaults only into an explicit user pin list. Users with
+// no override keep inheriting the administrator's current defaults.
+func MergeAdminSavedFilters(env M, raw any) {
+    current := savedGlobalFilters(env)
+    added, ok := pinnedStrings(raw)
+    if current == nil || !ok { return }
+    for _, key := range added {
+        if !slices.Contains(current, key) { current = append(current, key) }
+    }
+    env["global"].(M)["liveTvSavedFilters"] = current
+}
+
 // Full-profile updates never change the canonical list.
 func preserveSavedFilters(env M, stored []any) {
 	global, _ := env["global"].(M)

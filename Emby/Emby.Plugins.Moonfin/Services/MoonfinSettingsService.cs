@@ -379,6 +379,7 @@ namespace Emby.Plugins.Moonfin.Services
                 string? storedHiddenNextUp = null;
                 var existingSettingsForPins = await Task.Run(() => ReadSettingsWithRecovery(filePath)).ConfigureAwait(false);
                 var storedSavedFilters = existingSettingsForPins?.Global?.LiveTvSavedFilters?.ToList();
+                var storedSavedFilterExclusions = existingSettingsForPins?.LiveTvSavedFilterExclusions?.ToList();
                 if (mergeMode == "merge")
                 {
                     var existingSettings = existingSettingsForPins;
@@ -400,7 +401,7 @@ namespace Emby.Plugins.Moonfin.Services
                 finalSettings.SchemaVersion = 2;
 
                 PreserveSavedFilters(finalSettings, storedSavedFilters);
-                finalSettings.LiveTvSavedFilterExclusions = existingSettingsForPins?.LiveTvSavedFilterExclusions?.ToList();
+                finalSettings.LiveTvSavedFilterExclusions = storedSavedFilterExclusions;
                 MoveContentHidingToGlobal(finalSettings, storedHiddenContinueWatching, storedHiddenNextUp);
 
                 settingsChanged = SettingsDiffer(beforeComparisonJson, finalSettings);

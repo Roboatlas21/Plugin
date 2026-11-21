@@ -389,6 +389,7 @@ public class MoonfinSettingsService
 
             var existingSettingsForPins = ReadSettingsWithRecovery(filePath);
             var storedSavedFilters = existingSettingsForPins?.Global?.LiveTvSavedFilters?.ToList();
+            var storedSavedFilterExclusions = existingSettingsForPins?.LiveTvSavedFilterExclusions?.ToList();
             if (mergeMode == "merge")
             {
                 var existingSettings = existingSettingsForPins;
@@ -419,7 +420,7 @@ public class MoonfinSettingsService
             finalSettings.SchemaVersion = 2;
 
             PreserveSavedFilters(finalSettings, storedSavedFilters);
-            finalSettings.LiveTvSavedFilterExclusions = existingSettingsForPins?.LiveTvSavedFilterExclusions?.ToList();
+            finalSettings.LiveTvSavedFilterExclusions = storedSavedFilterExclusions;
             MoveContentHidingToGlobal(finalSettings, storedHiddenContinueWatching, storedHiddenNextUp);
             PropagateCustomHomeSectionsAcrossProfiles(
                 finalSettings,

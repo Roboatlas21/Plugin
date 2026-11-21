@@ -53,6 +53,37 @@ public sealed class LiveTvSavedFiltersProfileTests : IDisposable
         Assert.Equal(new[] { "group:US | SPORTS, Canada", "group:Kids" }, stored.Global!.LiveTvSavedFilters);
     }
 
+    [Theory]
+    [InlineData("merge")]
+    [InlineData("replace")]
+    public async Task StaleWholeSettingsSavesCannotOverwriteRemovedGuideGroups(string mode)
+    {
+        var userId = Guid.NewGuid();
+        await _service.SaveProfileAsync(userId, "tv", new MoonfinSettingsProfile(),
+            notifySettingsChanged: false,
+            savedFilterChange: new LiveTvSavedFilterChange { Action = "remove", Filter = "group:Hockey" });
+
+        // A different device sends an outdated copy of the exclusion list.
+        await _service.SaveUserSettingsAsync(userId, new MoonfinUserSettings
+        {
+            Global = new MoonfinSettingsProfile { CinemaModeEnabled = true },
+            LiveTvSavedFilterExclusions = new List<string> { "group:News" }
+        }, mergeMode: mode);
+
+        var stored = (await _service.GetUserSettingsAsync(userId))!;
+        Assert.Equal(new[] { "group:Hockey" }, stored.LiveTvSavedFilterExclusions);
+        Assert.True(stored.Global!.CinemaModeEnabled);
+        var defaults = new PluginConfiguration
+        {
+            DefaultUserSettings = new MoonfinSettingsProfile
+            {
+                LiveTvSavedFilters = new List<string> { "group:Hockey", "group:News" }
+            }
+        };
+        Assert.Equal(new[] { "group:News" },
+            _service.ResolveProfile(stored, "tv", defaults).LiveTvSavedFilters);
+    }
+
     [Fact]
     public void AdminPinsAreInheritedAndUsersCanClearEveryPin()
     {

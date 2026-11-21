@@ -11416,29 +11416,14 @@
                         .then(function(info) {
                             var name = info.serverName || info.ServerName;
                             if (name === 'Plex') {
-                                var headers = {'X-Plex-Provider-Version': '7.2'};
-                                return Promise.all([
-                                    fetch('https://epg.provider.plex.tv/', {headers: headers}),
-                                    fetch('https://epg.provider.plex.tv/lineups/plex/channels', {headers: headers})
-                                ]).then(function(responses) {
-                                    if (!responses.every(function(response) { return response.ok; }))
-                                        throw new Error('Plex Free TV is unavailable');
-                                    return Promise.all(responses.map(function(response) { return response.json(); }));
-                                }).then(function(data) {
-                                    var provider = data[0].MediaProvider || {};
-                                    var channels = (data[1].MediaContainer || {}).Channel || [];
-                                    var used = {};
-                                    channels.forEach(function(channel) {
-                                        (channel.genreRatingKeys || []).forEach(function(key) { used[String(key)] = true; });
-                                    });
-                                    var names = [];
-                                    (provider.Feature || []).forEach(function(feature) {
-                                        if (feature.type !== 'grid') return;
-                                        (feature.GridChannelFilter || []).forEach(function(group) {
-                                            if (used[String(group.genreRatingKey)] && group.title) names.push(group.title);
-                                        });
-                                    });
-                                    return names;
+                                // The companion fetches Plex Cloud on the server: browsers
+                                // cannot reliably call its EPG service across origins.
+                                return ApiClient.ajax({
+                                    type: 'GET',
+                                    url: ApiClient.getUrl('Moonfin/Defaults', {includeLiveTvGroups: 'true'}),
+                                    dataType: 'json'
+                                }).then(function(result) {
+                                    return result.availableGuideGroups || result.AvailableGuideGroups || [];
                                 });
                             }
                             if (name !== 'Jellyfin') return [];

@@ -449,8 +449,10 @@ func Resolve(env M, name string, defaults M, keys ServerKeys) M {
 		}
 	}
 
-	// Shared guide pins inherit administrator changes without losing personal choices.
-	out["liveTvSavedFilters"] = EffectiveSavedFilters(env, defaults["liveTvSavedFilters"])
+	// Keep the old omitted-field response for profiles with no pins at all.
+	if defaults["liveTvSavedFilters"] != nil || savedGlobalFilters(env) != nil || env["liveTvSavedFilterExclusions"] != nil {
+		out["liveTvSavedFilters"] = EffectiveSavedFilters(env, defaults["liveTvSavedFilters"])
+	}
 
 	// The home layout comes whole from the first layer that has one.
 	for _, l := range layers {

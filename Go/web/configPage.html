@@ -5633,7 +5633,7 @@
                             <div class="moonfinActionBody moonfinModeCards">
                                 <label class="moonfinModeCard">
                                     <input type="radio" name="ApplyMode" value="merge" checked />
-                                    <span class="moonfinModeText"><span class="moonfinModeTitle">Merge</span><span class="moonfinModeDesc">The pushed settings replace the user's own. Everything else they chose stays.</span></span>
+                                    <span class="moonfinModeText"><span class="moonfinModeTitle">Merge</span><span class="moonfinModeDesc">The pushed settings replace the user's own, except pinned groups, which are added to their existing pins. Everything else stays.</span></span>
                                 </label>
                                 <label class="moonfinModeCard is-danger">
                                     <input type="radio" name="ApplyMode" value="reset" />
@@ -13052,7 +13052,7 @@
                     var who = state.users === 'all' ? 'every user' : joinWithAnd(state.pickedUsers.map(userName));
                     var message = reset
                         ? 'Reset ' + who + ' to the defaults?\n\nThis permanently erases their current Moonfin settings, device profiles included, and replaces them with the ' + joinWithAnd(on.map(function(e) { return e.label; })) + ' defaults.'
-                        : 'Apply the defaults to ' + who + '?\n\nEach default you push replaces that user\'s own choice for that setting. Everything else they chose stays.';
+                        : 'Apply the defaults to ' + who + '?\n\nEach pushed default replaces the user\'s choice, except pinned groups, which are added to their existing pins. Everything else stays.';
                     if (!window.confirm(message)) return;
 
                     var button = document.querySelector('#ApplyDefaultsBtn');

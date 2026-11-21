@@ -1,0 +1,79 @@
+name: Admin Program Category Pins Smoke Test
+
+on:
+  push:
+    branches:
+      - ci/admin-program-categories-20261121
+
+permissions:
+  contents: read
+
+jobs:
+  ui:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check admin program-category picker and save behavior
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const vm = require('node:vm');
+          const assert = require('node:assert/strict');
+          
+          const specs = [
+            ['Jellyfin/backend/Pages/configPage.html', 'ds', false],
+            ['Go/web/configPage.html', 'ds', true],
+            ['Emby/Emby.Plugins.Moonfin/Pages/moonfin.js', 'd', false],
+          ];
+          for (const [file, variable, plex] of specs) {
+            const source = fs.readFileSync(file, 'utf8');
+            const declaration = source.match(/var defaultGuideCategories = ([\s\S]*?);\n/);
+            assert.ok(declaration, file + ': category choices missing');
+            const start = source.indexOf('function renderDefaultGuideGroups(');
+            const end = source.indexOf('function discoverDefaultGuideGroups(', start);
+            assert.ok(start >= 0 && end > start, file + ': rendering function absent');
+            const fragment = source.slice(start, end);
+            new vm.Script('var defaultGuideCategories = ' + declaration[1] + ';\n' + fragment, {filename:file});
+            const host = {innerHTML:'',querySelectorAll:()=>[]};
+            const sandbox = {
+              defaultsState:{active:'global'},
+              availableDefaultGuideGroups:['IPTV Sports'],
+              defaultGuideGroupsMessage:'No groups.',
+              document:{querySelector:()=>host},
+              view:{querySelector:()=>host},
+              esc:(str)=>str,
+            };
+            vm.createContext(sandbox);
+            vm.runInContext('var defaultGuideCategories = ' + declaration[1] + ';\n' + fragment, sandbox);
+            if (variable === 'd') sandbox.renderDefaultGuideGroups(sandbox.view, {liveTvSavedFilters:['category:movies','group:IPTV Sports']});
+            else sandbox.renderDefaultGuideGroups({liveTvSavedFilters:['category:movies','group:IPTV Sports']});
+            assert.match(host.innerHTML, /data-guide-filter="category:movies" checked/, file + ': saved category not checked');
+            assert.match(host.innerHTML, /data-guide-filter="group:IPTV Sports" checked/, file + ': saved group not checked');
+            assert.match(host.innerHTML, /data-guide-filter="category:series"/, file + ': missing series category');
+            if (plex) {
+              assert.doesNotMatch(host.innerHTML, /data-guide-filter="category:sports"/, file + ': Plex sports should be hidden');
+            } else {
+              assert.match(host.innerHTML, /data-guide-filter="category:sports"/, file + ': missing sports category');
+            }
+            const begin = source.indexOf('var inputs = Array.from(');
+            const finish = source.indexOf(variable + '.liveTvSavedFilters = keptPins.length ? keptPins : null;', begin);
+            assert.ok(begin >= 0 && finish > begin, file + ': saved selections absent');
+            const fragmentSave = source.slice(begin, finish + (variable + '.liveTvSavedFilters = keptPins.length ? keptPins : null;').length);
+            new vm.Script(fragmentSave, {filename:file});
+            const input = (key,checked)=>({checked,getAttribute:()=>key});
+            const inputs=[input('category:movies',false),input('category:series',true),input('group:IPTV Sports',true)];
+            const value={liveTvSavedFilters:['category:movies','group:IPTV Sports','category:unsupported']};
+            const store={
+              document:{querySelectorAll:()=>inputs},
+              view:{querySelectorAll:()=>inputs},
+              [variable]:value,
+            };
+            vm.runInNewContext(fragmentSave,store);
+            assert.deepEqual(Array.from(value.liveTvSavedFilters), ['group:IPTV Sports','category:unsupported','category:series'],file+': incorrect save');
+            console.log('PASS '+file);
+          }
+          // Check the Emby script parses as an actual JavaScript file.
+          new vm.Script(fs.readFileSync('Emby/Emby.Plugins.Moonfin/Pages/moonfin.js','utf8'));
+          console.log('All category pin UI smoke tests passed');
+          NODE

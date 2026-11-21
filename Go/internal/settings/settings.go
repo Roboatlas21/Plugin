@@ -82,7 +82,9 @@ func SaveProfile(env M, name string, incoming M, clientID string, keys ServerKey
 	}
 	finish(env, clientID, keys, now, stored)
 	preserveSavedFilters(env, pins)
-	if len(changes) != 0 { applySavedFilterChange(env, changes[0]) }
+	if len(changes) != 0 {
+		applySavedFilterChange(env, changes[0])
+	}
 	return env
 }
 
@@ -151,8 +153,8 @@ func SaveEnvelope(existing, incoming M, mergeMode, clientID string, keys ServerK
 
 // SavedFilterChange is an intentional shared-filter edit in the profile POST.
 type SavedFilterChange struct {
-	Action string
-	Filter string
+	Action  string
+	Filter  string
 	Filters []string
 }
 
@@ -163,20 +165,28 @@ func validSavedFilter(key string) bool {
 
 func ParseSavedFilterChange(raw any) (SavedFilterChange, bool) {
 	obj, ok := raw.(M)
-	if !ok { return SavedFilterChange{}, false }
+	if !ok {
+		return SavedFilterChange{}, false
+	}
 	action, _ := obj["action"].(string)
 	switch action {
 	case "add", "remove":
 		key, _ := obj["filter"].(string)
-		if !validSavedFilter(key) { return SavedFilterChange{}, false }
+		if !validSavedFilter(key) {
+			return SavedFilterChange{}, false
+		}
 		return SavedFilterChange{Action: action, Filter: key}, true
 	case "initializeIfAbsent":
 		rawFilters, ok := obj["filters"].([]any)
-		if !ok || len(rawFilters) > 1000 { return SavedFilterChange{}, false }
+		if !ok || len(rawFilters) > 1000 {
+			return SavedFilterChange{}, false
+		}
 		filters := make([]string, 0, len(rawFilters))
 		for _, item := range rawFilters {
 			key, ok := item.(string)
-			if !ok || !validSavedFilter(key) { return SavedFilterChange{}, false }
+			if !ok || !validSavedFilter(key) {
+				return SavedFilterChange{}, false
+			}
 			filters = append(filters, key)
 		}
 		return SavedFilterChange{Action: action, Filters: filters}, true
@@ -191,25 +201,33 @@ func pinnedStrings(value any) ([]any, bool) {
 	case []any:
 		items = v
 	case []string:
-		for _, item := range v { items = append(items, item) }
+		for _, item := range v {
+			items = append(items, item)
+		}
 	default:
 		return nil, false
 	}
 	for _, item := range items {
-		if _, ok := item.(string); !ok { return nil, false }
+		if _, ok := item.(string); !ok {
+			return nil, false
+		}
 	}
 	return append([]any{}, items...), true
 }
 
 func savedGlobalFilters(env M) []any {
 	if global, ok := env["global"].(M); ok {
-		if pins, valid := pinnedStrings(global["liveTvSavedFilters"]); valid { return pins }
+		if pins, valid := pinnedStrings(global["liveTvSavedFilters"]); valid {
+			return pins
+		}
 	}
 	return nil
 }
 
 func StoredSavedFilters(env M) []any {
-	if pins := savedGlobalFilters(env); pins != nil { return pins }
+	if pins := savedGlobalFilters(env); pins != nil {
+		return pins
+	}
 	return []any{}
 }
 
@@ -222,31 +240,57 @@ func preserveSavedFilters(env M, stored []any) {
 			env["global"] = global
 		}
 		global["liveTvSavedFilters"] = append([]any{}, stored...)
-	} else if global != nil { delete(global, "liveTvSavedFilters") }
+	} else if global != nil {
+		delete(global, "liveTvSavedFilters")
+	}
 	for _, name := range Profiles[1:] {
-		if profile, ok := env[name].(M); ok { delete(profile, "liveTvSavedFilters") }
+		if profile, ok := env[name].(M); ok {
+			delete(profile, "liveTvSavedFilters")
+		}
 	}
 }
 
 // The API invokes this under its per-user settings lock.
 func applySavedFilterChange(env M, change SavedFilterChange) {
 	current := savedGlobalFilters(env)
-	if change.Action == "initializeIfAbsent" && current != nil { return }
-	if current == nil { current = []any{} }
+	if change.Action == "initializeIfAbsent" && current != nil {
+		return
+	}
+	if current == nil {
+		current = []any{}
+	}
 	switch change.Action {
 	case "initializeIfAbsent":
 		for _, key := range change.Filters {
 			present := false
-			for _, old := range current { if old == key { present = true; break } }
-			if !present { current = append(current, key) }
+			for _, old := range current {
+				if old == key {
+					present = true
+					break
+				}
+			}
+			if !present {
+				current = append(current, key)
+			}
 		}
 	case "add":
 		present := false
-		for _, old := range current { if old == change.Filter { present = true; break } }
-		if !present { current = append(current, change.Filter) }
+		for _, old := range current {
+			if old == change.Filter {
+				present = true
+				break
+			}
+		}
+		if !present {
+			current = append(current, change.Filter)
+		}
 	case "remove":
 		remaining := make([]any, 0, len(current))
-		for _, key := range current { if key != change.Filter { remaining = append(remaining, key) } }
+		for _, key := range current {
+			if key != change.Filter {
+				remaining = append(remaining, key)
+			}
+		}
 		current = remaining
 	}
 	global, ok := env["global"].(M)

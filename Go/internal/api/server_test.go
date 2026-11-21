@@ -313,7 +313,9 @@ func TestSavedLiveTvFiltersUseExistingProfileEndpoint(t *testing.T) {
 		`{"profile":{},"liveTvSavedFilterChange":{"action":"add","filter":"group:News"}}`,
 	} {
 		code, value := call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv", body, nil)
-		if code != 200 || value["liveTvSavedFilters"] == nil { t.Fatalf("atomic POST: %d %v", code, value) }
+		if code != 200 || value["liveTvSavedFilters"] == nil {
+			t.Fatalf("atomic POST: %d %v", code, value)
+		}
 	}
 	call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/mobile", `{"profile":{"liveTvSavedFilters":[],"cinemaModeEnabled":true}}`, nil)
 	code, value := call(t, s, userMain, "GET", "/Moonfin/Settings/Resolved/mobile", "", nil)
@@ -322,7 +324,9 @@ func TestSavedLiveTvFiltersUseExistingProfileEndpoint(t *testing.T) {
 	}
 	code, _ = call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv",
 		`{"profile":{},"liveTvSavedFilterChange":{"action":"remove","filter":"group:"}}`, nil)
-	if code != 400 { t.Fatalf("invalid filter status: %d", code) }
+	if code != 400 {
+		t.Fatalf("invalid filter status: %d", code)
+	}
 }
 
 func TestLiveTvCategoryDisplaySettingsAndDefaults(t *testing.T) {

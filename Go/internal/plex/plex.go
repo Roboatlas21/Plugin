@@ -116,30 +116,15 @@ func New(cfg Config) (*Companion, error) {
 // labels Moonfin uses, without making its browser call Plex across origins.
 func (c *Companion) LiveTvFreeGroups(ctx context.Context, token string) ([]string, error) {
 	get := func(path string, target any) error {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://epg.provider.plex.tv"+path, nil)
+		status, body, err := c.get(ctx, "https://epg.provider.plex.tv"+path, token,
+			map[string]string{"X-Plex-Provider-Version": "7.2"})
 		if err != nil {
 			return err
 		}
-		query := req.URL.Query()
-		query.Set("X-Plex-Product", "Moonbase")
-		query.Set("X-Plex-Version", c.cfg.Version)
-		query.Set("X-Plex-Client-Identifier", c.clientID)
-		query.Set("X-Plex-Device-Name", "Moonbase")
-		req.URL.RawQuery = query.Encode()
-		req.Header.Set("Accept", "application/json")
-		req.Header.Set("X-Plex-Provider-Version", "7.2")
-		if token != "" {
-			req.Header.Set("X-Plex-Token", token)
+		if status != http.StatusOK {
+			return fmt.Errorf("Plex guide replied %d", status)
 		}
-		res, err := c.http.Do(req)
-		if err != nil {
-			return err
-		}
-		defer res.Body.Close()
-		if res.StatusCode != http.StatusOK {
-			return fmt.Errorf("Plex guide replied %d", res.StatusCode)
-		}
-		return json.NewDecoder(io.LimitReader(res.Body, 4<<20)).Decode(target)
+		return json.Unmarshal(body, target)
 	}
 	var provider struct {
 		MediaProvider struct {
@@ -509,13 +494,13 @@ func (c *Companion) Genres(ctx context.Context, caller api.Identity) ([]api.Genr
 // plexTypes maps Plex's library types to the ones the admin page knows.
 var plexTypes = map[string]string{"movie": "movie", "show": "tv", "artist": "music", "photo": "photos"}
 
-func (c *Companion) get(ctx context.Context, rawURL, token string) (int, []byte, error) {
-	return c.do(ctx, http.MethodGet, rawURL, token)
+func (c *Companion) get(ctx context.Context, rawURL, token string, headers ...map[string]string) (int, []byte, error) {
+	return c.do(ctx, http.MethodGet, rawURL, token, headers...)
 }
 
 // do calls Plex or plex.tv with the companion's own client headers. The token
 // goes in a header, never the URL, so it stays out of logs.
-func (c *Companion) do(ctx context.Context, method, rawURL, token string) (int, []byte, error) {
+func (c *Companion) do(ctx context.Context, method, rawURL, token string, headers ...map[string]string) (int, []byte, error) {
 	req, err := http.NewRequestWithContext(ctx, method, rawURL, nil)
 	if err != nil {
 		return 0, nil, err
@@ -524,6 +509,11 @@ func (c *Companion) do(ctx context.Context, method, rawURL, token string) (int, 
 	req.Header.Set("X-Plex-Client-Identifier", c.clientID)
 	req.Header.Set("X-Plex-Product", "Moonbase")
 	req.Header.Set("X-Plex-Version", c.cfg.Version)
+	for _, extra := range headers {
+		for key, value := range extra {
+			req.Header.Set(key, value)
+		}
+	}
 	if token != "" {
 		req.Header.Set("X-Plex-Token", token)
 	}

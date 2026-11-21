@@ -2908,9 +2908,65 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
             fillUploadedThemes(view, config.UploadedThemes);
             populateDefaults(view, defaultsState.profiles.global);
             refreshDefaultsActions(view);
+            discoverDefaultGuideGroups(view);
 
             loading.hide();
         }).catch(reportConfigError);
+    }
+
+    // The admin selects from Emby's native channel tags, just like the guide.
+    var discoveredDefaultGuideGroups = [];
+    var defaultGuideGroupsMessage = 'Loading available groups…';
+
+    function renderDefaultGuideGroups(view, defaults) {
+        var host = view.querySelector('#DefaultPinnedGuideGroups');
+        if (!host) return;
+        if (defaultsState.active !== 'global') {
+            host.textContent = 'Shared pins are configured on the Global tab.';
+            return;
+        }
+        var saved = Array.isArray(defaults.liveTvSavedFilters)
+            ? defaults.liveTvSavedFilters.filter(function(key) { return typeof key === 'string' && key.indexOf('group:') === 0; })
+            : [];
+        var names = saved.map(function(key) { return key.slice(6); });
+        discoveredDefaultGuideGroups.forEach(function(name) {
+            if (names.indexOf(name) === -1) names.push(name);
+        });
+        if (!names.length) { host.textContent = defaultGuideGroupsMessage; return; }
+        host.innerHTML = names.map(function(name) {
+            var key = 'group:' + name;
+            return '<label style="display:flex;align-items:center;gap:8px;padding:5px 3px;">' +
+                '<input type="checkbox" data-guide-filter="' + esc(key) + '"' +
+                (saved.indexOf(key) !== -1 ? ' checked' : '') + '>' +
+                '<span>' + esc(name) + '</span></label>';
+        }).join('');
+    }
+
+    function discoverDefaultGuideGroups(view) {
+        ApiClient.ajax({
+            type: 'GET',
+            url: ApiClient.getUrl('LiveTv/Channels', {
+                Fields: 'ImageTags,UserData,Tags', EnableTotalRecordCount: false
+            }),
+            dataType: 'json'
+        }).then(function(lineup) {
+            var names = [];
+            (lineup.Items || lineup.items || []).forEach(function(channel) {
+                var tags = channel.TagItems || channel.tagItems || [];
+                var labels = tags.map(function(tag) { return tag.Name || tag.name; })
+                    .filter(function(name) { return typeof name === 'string' && name.trim(); });
+                if (!labels.length) labels = channel.Tags || channel.tags || [];
+                labels.forEach(function(name) { names.push(name); });
+            });
+            discoveredDefaultGuideGroups = Array.from(new Set(names.filter(function(name) {
+                return typeof name === 'string' && name.trim();
+            }).map(function(name) { return name.trim(); }))).sort();
+            defaultGuideGroupsMessage = 'No channel tags available.';
+            renderDefaultGuideGroups(view, defaultsState.profiles[defaultsState.active] || {});
+        }).catch(function() {
+            defaultGuideGroupsMessage = 'Could not load channel tags. Reload this page to retry.';
+            renderDefaultGuideGroups(view, defaultsState.profiles[defaultsState.active] || {});
+        });
     }
 
     // Fills the User defaults form from one profile's defaults. The same form edits every
@@ -3212,6 +3268,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
         setSelectValue(view, '#DefaultAudioSortOption', defaults.audioSortOption, 'Configured sort');
         setSelectValue(view, '#DefaultLiveTvChannelSortBy', defaults.liveTvChannelSortBy, 'Configured sort');
         setSelectValue(view, '#DefaultLiveTvCategoryDisplay', defaults.liveTvCategoryDisplay, 'Configured guide layout');
+        renderDefaultGuideGroups(view, defaults);
         setSelectValue(view, '#DefaultEpgMobileView', defaults.epgMobileView, 'Configured view');
         setSelectValue(view, '#DefaultMediaBarOverlayColor', defaults.mediaBarOverlayColor, 'Configured color');
         bindNullableRangeInput(view, '#DefaultMediaBarOpacity', '%');
@@ -3663,6 +3720,12 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
         d.audioSortOption = view.querySelector('#DefaultAudioSortOption').value || null;
         d.liveTvChannelSortBy = view.querySelector('#DefaultLiveTvChannelSortBy').value || null;
         d.liveTvCategoryDisplay = view.querySelector('#DefaultLiveTvCategoryDisplay').value || null;
+        if (defaultsState.active === 'global') {
+            var selectedGroups = Array.from(view.querySelectorAll('#DefaultPinnedGuideGroups input[data-guide-filter]'))
+                .filter(function(input) { return input.checked; })
+                .map(function(input) { return input.getAttribute('data-guide-filter'); });
+            d.liveTvSavedFilters = selectedGroups.length ? selectedGroups : null;
+        }
         d.epgMobileView = view.querySelector('#DefaultEpgMobileView').value || null;
         d.mediaBarOverlayColor = view.querySelector('#DefaultMediaBarOverlayColor').value || null;
         d.mediaBarOpacity = getNullableRangeInput(view, '#DefaultMediaBarOpacity');

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -264,11 +265,24 @@ func (s *Server) handlePostProfile(w http.ResponseWriter, r *http.Request) {
 		// Defaults are only used if this user has never customized the pins.
 		change.Defaults = settings.StoredSavedFilters(M{"global": s.config(r.Context()).Defaults})
 		extra := M{}
-		s.save(w, r, func(env M) M {
+		changed := false
+		saved := s.save(w, r, func(env M) M {
+			var before any
+			if global, ok := env["global"].(M); ok {
+				before = global["liveTvSavedFilters"]
+			}
 			updated := settings.SaveProfile(env, name, cleaned, clientID, serverKeys(s.config(r.Context())), time.Now(), change)
+			var after any
+			if global, ok := updated["global"].(M); ok {
+				after = global["liveTvSavedFilters"]
+			}
+			changed = !reflect.DeepEqual(before, after)
 			extra["liveTvSavedFilters"] = settings.StoredSavedFilters(updated)
 			return updated
 		}, extra)
+		if saved && changed && s.notify.on {
+			s.notifyUser(callerOf(r).UserID, M{"type": "settingsUpdated"})
+		}
 		return
 	}
 	s.saveProfile(w, r, name, cleaned, clientID, nil)
@@ -282,7 +296,7 @@ func (s *Server) saveProfile(w http.ResponseWriter, r *http.Request, name string
 	}, extra)
 }
 
-func (s *Server) save(w http.ResponseWriter, r *http.Request, apply func(M) M, extra ...M) {
+func (s *Server) save(w http.ResponseWriter, r *http.Request, apply func(M) M, extra ...M) bool {
 	id := callerOf(r)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -297,10 +311,11 @@ func (s *Server) save(w http.ResponseWriter, r *http.Request, apply func(M) M, e
 				}
 			}
 			writeJSON(w, http.StatusOK, body)
-			return
+			return true
 		}
 	}
 	storageFailed(w, r, err)
+	return false
 }
 
 func (s *Server) handleDeleteSettings(w http.ResponseWriter, r *http.Request) {

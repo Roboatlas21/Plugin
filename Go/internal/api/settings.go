@@ -561,6 +561,7 @@ func (s *Server) applyDefaults(w http.ResponseWriter, r *http.Request, req apply
 				}
 				if len(layer) > 0 {
 					env = settings.SaveProfile(env, p, clone(layer), by, serverKeys(cfg), time.Now())
+					settings.MergeAdminSavedFilters(env, layer["liveTvSavedFilters"])
 				}
 			}
 		}

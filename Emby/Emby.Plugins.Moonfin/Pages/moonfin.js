@@ -2949,9 +2949,12 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
         var names = Array.from(new Set(saved.filter(function(key) { return key.startsWith('group:'); })
             .map(function(key) { return key.slice(6); }).concat(availableDefaultGuideGroups)));
         function checkbox(key, label) {
+            var tooLong = key.length > 1024;
+            var selected = current && current.has(key) ? current.get(key) : saved.includes(key);
+            var state = tooLong ? ' disabled' : selected ? ' checked' : '';
             return '<label style="display:flex;align-items:center;gap:8px;padding:5px 3px;">' +
-                '<input type="checkbox" data-guide-filter="' + esc(key) + '"' +
-                ((current && current.has(key) ? current.get(key) : saved.includes(key)) ? ' checked' : '') + '><span>' + esc(label) + '</span></label>';
+                '<input type="checkbox" data-guide-filter="' + esc(key) + '"' + state + '><span>' +
+                esc(label) + (tooLong ? ' (too long to pin)' : '') + '</span></label>';
         }
         host.innerHTML = '<div style="font-weight:600;padding:5px 3px;">Program Categories</div>' +
             defaultGuideCategories.map(function(category) { return checkbox('category:' + category[0], category[1]); }).join('') +

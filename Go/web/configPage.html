@@ -11476,6 +11476,8 @@
 
                 // Use the same group identifiers as the guide's saved shortcuts.
                 var availableDefaultGuideGroups = [];
+                // The Go hosts count UTF-8 bytes. Jellyfin counts UTF-16 code units.
+                var guideKeyEncoder = window.moonbaseHost ? new TextEncoder() : null;
                 var defaultGuideGroupsMessage = 'Loading available groups…';
                 var defaultGuideCategories = (window.moonbaseHost && window.moonbaseHost.guideCategories) ||
                     [['movies', 'Movies'], ['series', 'Series'], ['sports', 'Sports'],
@@ -11498,9 +11500,12 @@
                     var names = Array.from(new Set(saved.filter(function(key) { return key.startsWith('group:'); })
                         .map(function(key) { return key.slice(6); }).concat(availableDefaultGuideGroups)));
                     function checkbox(key, label) {
+                        var tooLong = (guideKeyEncoder ? guideKeyEncoder.encode(key).length : key.length) > 1024;
+                        var selected = current && current.has(key) ? current.get(key) : saved.includes(key);
+                        var state = tooLong ? ' disabled' : selected ? ' checked' : '';
                         return '<label style="display:flex;align-items:center;gap:8px;padding:5px 3px;">' +
-                            '<input type="checkbox" data-guide-filter="' + esc(key) + '"' +
-                            ((current && current.has(key) ? current.get(key) : saved.includes(key)) ? ' checked' : '') + '><span>' + esc(label) + '</span></label>';
+                            '<input type="checkbox" data-guide-filter="' + esc(key) + '"' + state + '><span>' +
+                            esc(label) + (tooLong ? ' (too long to pin)' : '') + '</span></label>';
                     }
                     host.innerHTML = '<div style="font-weight:600;padding:5px 3px;">Program Categories</div>' +
                         defaultGuideCategories.map(function(category) { return checkbox('category:' + category[0], category[1]); }).join('') +

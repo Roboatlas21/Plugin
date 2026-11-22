@@ -20,7 +20,7 @@ function picker(host, pins, responses) {
             { ok: true, status: 200, json: async () => ({ availableGuideGroups: groups }) };
     }};
     const context = vm.createContext({
-        window, URLSearchParams, setInterval: () => 1,
+        window, URLSearchParams, TextEncoder, setInterval: () => 1,
         location: { origin: 'https://moonbase.test', pathname: '/admin' },
         document: { addEventListener() {}, querySelector: () => root },
         defaultsState: { active: 'global', profiles: { global: { liveTvSavedFilters: pins } } },
@@ -62,4 +62,13 @@ test('Plex guide picker uses provider groups and keeps edits; failure and Silo r
     await silo.reload();
     assert.equal(silo.calls.length, 0);
     assert.equal(checked(silo.root.innerHTML, 'category:movies'), true);
+});
+
+test('Plex uses the same byte limit in the picker as in the settings API', async () => {
+    const atLimit = 'group:' + 'é'.repeat(509);
+    const tooLong = atLimit + 'x';
+    const plex = picker('Plex', [atLimit, tooLong], [[]]);
+    await plex.reload();
+    assert.equal(checked(plex.root.innerHTML, atLimit), true);
+    assert.ok(plex.root.innerHTML.includes('data-guide-filter="' + tooLong + '" disabled'));
 });

@@ -40,6 +40,9 @@ public sealed class SavedGuideFiltersContractTests : IDisposable
         Assert.False(new LiveTvSavedFilterChange { Action = "remove", Filter = "group:" }.IsValid());
         Assert.False(new LiveTvSavedFilterChange { Action = "initializeIfAbsent",
             Filters = Enumerable.Repeat("group:News", 1001).ToList() }.IsValid());
+        var atLimit = "group:" + new string('x', 1018);
+        Assert.Equal([atLimit], _service.ResolveProfile(new MoonfinUserSettings(), "tv",
+            Defaults(atLimit, atLimit + "x")).LiveTvSavedFilters);
         var config = Defaults("group:Sports");
         config.DefaultDeviceSettings = new MoonfinDeviceDefaults {
             Tv = new MoonfinSettingsProfile { LiveTvSavedFilters = ["group:TV"] } };

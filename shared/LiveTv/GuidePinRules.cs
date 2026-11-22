@@ -22,7 +22,7 @@ internal static class GuidePinRules
 
     // Only the global administrator list contributes managed guide shortcuts.
     internal static List<string> AdminPins(List<string>? global) =>
-        global?.Distinct().ToList() ?? new List<string>();
+        global?.Where(ValidKey).Distinct().ToList() ?? new List<string>();
 
     internal static List<string> EffectivePins(
         List<string> defaults, List<string>? exclusions, List<string>? personal)

@@ -1117,6 +1117,15 @@ func TestAdminCopyCanReplaceSavedGuidePins(t *testing.T) {
 	if !reflect.DeepEqual(env["global"].(map[string]any)["liveTvSavedFilters"], []any{"group:News"}) {
 		t.Fatalf("ordinary sync replaced copied pins: %v", env["global"])
 	}
+	saveConfig(t, s, M{"DefaultUserSettings": M{"liveTvSavedFilters": []any{"group:Sports"}}})
+	call(t, s, adminMain, "POST", "/Moonfin/Settings/Profile/global",
+		`{"profile":{},"liveTvSavedFilterChange":{"action":"remove","filter":"group:Sports"}}`, nil)
+	call(t, s, adminMain, "POST", "/Moonfin/Admin/CopySettings",
+		`{"fromUserId":"2~20","toUserIds":["4"],"profiles":["global"],"replace":true}`, nil)
+	_, resolved := call(t, s, other, "GET", "/Moonfin/Settings/Resolved/tv", "", nil)
+	if !reflect.DeepEqual(resolved["liveTvSavedFilters"], []any{"group:News"}) {
+		t.Fatalf("replaced profile lost the source user's hidden admin pin: %v", resolved)
+	}
 }
 
 func TestPingCarriesADevicesDefaults(t *testing.T) {

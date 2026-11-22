@@ -12880,7 +12880,7 @@
                             return typeof key === 'string' && (!visiblePins.includes(key) || selectedPins.includes(key));
                         });
                         selectedPins.forEach(function(key) { if (!keptPins.includes(key)) keptPins.push(key); });
-                        ds.liveTvSavedFilters = keptPins.length ? keptPins : null;
+                        ds.liveTvSavedFilters = keptPins.length || Array.isArray(ds.liveTvSavedFilters) ? keptPins : null;
                     }
                     ds.epgMobileView = document.querySelector('#DefaultEpgMobileView').value || null;
                     ds.mediaBarOverlayColor = document.querySelector('#DefaultMediaBarOverlayColor').value || null;

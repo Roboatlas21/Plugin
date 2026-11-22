@@ -421,7 +421,7 @@ namespace Emby.Plugins.Moonfin.Services
         }
 
         public async Task SaveProfileAsync(Guid userId, string profileName, MoonfinSettingsProfile profile, string? clientId = null, bool notifySettingsChanged = true, bool replace = false, LiveTvSavedFilterChange? savedFilterChange = null, bool mergeAdminGuidePins = false,
-            bool copyGuidePins = false)
+            MoonfinUserSettings? guidePinSource = null)
         {
             var filePath = GetUserSettingsPath(userId);
             bool settingsChanged;
@@ -433,7 +433,6 @@ namespace Emby.Plugins.Moonfin.Services
                 var settings = await Task.Run(() => ReadSettingsWithRecovery(filePath)).ConfigureAwait(false)
                     ?? new MoonfinUserSettings();
                 var storedSavedFilters = settings.Global?.LiveTvSavedFilters?.ToList();
-                var copiedGuidePins = copyGuidePins ? profile.LiveTvSavedFilters?.ToList() : null;
                 // Explicit Merge restores selected managed pins without making them permanent.
                 if (mergeAdminGuidePins && profile.LiveTvSavedFilters != null)
                     settings.LiveTvSavedFilterExclusions?.RemoveAll(profile.LiveTvSavedFilters.Contains);
@@ -464,10 +463,11 @@ namespace Emby.Plugins.Moonfin.Services
                     settings.SetProfile(profileName, profile);
 
                 PreserveSavedFilters(settings, storedSavedFilters);
-                if (copyGuidePins)
+                if (guidePinSource != null)
                 {
                     settings.Global ??= new MoonfinSettingsProfile();
-                    settings.Global.LiveTvSavedFilters = copiedGuidePins;
+                    settings.Global.LiveTvSavedFilters = guidePinSource.Global?.LiveTvSavedFilters?.ToList();
+                    settings.LiveTvSavedFilterExclusions = guidePinSource.LiveTvSavedFilterExclusions?.ToList();
                 }
                 ApplySavedFilterChange(settings, savedFilterChange, AdminGuidePins(Plugin.Instance?.Configuration));
                 StripServerWideKeys(settings);
@@ -785,7 +785,7 @@ namespace Emby.Plugins.Moonfin.Services
                     {
                         await SaveProfileAsync(userId, entry.Key, CloneProfile(entry.Value), "admin-copy",
                             notifySettingsChanged: false, replace: replace,
-                            copyGuidePins: entry.Key == "global" && (entry.Value.LiveTvSavedFilters != null || replace)).ConfigureAwait(false);
+                            guidePinSource: entry.Key == "global" && (entry.Value.LiveTvSavedFilters != null || replace) ? source : null).ConfigureAwait(false);
                     }
 
                     NotifySettingsChanged(userId);

@@ -2967,9 +2967,12 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
         }).then(function(result) {
             var names = [];
             (result.Items || result.items || []).forEach(function(channel) {
-                var tags = (channel.TagItems || channel.tagItems || []).map(function(tag) { return tag.Name || tag.name; })
-                    .filter(function(name) { return typeof name === 'string' && name.trim(); });
-                names.push.apply(names, tags.length ? tags : channel.Tags || channel.tags || []);
+                if (!channel) return;
+                var items = channel.TagItems || channel.tagItems;
+                var tags = Array.isArray(items) ? items.map(function(tag) { return tag && (tag.Name || tag.name); })
+                    .filter(function(name) { return typeof name === 'string' && name.trim(); }) : [];
+                var raw = tags.length ? tags : channel.Tags || channel.tags;
+                if (Array.isArray(raw)) names.push.apply(names, raw);
             });
             availableDefaultGuideGroups = Array.from(new Set(names.filter(function(name) {
                 return typeof name === 'string' && name.trim();

@@ -473,7 +473,7 @@ public class MoonfinSettingsService
           bool replace = false,
           LiveTvSavedFilterChange? savedFilterChange = null,
           bool mergeAdminGuidePins = false,
-          bool copyGuidePins = false)
+          MoonfinUserSettings? guidePinSource = null)
     {
         var filePath = GetUserSettingsPath(userId);
         bool settingsChanged;
@@ -485,7 +485,6 @@ public class MoonfinSettingsService
         {
             var settings = ReadSettingsWithRecovery(filePath) ?? new MoonfinUserSettings();
             var storedSavedFilters = settings.Global?.LiveTvSavedFilters?.ToList();
-            var copiedGuidePins = copyGuidePins ? profile.LiveTvSavedFilters?.ToList() : null;
             // Explicit Merge restores selected managed pins without making them permanent.
             if (mergeAdminGuidePins && profile.LiveTvSavedFilters != null)
                 settings.LiveTvSavedFilterExclusions?.RemoveAll(profile.LiveTvSavedFilters.Contains);
@@ -539,10 +538,11 @@ public class MoonfinSettingsService
             var savedProfile = existingProfile ?? profile;
 
             PreserveSavedFilters(settings, storedSavedFilters);
-            if (copyGuidePins)
+            if (guidePinSource != null)
             {
                 settings.Global ??= new MoonfinSettingsProfile();
-                settings.Global.LiveTvSavedFilters = copiedGuidePins;
+                settings.Global.LiveTvSavedFilters = guidePinSource.Global?.LiveTvSavedFilters?.ToList();
+                settings.LiveTvSavedFilterExclusions = guidePinSource.LiveTvSavedFilterExclusions?.ToList();
             }
             ApplySavedFilterChange(settings, savedFilterChange, AdminGuidePins(MoonfinPlugin.Instance?.Configuration));
 
@@ -1466,7 +1466,7 @@ public class MoonfinSettingsService
                 {
                     await SaveProfileAsync(userId, profileName, CloneProfile(copy), "admin-copy",
                         notifySettingsChanged: false, replace: replace,
-                        copyGuidePins: profileName == "global" && (copy.LiveTvSavedFilters != null || replace));
+                        guidePinSource: profileName == "global" && (copy.LiveTvSavedFilters != null || replace) ? source : null);
                 }
 
                 NotifySettingsChanged(userId);

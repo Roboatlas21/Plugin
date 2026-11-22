@@ -154,7 +154,8 @@ func (s *Server) handlePostConfiguration(w http.ResponseWriter, r *http.Request)
 		delete(body, k)
 	}
 	if d, ok := body["DefaultUserSettings"].(M); ok {
-		if raw := d["liveTvSavedFilters"]; raw != nil {
+		defaults := settings.Clean(d)
+		if raw := defaults["liveTvSavedFilters"]; raw != nil {
 			pins, ok := raw.([]any)
 			if !ok {
 				writeError(w, http.StatusBadRequest, "Expected a list of saved Live TV filters")
@@ -168,7 +169,7 @@ func (s *Server) handlePostConfiguration(w http.ResponseWriter, r *http.Request)
 				}
 			}
 		}
-		body["DefaultUserSettings"] = settings.Clean(d)
+		body["DefaultUserSettings"] = defaults
 	}
 	if d, ok := body["DefaultDeviceSettings"].(M); ok {
 		devices := M{}

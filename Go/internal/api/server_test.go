@@ -416,10 +416,12 @@ func TestAdminGuidePinsUseTheUserEditLimit(t *testing.T) {
 	pin := "group:" + strings.Repeat("é", 509) // Exactly 1,024 bytes.
 	saveConfig(t, s, M{"DefaultUserSettings": M{"liveTvSavedFilters": []any{pin}}})
 	tooLong := pin + "é"
-	body, _ := json.Marshal(M{"DefaultUserSettings": M{"liveTvSavedFilters": []any{tooLong}}})
-	code, got := call(t, s, adminMain, "POST", "/Moonfin/Admin/Configuration", string(body), nil)
-	if code != 400 || !strings.Contains(fmt.Sprint(got["Error"]), tooLong) {
-		t.Fatalf("invalid pin response = %d %v", code, got)
+	for _, field := range []string{"liveTvSavedFilters", "LiveTvSavedFilters"} {
+		body, _ := json.Marshal(M{"DefaultUserSettings": M{field: []any{tooLong}}})
+		code, got := call(t, s, adminMain, "POST", "/Moonfin/Admin/Configuration", string(body), nil)
+		if code != 400 || !strings.Contains(fmt.Sprint(got["Error"]), tooLong) {
+			t.Fatalf("invalid %s response = %d %v", field, code, got)
+		}
 	}
 	_, resolved := call(t, s, other, "GET", "/Moonfin/Settings/Resolved/tv", "", nil)
 	if !reflect.DeepEqual(resolved["liveTvSavedFilters"], []any{pin}) {

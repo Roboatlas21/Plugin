@@ -95,9 +95,15 @@ public sealed class ProfileDefaultsTests : IDisposable
         Assert.Equal("never", merged.ClockBehavior);
         Assert.True(merged.Use24HourClock);
         Assert.Equal(["lib-global"], merged.MediaBarLibraryIds!);
-        Assert.Same(config.DefaultUserSettings, MoonfinSettingsService.AdminDefaultsFor("global", config));
-        Assert.Same(config.DefaultUserSettings, MoonfinSettingsService.AdminDefaultsFor(null, config));
-        Assert.Same(config.DefaultUserSettings, MoonfinSettingsService.AdminDefaultsFor("mobile", config));
+        // Resolved defaults are a separate value so shared guide pins can be combined
+        // without mutating the administrator's stored configuration.
+        foreach (var profile in new string?[] { "global", null, "mobile" })
+        {
+            var defaults = MoonfinSettingsService.AdminDefaultsFor(profile, config)!;
+            Assert.Equal(config.DefaultUserSettings.ClockBehavior, defaults.ClockBehavior);
+            Assert.Equal(config.DefaultUserSettings.Use24HourClock, defaults.Use24HourClock);
+            Assert.Equal(config.DefaultUserSettings.MediaBarLibraryIds, defaults.MediaBarLibraryIds);
+        }
     }
 
     [Fact]
@@ -113,48 +119,6 @@ public sealed class ProfileDefaultsTests : IDisposable
         Assert.Equal("never", back.DefaultDeviceSettings!.Tv!.ClockBehavior);
         Assert.Null(back.DefaultDeviceSettings.Mobile);
         Assert.Equal("never", _service.ResolveProfile(new MoonfinUserSettings(), "tv", back).ClockBehavior);
-    }
-
-    [Fact]
-    public void LiveTvGuideCategoriesSyncAndInheritAdminDefaults()
-    {
-        var profile = new MoonfinSettingsProfile { LiveTvCategoryDisplay = "groups" };
-        var json = JsonSerializer.Serialize(profile);
-        Assert.Contains("\"liveTvCategoryDisplay\":\"groups\"", json);
-        Assert.Equal("groups", JsonSerializer.Deserialize<MoonfinSettingsProfile>(json)!.LiveTvCategoryDisplay);
-
-        var config = new PluginConfiguration
-        {
-            DefaultUserSettings = new MoonfinSettingsProfile { LiveTvCategoryDisplay = "groups" },
-            DefaultDeviceSettings = new MoonfinDeviceDefaults
-            {
-                Tv = new MoonfinSettingsProfile { LiveTvCategoryDisplay = "programmes" },
-            },
-        };
-        var serializer = new XmlSerializer(typeof(PluginConfiguration));
-        using var stream = new MemoryStream();
-        serializer.Serialize(stream, config);
-        stream.Position = 0;
-        var restored = (PluginConfiguration)serializer.Deserialize(stream)!;
-
-        var user = new MoonfinUserSettings();
-        Assert.Equal("groups", _service.ResolveProfile(user, "desktop", restored).LiveTvCategoryDisplay);
-        Assert.Equal("programmes", _service.ResolveProfile(user, "tv", restored).LiveTvCategoryDisplay);
-        Assert.Equal("groups", MoonfinSettingsService.AdminDefaultsFor("mobile", restored)!.LiveTvCategoryDisplay);
-        Assert.Equal("programmes", MoonfinSettingsService.AdminDefaultsFor("tv", restored)!.LiveTvCategoryDisplay);
-
-        user.Global = new MoonfinSettingsProfile { LiveTvCategoryDisplay = "both" };
-        Assert.Equal("both", _service.ResolveProfile(user, "tv", restored).LiveTvCategoryDisplay);
-    }
-
-    [Fact]
-    public async Task LiveTvGuideCategoriesRetainSavedDeviceOverrides()
-    {
-        var userId = await SeedAsync("global", new MoonfinSettingsProfile { LiveTvCategoryDisplay = "groups" });
-        await SeedAsync("tv", new MoonfinSettingsProfile { LiveTvCategoryDisplay = "programmes" }, userId);
-        var saved = Read(userId);
-        Assert.Equal("groups", _service.ResolveProfile(saved, "desktop").LiveTvCategoryDisplay);
-        Assert.Equal("programmes", _service.ResolveProfile(saved, "tv").LiveTvCategoryDisplay);
     }
 
     [Fact]

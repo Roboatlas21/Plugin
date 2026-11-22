@@ -5,6 +5,7 @@ using System.Threading.Channels;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Moonfin.LiveTv;
 using Microsoft.Extensions.Logging;
 using Moonfin.Server.Models;
 
@@ -225,6 +226,9 @@ public class MoonfinSettingsService
             }
         }
 
+        resolved.LiveTvSavedFilters = GuidePinRules.EffectivePins(AdminGuidePins(config),
+            settings.LiveTvSavedFilterExclusions, settings.Global?.LiveTvSavedFilters);
+
         var homeLayout = ResolveHomeLayout(deviceProfile, global, HasHomeLayout(adminDevice) ? adminDevice : null, adminDefaults);
         resolved.HomeSections = homeLayout.HomeSections;
         resolved.HomeRowOrder = homeLayout.HomeRowOrder;
@@ -265,10 +269,8 @@ public class MoonfinSettingsService
     {
         var global = config?.DefaultUserSettings;
         var device = IsDeviceProfile(profileName) ? config?.GetDefaultsFor(profileName) : null;
-        if (device == null)
-        {
-            return global;
-        }
+        var sharedPins = AdminGuidePins(config);
+        if (device == null && global == null && sharedPins.Count == 0) return null;
 
         var merged = new MoonfinSettingsProfile();
         foreach (var prop in ProfileProps)
@@ -284,8 +286,13 @@ public class MoonfinSettingsService
         var layout = HasHomeLayout(device) ? device : global;
         merged.HomeSections = layout?.HomeSections;
         merged.HomeRowOrder = layout?.HomeRowOrder;
+        merged.LiveTvSavedFilters = sharedPins;
         return merged;
     }
+
+    // Administrator guide shortcuts are global; device defaults never add pins.
+    private static List<string> AdminGuidePins(PluginConfiguration? config) =>
+        GuidePinRules.AdminPins(config?.DefaultUserSettings?.LiveTvSavedFilters);
 
     private static bool IsDeviceProfile(string? profileName) =>
         !string.IsNullOrEmpty(profileName) && !string.Equals(profileName, "global", StringComparison.OrdinalIgnoreCase);
@@ -365,6 +372,7 @@ public class MoonfinSettingsService
 
             var existingSettingsForPins = ReadSettingsWithRecovery(filePath);
             var storedSavedFilters = existingSettingsForPins?.Global?.LiveTvSavedFilters?.ToList();
+            var storedSavedFilterExclusions = existingSettingsForPins?.LiveTvSavedFilterExclusions?.ToList();
             if (mergeMode == "merge")
             {
                 var existingSettings = existingSettingsForPins;
@@ -395,6 +403,7 @@ public class MoonfinSettingsService
             finalSettings.SchemaVersion = 2;
 
             PreserveSavedFilters(finalSettings, storedSavedFilters);
+            finalSettings.LiveTvSavedFilterExclusions = storedSavedFilterExclusions;
             MoveContentHidingToGlobal(finalSettings, storedHiddenContinueWatching, storedHiddenNextUp);
             PropagateCustomHomeSectionsAcrossProfiles(
                 finalSettings,
@@ -428,7 +437,8 @@ public class MoonfinSettingsService
           string? clientId = null,
           bool notifySettingsChanged = true,
           bool replace = false,
-          LiveTvSavedFilterChange? savedFilterChange = null)
+          LiveTvSavedFilterChange? savedFilterChange = null,
+          bool mergeAdminGuidePins = false)
     {
         var filePath = GetUserSettingsPath(userId);
         bool settingsChanged;
@@ -438,6 +448,9 @@ public class MoonfinSettingsService
         {
             var settings = ReadSettingsWithRecovery(filePath) ?? new MoonfinUserSettings();
             var storedSavedFilters = settings.Global?.LiveTvSavedFilters?.ToList();
+            // Explicit Merge restores selected managed pins without making them permanent.
+            if (mergeAdminGuidePins && profile.LiveTvSavedFilters != null)
+                settings.LiveTvSavedFilterExclusions?.RemoveAll(profile.LiveTvSavedFilters.Contains);
             // Full-profile saves must not mutate the shared shortcut list.
             profile.LiveTvSavedFilters = null;
 
@@ -488,7 +501,7 @@ public class MoonfinSettingsService
             var savedProfile = existingProfile ?? profile;
 
             PreserveSavedFilters(settings, storedSavedFilters);
-            ApplySavedFilterChange(settings, savedFilterChange);
+            ApplySavedFilterChange(settings, savedFilterChange, AdminGuidePins(MoonfinPlugin.Instance?.Configuration));
 
             // Update metadata
             StripServerWideKeys(settings);
@@ -767,29 +780,16 @@ public class MoonfinSettingsService
     }
 
     /// <summary>Apply a pin operation while holding the settings-file lock.</summary>
-    private static void ApplySavedFilterChange(MoonfinUserSettings settings, LiveTvSavedFilterChange? change)
+    internal static void ApplySavedFilterChange(MoonfinUserSettings settings, LiveTvSavedFilterChange? change, List<string>? defaults)
     {
         if (change == null) return;
         if (!change.IsValid()) throw new ArgumentException("Invalid saved guide filter change", nameof(change));
-        var current = settings.Global?.LiveTvSavedFilters;
-        if (change.Action == "initializeIfAbsent")
-        {
-            if (current != null) return;
-            current = new List<string>();
-            foreach (var value in change.Filters!)
-                if (!current.Contains(value)) current.Add(value);
-        }
-        else
-        {
-            current ??= new List<string>();
-            if (change.Action == "add")
-            {
-                if (!current.Contains(change.Filter!)) current.Add(change.Filter!);
-            }
-            else current.RemoveAll(value => string.Equals(value, change.Filter, StringComparison.Ordinal));
-        }
+        var updated = GuidePinRules.Apply(change.Action!, change.Filter, change.Filters, defaults,
+            settings.Global?.LiveTvSavedFilters, settings.LiveTvSavedFilterExclusions);
+        if (updated == null) return;
         settings.Global ??= new MoonfinSettingsProfile();
-        settings.Global.LiveTvSavedFilters = current;
+        settings.Global.LiveTvSavedFilters = updated.Value.Personal;
+        settings.LiveTvSavedFilterExclusions = updated.Value.Exclusions;
     }
 
     /// <summary>
@@ -1239,6 +1239,9 @@ public class MoonfinSettingsService
             }
         }
 
+        // Reset personal pin choices; subsequent administrator edits remain inherited.
+        settings.Global!.LiveTvSavedFilters = new List<string>();
+        settings.LiveTvSavedFilterExclusions = new List<string>();
         var filePath = GetUserSettingsPath(userId);
 
         await _lock.WaitAsync();
@@ -1345,7 +1348,8 @@ public class MoonfinSettingsService
                 profileName,
                 CloneProfile(layer),
                 "admin-default-merge",
-                notifySettingsChanged: false);
+                notifySettingsChanged: false,
+                mergeAdminGuidePins: !IsDeviceProfile(profileName));
         }
     }
 
@@ -1442,6 +1446,7 @@ public class MoonfinSettingsService
             }
 
             var copy = KeepOnly(SetDefaultsOnly(defaults), keys);
+            if (IsDeviceProfile(profileName)) copy.LiveTvSavedFilters = null;
             if (HasAnyProfileValues(copy))
             {
                 push[profileName.ToLowerInvariant()] = copy;

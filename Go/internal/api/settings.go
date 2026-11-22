@@ -261,10 +261,13 @@ func (s *Server) handlePostProfile(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "Invalid saved Live TV filter change")
 			return
 		}
+		// Defaults are only used if this user has never customized the pins.
+		cfg := s.config(r.Context())
+		change.Defaults = settings.AdminSavedFilters(cfg.Defaults)
 		extra := M{}
 		s.save(w, r, func(env M) M {
 			updated := settings.SaveProfile(env, name, cleaned, clientID, serverKeys(s.config(r.Context())), time.Now(), change)
-			extra["liveTvSavedFilters"] = settings.StoredSavedFilters(updated)
+			extra["liveTvSavedFilters"] = settings.EffectiveSavedFilters(updated, change.Defaults)
 			return updated
 		}, extra)
 		return
@@ -354,7 +357,10 @@ func (s *Server) resolve(r *http.Request, name string, record bool) (M, error) {
 		return nil, err
 	}
 	cfg := configFrom(stored)
-	resolved := settings.Resolve(env, name, cfg.DefaultsFor(name), serverKeys(cfg))
+	defaults := settings.LayerDefaults(cfg.DefaultsFor(name), M{
+		"liveTvSavedFilters": settings.AdminSavedFilters(cfg.Defaults),
+	})
+	resolved := settings.Resolve(env, name, defaults, serverKeys(cfg))
 	if record && env != nil && settings.RecordBaseline(env, name, resolved) {
 		if err := s.storeEnvelope(r.Context(), id, env); err != nil {
 			logError(r, "record hidden content baseline", err)
@@ -400,6 +406,21 @@ func (s *Server) handleGetDefaults(w http.ResponseWriter, r *http.Request) {
 	d := configFrom(stored).Defaults
 	if d == nil {
 		d = M{}
+	}
+	// The admin picker requests Plex's available groups through this existing
+	// settings route, avoiding browser CORS restrictions and new endpoints.
+	if r.URL.Query().Get("includeLiveTvGroups") == "true" {
+		if provider, ok := s.catalog.(interface {
+			LiveTvFreeGroups(context.Context, string) ([]string, error)
+		}); ok {
+			groups, err := provider.LiveTvFreeGroups(r.Context(), callerOf(r).Token)
+			if err != nil {
+				writeError(w, http.StatusBadGateway, "Could not load Plex Free TV groups")
+				return
+			}
+			writeJSON(w, http.StatusOK, M{"defaultSettings": d, "availableGuideGroups": groups})
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, d)
 }
@@ -477,7 +498,12 @@ func (s *Server) applyDefaults(w http.ResponseWriter, r *http.Request, req apply
 	}
 	push := map[string]M{}
 	for _, p := range profiles {
-		if d := keepOnly(storedDefaults(cfg, p), req.Keys); len(d) > 0 {
+		d := keepOnly(storedDefaults(cfg, p), req.Keys)
+		if p != "global" {
+			d = clone(d)
+			delete(d, "liveTvSavedFilters")
+		}
+		if len(d) > 0 {
 			push[p] = d
 		}
 	}
@@ -516,6 +542,9 @@ func (s *Server) applyDefaults(w http.ResponseWriter, r *http.Request, req apply
 					env[p] = clone(d)
 				}
 			}
+			// Full reset clears personal pins while keeping future admin changes inherited.
+			env["global"].(M)["liveTvSavedFilters"] = []any{}
+			env["liveTvSavedFilterExclusions"] = []any{}
 		} else {
 			if raw := current[e.key()]; len(bytes.TrimSpace(raw)) > 0 {
 				if err := json.Unmarshal(raw, &env); err != nil {
@@ -544,6 +573,9 @@ func (s *Server) applyDefaults(w http.ResponseWriter, r *http.Request, req apply
 				}
 				if len(layer) > 0 {
 					env = settings.SaveProfile(env, p, clone(layer), by, serverKeys(cfg), time.Now())
+					if p == "global" {
+						settings.MergeAdminSavedFilters(env, layer["liveTvSavedFilters"])
+					}
 				}
 			}
 		}

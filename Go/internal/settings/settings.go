@@ -123,6 +123,7 @@ func SaveEnvelope(existing, incoming M, mergeMode, clientID string, keys ServerK
 		}
 	}
 	delete(incoming, "hiddenContentBaselines")
+	delete(incoming, "liveTvSavedFilterExclusions") // server-owned
 	pins := savedGlobalFilters(existing)
 	if _, ok := incoming["syncEnabled"].(bool); !ok {
 		incoming["syncEnabled"] = true
@@ -130,6 +131,9 @@ func SaveEnvelope(existing, incoming M, mergeMode, clientID string, keys ServerK
 	if mergeMode != "merge" || existing == nil {
 		finish(incoming, clientID, keys, now, nil)
 		preserveSavedFilters(incoming, pins)
+		if exclusions, ok := existing["liveTvSavedFilterExclusions"]; ok {
+			incoming["liveTvSavedFilterExclusions"] = exclusions
+		}
 		return incoming
 	}
 	stored := storedHidden(existing)
@@ -153,9 +157,10 @@ func SaveEnvelope(existing, incoming M, mergeMode, clientID string, keys ServerK
 
 // SavedFilterChange is an intentional shared-filter edit in the profile POST.
 type SavedFilterChange struct {
-	Action  string
-	Filter  string
-	Filters []string
+	Action   string
+	Filter   string
+	Filters  []string
+	Defaults []any // Inherited admin pins for a first explicit add/remove.
 }
 
 func validSavedFilter(key string) bool {
@@ -231,6 +236,49 @@ func StoredSavedFilters(env M) []any {
 	return []any{}
 }
 
+// An explicit admin Merge restores managed pins without making them personal.
+func MergeAdminSavedFilters(env M, raw any) {
+	selected, ok := pinnedStrings(raw)
+	excluded, exists := pinnedStrings(env["liveTvSavedFilterExclusions"])
+	if !ok || !exists {
+		return
+	}
+	env["liveTvSavedFilterExclusions"] = slices.DeleteFunc(excluded, func(pin any) bool {
+		return slices.Contains(selected, pin)
+	})
+}
+
+// AdminSavedFilters includes only global defaults; device pin lists are ignored.
+func AdminSavedFilters(global M) []any {
+	list, _ := pinnedStrings(global["liveTvSavedFilters"])
+	pins := []any{}
+	for _, pin := range list {
+		if !slices.Contains(pins, pin) {
+			pins = append(pins, pin)
+		}
+	}
+	return pins
+}
+
+// EffectiveSavedFilters resolves current admin defaults and each user's customizations.
+func EffectiveSavedFilters(env M, defaults any) []any {
+	managed, _ := pinnedStrings(defaults)
+	excluded, _ := pinnedStrings(env["liveTvSavedFilterExclusions"])
+	personal := savedGlobalFilters(env)
+	pins := make([]any, 0, len(managed)+len(personal))
+	for _, pin := range managed {
+		if !slices.Contains(excluded, pin) && !slices.Contains(pins, pin) {
+			pins = append(pins, pin)
+		}
+	}
+	for _, pin := range personal {
+		if !slices.Contains(pins, pin) {
+			pins = append(pins, pin)
+		}
+	}
+	return pins
+}
+
 // Full-profile updates never change the canonical list.
 func preserveSavedFilters(env M, stored []any) {
 	global, _ := env["global"].(M)
@@ -252,53 +300,48 @@ func preserveSavedFilters(env M, stored []any) {
 
 // The API invokes this under its per-user settings lock.
 func applySavedFilterChange(env M, change SavedFilterChange) {
-	current := savedGlobalFilters(env)
-	if change.Action == "initializeIfAbsent" && current != nil {
+	personal := savedGlobalFilters(env)
+	if change.Action == "initializeIfAbsent" && personal != nil {
 		return
 	}
-	if current == nil {
-		current = []any{}
+	if personal == nil {
+		personal = []any{}
+	}
+	excluded, ok := pinnedStrings(env["liveTvSavedFilterExclusions"])
+	if !ok {
+		excluded = []any{}
 	}
 	switch change.Action {
 	case "initializeIfAbsent":
-		for _, key := range change.Filters {
-			present := false
-			for _, old := range current {
-				if old == key {
-					present = true
-					break
-				}
+		for _, pin := range change.Filters {
+			if !slices.Contains(personal, any(pin)) {
+				personal = append(personal, pin)
 			}
-			if !present {
-				current = append(current, key)
+		}
+		// Existing local pins win on import, not over future new admin defaults.
+		for _, pin := range change.Defaults {
+			if !slices.Contains(personal, pin) && !slices.Contains(excluded, pin) {
+				excluded = append(excluded, pin)
 			}
 		}
 	case "add":
-		present := false
-		for _, old := range current {
-			if old == change.Filter {
-				present = true
-				break
-			}
+		if !slices.Contains(personal, any(change.Filter)) {
+			personal = append(personal, change.Filter)
 		}
-		if !present {
-			current = append(current, change.Filter)
-		}
+		excluded = slices.DeleteFunc(excluded, func(pin any) bool { return pin == change.Filter })
 	case "remove":
-		remaining := make([]any, 0, len(current))
-		for _, key := range current {
-			if key != change.Filter {
-				remaining = append(remaining, key)
-			}
+		personal = slices.DeleteFunc(personal, func(pin any) bool { return pin == change.Filter })
+		if !slices.Contains(excluded, any(change.Filter)) {
+			excluded = append(excluded, change.Filter)
 		}
-		current = remaining
 	}
 	global, ok := env["global"].(M)
 	if !ok {
 		global = M{}
 		env["global"] = global
 	}
-	global["liveTvSavedFilters"] = current
+	global["liveTvSavedFilters"] = personal
+	env["liveTvSavedFilterExclusions"] = excluded
 }
 
 func mergeProfile(existing, incoming M) {
@@ -393,11 +436,16 @@ func Resolve(env M, name string, defaults M, keys ServerKeys) M {
 	out := M{}
 	for i := len(layers) - 1; i >= 0; i-- {
 		for k, v := range layers[i] {
-			if v == nil || k == "homeSections" || k == "homeRowOrder" || aliases[k] != "" {
+			if v == nil || k == "homeSections" || k == "homeRowOrder" || k == "liveTvSavedFilters" || aliases[k] != "" {
 				continue
 			}
 			out[k] = v
 		}
+	}
+
+	// Keep the old omitted-field response for profiles with no pins at all.
+	if defaults["liveTvSavedFilters"] != nil || savedGlobalFilters(env) != nil || env["liveTvSavedFilterExclusions"] != nil {
+		out["liveTvSavedFilters"] = EffectiveSavedFilters(env, defaults["liveTvSavedFilters"])
 	}
 
 	// The home layout comes whole from the first layer that has one.

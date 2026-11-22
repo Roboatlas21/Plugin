@@ -238,7 +238,7 @@ namespace Emby.Plugins.Moonfin.Api
                 savedFilterChange: body.LiveTvSavedFilterChange).ConfigureAwait(false);
             var pins = body.LiveTvSavedFilterChange == null
                 ? null
-                : (await Settings.GetUserSettingsAsync(userId.Value).ConfigureAwait(false))?.Global?.LiveTvSavedFilters ?? new List<string>();
+                : (await Settings.GetResolvedProfileAsync(userId.Value, "global").ConfigureAwait(false))?.LiveTvSavedFilters ?? new List<string>();
             return Json(new { Success = true, Created = !existed, UserId = userId.Value, LiveTvSavedFilters = pins });
         }
 

@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moonfin.Calendar;
+using Moonfin.LiveTv;
 using Moonfin.Server.Helpers;
 using Moonfin.Server.Models;
 using Moonfin.Server.Services;
@@ -1032,7 +1033,7 @@ public class MoonfinController : ControllerBase
             savedFilterChange: request.LiveTvSavedFilterChange);
         var updatedPins = request.LiveTvSavedFilterChange == null
             ? null
-            : (await _settingsService.GetUserSettingsAsync(userId.Value))?.Global?.LiveTvSavedFilters ?? new List<string>();
+            : (await _settingsService.GetResolvedProfileAsync(userId.Value, "global"))?.LiveTvSavedFilters ?? new List<string>();
 
         return Ok(new MoonfinSaveResponse
         {

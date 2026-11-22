@@ -119,6 +119,48 @@ public sealed class ProfileDefaultsTests : IDisposable
     }
 
     [Fact]
+    public void LiveTvGuideCategoriesSyncAndInheritAdminDefaults()
+    {
+        var profile = new MoonfinSettingsProfile { LiveTvCategoryDisplay = "groups" };
+        var json = JsonSerializer.Serialize(profile);
+        Assert.Contains("\"liveTvCategoryDisplay\":\"groups\"", json);
+        Assert.Equal("groups", JsonSerializer.Deserialize<MoonfinSettingsProfile>(json)!.LiveTvCategoryDisplay);
+
+        var config = new PluginConfiguration
+        {
+            DefaultUserSettings = new MoonfinSettingsProfile { LiveTvCategoryDisplay = "groups" },
+            DefaultDeviceSettings = new MoonfinDeviceDefaults
+            {
+                Tv = new MoonfinSettingsProfile { LiveTvCategoryDisplay = "programmes" },
+            },
+        };
+        var serializer = new XmlSerializer(typeof(PluginConfiguration));
+        using var stream = new MemoryStream();
+        serializer.Serialize(stream, config);
+        stream.Position = 0;
+        var restored = (PluginConfiguration)serializer.Deserialize(stream)!;
+
+        var user = new MoonfinUserSettings();
+        Assert.Equal("groups", _service.ResolveProfile(user, "desktop", restored).LiveTvCategoryDisplay);
+        Assert.Equal("programmes", _service.ResolveProfile(user, "tv", restored).LiveTvCategoryDisplay);
+        Assert.Equal("groups", MoonfinSettingsService.AdminDefaultsFor("mobile", restored)!.LiveTvCategoryDisplay);
+        Assert.Equal("programmes", MoonfinSettingsService.AdminDefaultsFor("tv", restored)!.LiveTvCategoryDisplay);
+
+        user.Global = new MoonfinSettingsProfile { LiveTvCategoryDisplay = "both" };
+        Assert.Equal("both", _service.ResolveProfile(user, "tv", restored).LiveTvCategoryDisplay);
+    }
+
+    [Fact]
+    public async Task LiveTvGuideCategoriesRetainSavedDeviceOverrides()
+    {
+        var userId = await SeedAsync("global", new MoonfinSettingsProfile { LiveTvCategoryDisplay = "groups" });
+        await SeedAsync("tv", new MoonfinSettingsProfile { LiveTvCategoryDisplay = "programmes" }, userId);
+        var saved = Read(userId);
+        Assert.Equal("groups", _service.ResolveProfile(saved, "desktop").LiveTvCategoryDisplay);
+        Assert.Equal("programmes", _service.ResolveProfile(saved, "tv").LiveTvCategoryDisplay);
+    }
+
+    [Fact]
     public async Task GlobalDefaultsSkipWhatTheDeviceDefaultsSetInThatDevicesProfile()
     {
         var alice = await SeedAsync("tv", new MoonfinSettingsProfile { ClockBehavior = "inMenus", Use24HourClock = false });

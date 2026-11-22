@@ -306,6 +306,42 @@ func TestDeviceDefaults(t *testing.T) {
 	}
 }
 
+func TestLiveTvCategoryDisplaySettingsAndDefaults(t *testing.T) {
+	s := newTestServer()
+	saveConfig(t, s, map[string]any{
+		"DefaultUserSettings": map[string]any{"liveTvCategoryDisplay": "groups"},
+		"DefaultDeviceSettings": map[string]any{
+			"tv": map[string]any{"liveTvCategoryDisplay": "programmes"},
+		},
+	})
+
+	resolved := func(profile string) map[string]any {
+		t.Helper()
+		code, value := call(t, s, userMain, "GET", "/Moonfin/Settings/Resolved/"+profile, "", nil)
+		if code != 200 {
+			t.Fatalf("resolved %s = %d", profile, code)
+		}
+		return value
+	}
+	if got := resolved("mobile")["liveTvCategoryDisplay"]; got != "groups" {
+		t.Fatalf("mobile should inherit the global admin default, got %v", got)
+	}
+	if got := resolved("tv")["liveTvCategoryDisplay"]; got != "programmes" {
+		t.Fatalf("TV should inherit the device admin default, got %v", got)
+	}
+
+	if code, _ := call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv",
+		`{"profile":{"liveTvCategoryDisplay":"both"}}`, nil); code != 200 {
+		t.Fatalf("saving user's TV setting = %d", code)
+	}
+	if got := resolved("tv")["liveTvCategoryDisplay"]; got != "both" {
+		t.Fatalf("user override must win over the admin default, got %v", got)
+	}
+	if got := resolved("mobile")["liveTvCategoryDisplay"]; got != "groups" {
+		t.Fatalf("the user's TV override must not change mobile, got %v", got)
+	}
+}
+
 func TestWatchPartySubtitlesBelongToTheirHost(t *testing.T) {
 	s := newTestServer()
 	const path = "/Moonfin/WatchParty/31366623-4606-488f-b5c0-c837c80d0227"
@@ -608,6 +644,7 @@ func TestAdminPageServesTheJellyfinPage(t *testing.T) {
 	s := newTestServer()
 	page := string(readAll(t, serve(context.Background(), s, adminMain, "GET", "/admin", "", nil)))
 	for _, want := range []string{`<script src="admin-assets/host.js?v=1.2.3">`, `id="MoonfinConfigPage"`, "MoonfinConfig.pluginUniqueId",
+		`id="DefaultLiveTvCategoryDisplay"`,
 		`window.moonbaseHost = {"name":"Silo"};`, `href="/admin/plugins" title="Back to Silo"`, "Moonbase 1.2.3 for Silo"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("page is missing %q", want)

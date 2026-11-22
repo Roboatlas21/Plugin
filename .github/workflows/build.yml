@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [master]
+    branches: [master, ci/moonbase-experiment-v2-checks-20261121]
   pull_request:
     branches: [master]
 

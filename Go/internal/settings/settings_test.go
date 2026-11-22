@@ -157,3 +157,57 @@ func TestCleanLeavesNonASCIIKeysAlone(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 }
+
+func TestSavedLiveTvFiltersAtomicEditsAndStaleUploads(t *testing.T) {
+	keys := ServerKeys{}
+	env := SaveProfile(nil, "tv", M{}, "tv", keys, now, SavedFilterChange{
+		Action: "initializeIfAbsent", Filters: []string{"group:US | SPORTS, Canada"},
+	})
+	env = SaveProfile(env, "mobile", M{"liveTvSavedFilters": []any{}, "cinemaModeEnabled": true}, "mobile", keys, now)
+	if got := StoredSavedFilters(env); !reflect.DeepEqual(got, []any{"group:US | SPORTS, Canada"}) {
+		t.Fatalf("stale mobile upload overwrote pins: %v", got)
+	}
+	env = SaveProfile(env, "tv", M{}, "tv", keys, now, SavedFilterChange{Action: "add", Filter: "group:News"})
+	env = SaveProfile(env, "mobile", M{}, "mobile", keys, now, SavedFilterChange{Action: "add", Filter: "group:Kids"})
+	if got := Resolve(env, "tv", nil, keys)["liveTvSavedFilters"]; !reflect.DeepEqual(got, []any{"group:US | SPORTS, Canada", "group:News", "group:Kids"}) {
+		t.Fatalf("different pin operations lost: %v", got)
+	}
+	env = SaveProfile(env, "tv", M{}, "tv", keys, now, SavedFilterChange{Action: "remove", Filter: "group:News"})
+	if got := StoredSavedFilters(env); !reflect.DeepEqual(got, []any{"group:US | SPORTS, Canada", "group:Kids"}) {
+		t.Fatalf("remove changed unrelated pins: %v", got)
+	}
+}
+
+func TestSavedLiveTvFiltersOneTimeImportAndExplicitEmpty(t *testing.T) {
+	keys := ServerKeys{}
+	env := SaveProfile(nil, "tv", M{}, "tv", keys, now, SavedFilterChange{Action: "initializeIfAbsent", Filters: []string{"group:Sports"}})
+	env = SaveProfile(env, "mobile", M{}, "mobile", keys, now, SavedFilterChange{Action: "initializeIfAbsent", Filters: []string{"group:News"}})
+	if got := StoredSavedFilters(env); !reflect.DeepEqual(got, []any{"group:Sports"}) {
+		t.Fatalf("second import erased pins: %v", got)
+	}
+	env = SaveEnvelope(env, decode(t, `{"global":{"liveTvSavedFilters":[]},"tv":{"liveTvSavedFilters":["group:News"]}}`), "replace", "tv", keys, now)
+	env = ReplaceProfile(env, "global", M{"cinemaModeEnabled": true}, "global", keys, now)
+	if got := StoredSavedFilters(env); !reflect.DeepEqual(got, []any{"group:Sports"}) {
+		t.Fatalf("full replace erased pins: %v", got)
+	}
+	env = SaveProfile(env, "tv", M{}, "tv", keys, now, SavedFilterChange{Action: "remove", Filter: "group:Sports"})
+	env = SaveProfile(env, "mobile", M{}, "mobile", keys, now, SavedFilterChange{Action: "initializeIfAbsent", Filters: []string{"group:News"}})
+	if got := StoredSavedFilters(env); !reflect.DeepEqual(got, []any{}) {
+		t.Fatalf("empty pins were reinitialized: %v", got)
+	}
+}
+
+func TestParseSavedFilterChange(t *testing.T) {
+	if _, ok := ParseSavedFilterChange(M{"action": "add", "filter": "group:News, English"}); !ok {
+		t.Fatal("valid filter rejected")
+	}
+	if _, ok := ParseSavedFilterChange(M{"action": "remove", "filter": "group:"}); ok {
+		t.Fatal("empty group accepted")
+	}
+	if _, ok := ParseSavedFilterChange(M{"action": "initializeIfAbsent", "filters": []any{"category:sports"}}); !ok {
+		t.Fatal("valid init rejected")
+	}
+	if _, ok := ParseSavedFilterChange(M{"action": "initializeIfAbsent", "filters": []any{42}}); ok {
+		t.Fatal("bad list accepted")
+	}
+}

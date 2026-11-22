@@ -350,9 +350,11 @@ namespace Emby.Plugins.Moonfin.Services
                 string? beforeComparisonJson = null;
                 string? storedHiddenContinueWatching = null;
                 string? storedHiddenNextUp = null;
+                var existingSettingsForPins = await Task.Run(() => ReadSettingsWithRecovery(filePath)).ConfigureAwait(false);
+                var storedSavedFilters = existingSettingsForPins?.Global?.LiveTvSavedFilters?.ToList();
                 if (mergeMode == "merge")
                 {
-                    var existingSettings = await Task.Run(() => ReadSettingsWithRecovery(filePath)).ConfigureAwait(false);
+                    var existingSettings = existingSettingsForPins;
                     if (existingSettings != null && existingSettings.NeedsMigration)
                         existingSettings = MigrateV1ToV2(existingSettings);
                     beforeComparisonJson = SerializeForComparison(existingSettings ?? new MoonfinUserSettings());
@@ -370,6 +372,7 @@ namespace Emby.Plugins.Moonfin.Services
                 finalSettings.LastUpdatedBy = clientId ?? "unknown";
                 finalSettings.SchemaVersion = 2;
 
+                PreserveSavedFilters(finalSettings, storedSavedFilters);
                 MoveContentHidingToGlobal(finalSettings, storedHiddenContinueWatching, storedHiddenNextUp);
 
                 settingsChanged = SettingsDiffer(beforeComparisonJson, finalSettings);
@@ -388,7 +391,7 @@ namespace Emby.Plugins.Moonfin.Services
             if (settingsChanged) NotifySettingsChanged(userId);
         }
 
-        public async Task SaveProfileAsync(Guid userId, string profileName, MoonfinSettingsProfile profile, string? clientId = null, bool notifySettingsChanged = true, bool replace = false)
+        public async Task SaveProfileAsync(Guid userId, string profileName, MoonfinSettingsProfile profile, string? clientId = null, bool notifySettingsChanged = true, bool replace = false, LiveTvSavedFilterChange? savedFilterChange = null)
         {
             var filePath = GetUserSettingsPath(userId);
             bool settingsChanged;
@@ -397,6 +400,9 @@ namespace Emby.Plugins.Moonfin.Services
             {
                 var settings = await Task.Run(() => ReadSettingsWithRecovery(filePath)).ConfigureAwait(false)
                     ?? new MoonfinUserSettings();
+                var storedSavedFilters = settings.Global?.LiveTvSavedFilters?.ToList();
+                // Full-profile saves must not mutate the shared shortcut list.
+                profile.LiveTvSavedFilters = null;
                 if (settings.NeedsMigration) settings = MigrateV1ToV2(settings);
 
                 var beforeComparisonJson = SerializeForComparison(settings);
@@ -421,6 +427,8 @@ namespace Emby.Plugins.Moonfin.Services
                 else
                     settings.SetProfile(profileName, profile);
 
+                PreserveSavedFilters(settings, storedSavedFilters);
+                ApplySavedFilterChange(settings, savedFilterChange);
                 StripServerWideKeys(settings);
                 settings.LastUpdated = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 settings.LastUpdatedBy = clientId ?? "unknown";
@@ -1032,6 +1040,43 @@ namespace Emby.Plugins.Moonfin.Services
             ("mobile", s => s.Mobile),
             ("tv", s => s.Tv),
         };
+
+        /// <summary>Do not let ordinary full-profile writes change shared pins.</summary>
+        private static void PreserveSavedFilters(MoonfinUserSettings settings, List<string>? stored)
+        {
+            if (stored != null) settings.Global ??= new MoonfinSettingsProfile();
+            if (settings.Global != null)
+                settings.Global.LiveTvSavedFilters = stored == null ? null : new List<string>(stored);
+            if (settings.Tv != null) settings.Tv.LiveTvSavedFilters = null;
+            if (settings.Mobile != null) settings.Mobile.LiveTvSavedFilters = null;
+            if (settings.Desktop != null) settings.Desktop.LiveTvSavedFilters = null;
+        }
+
+        /// <summary>Apply a pin operation while holding the settings-file lock.</summary>
+        private static void ApplySavedFilterChange(MoonfinUserSettings settings, LiveTvSavedFilterChange? change)
+        {
+            if (change == null) return;
+            if (!change.IsValid()) throw new ArgumentException("Invalid saved guide filter change", nameof(change));
+            var current = settings.Global?.LiveTvSavedFilters;
+            if (change.Action == "initializeIfAbsent")
+            {
+                if (current != null) return;
+                current = new List<string>();
+                foreach (var value in change.Filters!)
+                    if (!current.Contains(value)) current.Add(value);
+            }
+            else
+            {
+                current ??= new List<string>();
+                if (change.Action == "add")
+                {
+                    if (!current.Contains(change.Filter!)) current.Add(change.Filter!);
+                }
+                else current.RemoveAll(value => string.Equals(value, change.Filter, StringComparison.Ordinal));
+            }
+            settings.Global ??= new MoonfinSettingsProfile();
+            settings.Global.LiveTvSavedFilters = current;
+        }
 
         /// <summary>
         /// Content hiding is a global preference, so each profile's hidden lists get lifted into

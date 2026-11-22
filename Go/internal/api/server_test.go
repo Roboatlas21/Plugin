@@ -306,6 +306,29 @@ func TestDeviceDefaults(t *testing.T) {
 	}
 }
 
+func TestSavedLiveTvFiltersUseExistingProfileEndpoint(t *testing.T) {
+	s := newTestServer()
+	for _, body := range []string{
+		`{"profile":{},"liveTvSavedFilterChange":{"action":"initializeIfAbsent","filters":["group:Sports"]}}`,
+		`{"profile":{},"liveTvSavedFilterChange":{"action":"add","filter":"group:News"}}`,
+	} {
+		code, value := call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv", body, nil)
+		if code != 200 || value["liveTvSavedFilters"] == nil {
+			t.Fatalf("atomic POST: %d %v", code, value)
+		}
+	}
+	call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/mobile", `{"profile":{"liveTvSavedFilters":[],"cinemaModeEnabled":true}}`, nil)
+	code, value := call(t, s, userMain, "GET", "/Moonfin/Settings/Resolved/mobile", "", nil)
+	if code != 200 || !reflect.DeepEqual(value["liveTvSavedFilters"], []any{"group:Sports", "group:News"}) {
+		t.Fatalf("stale update changed shared pins: %d %v", code, value["liveTvSavedFilters"])
+	}
+	code, _ = call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv",
+		`{"profile":{},"liveTvSavedFilterChange":{"action":"remove","filter":"group:"}}`, nil)
+	if code != 400 {
+		t.Fatalf("invalid filter status: %d", code)
+	}
+}
+
 func TestLiveTvCategoryDisplaySettingsAndDefaults(t *testing.T) {
 	s := newTestServer()
 	saveConfig(t, s, map[string]any{

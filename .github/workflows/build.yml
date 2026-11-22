@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [master]
+    branches: [master, ci/moonbase-experiment-v4-review-fixes-20261122]
   pull_request:
     branches: [master]
 

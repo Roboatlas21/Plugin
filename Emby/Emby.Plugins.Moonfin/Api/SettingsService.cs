@@ -215,7 +215,7 @@ namespace Emby.Plugins.Moonfin.Api
             {
                 var adminDefaults = Settings.AdminDefaultsFor(profile);
                 if (adminDefaults != null) return Json(adminDefaults);
-                return Json(404, new { Error = "No settings found" });
+                return Json(404, new { Error = "No settings found", liveTvSavedFilters = Array.Empty<string>() });
             }
 
             // A pull is the only place a client learns about hides made elsewhere, so this is

@@ -380,6 +380,11 @@ func (s *Server) handleResolved(w http.ResponseWriter, r *http.Request) {
 		storageFailed(w, r, err)
 		return
 	}
+	// A pin-aware client must be able to remove a stale cached shortcut after
+	// a reset, even when the user no longer has a settings envelope.
+	if r.URL.Query().Get("includeLiveTvSavedFilters") == "true" && resolved["liveTvSavedFilters"] == nil {
+		resolved["liveTvSavedFilters"] = []any{}
+	}
 	writeJSON(w, http.StatusOK, resolved)
 }
 

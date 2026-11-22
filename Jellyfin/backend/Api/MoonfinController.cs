@@ -751,7 +751,7 @@ public class MoonfinController : ControllerBase
         if (resolved == null)
         {
             var adminDefaults = _settingsService.AdminDefaultsFor(profile);
-            return adminDefaults != null ? Ok(adminDefaults) : NotFound(new { Error = "No settings found" });
+            return adminDefaults != null ? Ok(adminDefaults) : NotFound(new { Error = "No settings found", liveTvSavedFilters = Array.Empty<string>() });
         }
 
         // A pull is the only place a client learns about hides made elsewhere, so this is where

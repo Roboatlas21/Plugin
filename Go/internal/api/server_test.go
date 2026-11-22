@@ -386,6 +386,31 @@ func TestOptionalGuidePinsDoNotChangeOrdinaryProfileUpdates(t *testing.T) {
 	}
 }
 
+func TestResolvedPinsAfterResetAndExactCopy(t *testing.T) {
+	s := newTestServer()
+	const write = "/Moonfin/Settings/Profile/global"
+	const read = "/Moonfin/Settings/Resolved/tv"
+	const add = `{"profile":{},"liveTvSavedFilterChange":{"action":"add","filter":"group:News"}}`
+	query := M{"includeLiveTvSavedFilters": true}
+	check := func(want []any) {
+		t.Helper()
+		if code, got := call(t, s, other, "GET", read, "", query); code != 200 || !reflect.DeepEqual(got["liveTvSavedFilters"], want) {
+			t.Fatalf("resolved pins = %v (%d), want %v", got, code, want)
+		}
+	}
+	call(t, s, other, "POST", write, add, nil)
+	check([]any{"group:News"})
+	call(t, s, other, "DELETE", "/Moonfin/Settings", "", nil)
+	check([]any{})
+	call(t, s, other, "POST", write, add, nil)
+	call(t, s, adminMain, "POST", write, `{"profile":{"theme":"dark"}}`, nil)
+	if code, got := call(t, s, adminMain, "POST", "/Moonfin/Admin/CopySettings",
+		`{"fromUserId":"2~20","toUserIds":["4"],"profiles":["global"],"replace":true}`, nil); code != 200 || got["usersAffected"] != 1.0 {
+		t.Fatalf("exact copy = %d %v", code, got)
+	}
+	check([]any{})
+}
+
 func TestWatchPartySubtitlesBelongToTheirHost(t *testing.T) {
 	s := newTestServer()
 	const path = "/Moonfin/WatchParty/31366623-4606-488f-b5c0-c837c80d0227"

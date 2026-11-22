@@ -163,7 +163,8 @@ type SavedFilterChange struct {
 	Defaults []any // Inherited admin pins for a first explicit add/remove.
 }
 
-func validSavedFilter(key string) bool {
+// ValidSavedFilter accepts the same keys for admin defaults and user edits.
+func ValidSavedFilter(key string) bool {
 	return len(key) <= 1024 && ((strings.HasPrefix(key, "group:") && len(key) > 6) ||
 		(strings.HasPrefix(key, "category:") && len(key) > 9))
 }
@@ -177,7 +178,7 @@ func ParseSavedFilterChange(raw any) (SavedFilterChange, bool) {
 	switch action {
 	case "add", "remove":
 		key, _ := obj["filter"].(string)
-		if !validSavedFilter(key) {
+		if !ValidSavedFilter(key) {
 			return SavedFilterChange{}, false
 		}
 		return SavedFilterChange{Action: action, Filter: key}, true
@@ -189,7 +190,7 @@ func ParseSavedFilterChange(raw any) (SavedFilterChange, bool) {
 		filters := make([]string, 0, len(rawFilters))
 		for _, item := range rawFilters {
 			key, ok := item.(string)
-			if !ok || !validSavedFilter(key) {
+			if !ok || !ValidSavedFilter(key) {
 				return SavedFilterChange{}, false
 			}
 			filters = append(filters, key)
@@ -248,12 +249,12 @@ func MergeAdminSavedFilters(env M, raw any) {
 	})
 }
 
-// AdminSavedFilters includes only global defaults; device pin lists are ignored.
-func AdminSavedFilters(global M) []any {
-	list, _ := pinnedStrings(global["liveTvSavedFilters"])
+// AdminSavedFilters removes invalid or repeated keys from the global defaults.
+func AdminSavedFilters(raw any) []any {
+	list, _ := pinnedStrings(raw)
 	pins := []any{}
 	for _, pin := range list {
-		if !slices.Contains(pins, pin) {
+		if ValidSavedFilter(pin.(string)) && !slices.Contains(pins, pin) {
 			pins = append(pins, pin)
 		}
 	}
@@ -262,15 +263,10 @@ func AdminSavedFilters(global M) []any {
 
 // EffectiveSavedFilters resolves current admin defaults and each user's customizations.
 func EffectiveSavedFilters(env M, defaults any) []any {
-	managed, _ := pinnedStrings(defaults)
+	pins := AdminSavedFilters(defaults)
 	excluded, _ := pinnedStrings(env["liveTvSavedFilterExclusions"])
+	pins = slices.DeleteFunc(pins, func(pin any) bool { return slices.Contains(excluded, pin) })
 	personal := savedGlobalFilters(env)
-	pins := make([]any, 0, len(managed)+len(personal))
-	for _, pin := range managed {
-		if !slices.Contains(excluded, pin) && !slices.Contains(pins, pin) {
-			pins = append(pins, pin)
-		}
-	}
 	for _, pin := range personal {
 		if !slices.Contains(pins, pin) {
 			pins = append(pins, pin)

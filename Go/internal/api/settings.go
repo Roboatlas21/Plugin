@@ -263,7 +263,7 @@ func (s *Server) handlePostProfile(w http.ResponseWriter, r *http.Request) {
 		}
 		// Defaults are only used if this user has never customized the pins.
 		cfg := s.config(r.Context())
-		change.Defaults = settings.AdminSavedFilters(cfg.Defaults)
+		change.Defaults = settings.AdminSavedFilters(cfg.Defaults["liveTvSavedFilters"])
 		extra := M{}
 		s.save(w, r, func(env M) M {
 			updated := settings.SaveProfile(env, name, cleaned, clientID, serverKeys(s.config(r.Context())), time.Now(), change)

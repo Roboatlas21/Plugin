@@ -173,7 +173,7 @@ func TestGuidePinsKeepAtomicEditsAcrossFullUploads(t *testing.T) {
 }
 
 func TestGuidePinsImportDefaultsAndExplicitClear(t *testing.T) {
-	defaults := AdminSavedFilters(M{"liveTvSavedFilters": []any{"group:Sports", "group:Sports"}})
+	defaults := AdminSavedFilters([]any{"group:Sports", "invalid", "group:Sports"})
 	if !reflect.DeepEqual(defaults, []any{"group:Sports"}) {
 		t.Fatalf("duplicate defaults: %v", defaults)
 	}

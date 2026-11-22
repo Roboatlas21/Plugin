@@ -411,6 +411,22 @@ func TestResolvedPinsAfterResetAndExactCopy(t *testing.T) {
 	check([]any{})
 }
 
+func TestAdminGuidePinsUseTheUserEditLimit(t *testing.T) {
+	s := newTestServer()
+	pin := "group:" + strings.Repeat("é", 509) // Exactly 1,024 bytes.
+	saveConfig(t, s, M{"DefaultUserSettings": M{"liveTvSavedFilters": []any{pin}}})
+	tooLong := pin + "é"
+	body, _ := json.Marshal(M{"DefaultUserSettings": M{"liveTvSavedFilters": []any{tooLong}}})
+	code, got := call(t, s, adminMain, "POST", "/Moonfin/Admin/Configuration", string(body), nil)
+	if code != 400 || !strings.Contains(fmt.Sprint(got["Error"]), tooLong) {
+		t.Fatalf("invalid pin response = %d %v", code, got)
+	}
+	_, resolved := call(t, s, other, "GET", "/Moonfin/Settings/Resolved/tv", "", nil)
+	if !reflect.DeepEqual(resolved["liveTvSavedFilters"], []any{pin}) {
+		t.Fatalf("rejected save changed admin pins: %v", resolved)
+	}
+}
+
 func TestWatchPartySubtitlesBelongToTheirHost(t *testing.T) {
 	s := newTestServer()
 	const path = "/Moonfin/WatchParty/31366623-4606-488f-b5c0-c837c80d0227"

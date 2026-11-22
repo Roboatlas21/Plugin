@@ -197,13 +197,14 @@
             readLogUploadField(config);
             return send('POST', getUrl('Moonfin/Admin/Configuration'), JSON.stringify(config), 'application/json').then(function () {
                 clearDraft();
-            }, function (error) {
+            }, async function (error) {
                 Dashboard.hideLoadingMsg();
                 var status = error && error.status;
                 if (status === 401) {
                     saveDraft(config);
                 } else {
-                    toast(hostName + ' didn’t save the settings' + (status ? ' (status ' + status + ').' : '.'));
+                    var detail = status === 400 ? await error.json().catch(function () { return null; }) : null;
+                    toast((detail && detail.Error) || hostName + ' didn’t save the settings' + (status ? ' (status ' + status + ').' : '.'));
                 }
                 throw new Error('Saving the Moonbase settings failed' + (status ? ' with status ' + status : ''));
             });

@@ -448,6 +448,28 @@ func TestAdminGuidePinsUseTheUserEditLimit(t *testing.T) {
 	}
 }
 
+func TestAdminCanKeepOrRemoveALegacyGuidePin(t *testing.T) {
+	s := newTestServer()
+	pin := "group:" + strings.Repeat("x", 1024)
+	cfg := M{"DefaultUserSettings": M{"liveTvSavedFilters": []any{pin}}}
+	if err := s.saveJSON(t.Context(), keyConfig, cfg); err != nil {
+		t.Fatal(err)
+	}
+	cfg["WebDefaultServerUrl"] = "https://example.test"
+	saveConfig(t, s, cfg)
+	_, saved := call(t, s, adminMain, "GET", "/Moonfin/Admin/Configuration", "", nil)
+	if saved["WebDefaultServerUrl"] != cfg["WebDefaultServerUrl"] ||
+		!reflect.DeepEqual(saved["DefaultUserSettings"].(M)["liveTvSavedFilters"], []any{pin}) {
+		t.Fatal("saving an unrelated setting must keep the stored pin")
+	}
+	cfg["DefaultUserSettings"].(M)["liveTvSavedFilters"] = []any{}
+	saveConfig(t, s, cfg)
+	body, _ := json.Marshal(M{"DefaultUserSettings": M{"liveTvSavedFilters": []any{pin}}})
+	if code, _ := call(t, s, adminMain, "POST", "/Moonfin/Admin/Configuration", string(body), nil); code != 400 {
+		t.Fatalf("re-adding the removed pin returned %d", code)
+	}
+}
+
 func TestWatchPartySubtitlesBelongToTheirHost(t *testing.T) {
 	s := newTestServer()
 	const path = "/Moonfin/WatchParty/31366623-4606-488f-b5c0-c837c80d0227"

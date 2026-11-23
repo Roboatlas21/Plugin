@@ -2951,7 +2951,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
         function checkbox(key, label) {
             var tooLong = key.length > 1024;
             var selected = current && current.has(key) ? current.get(key) : saved.includes(key);
-            var state = tooLong ? ' disabled' : selected ? ' checked' : '';
+            var state = tooLong && !saved.includes(key) ? ' disabled' : selected ? ' checked' : '';
             return '<label style="display:flex;align-items:center;gap:8px;padding:5px 3px;">' +
                 '<input type="checkbox" data-guide-filter="' + esc(key) + '"' + state + '><span>' +
                 esc(label) + (tooLong ? ' (too long to pin)' : '') + '</span></label>';
@@ -3755,8 +3755,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
         d.liveTvChannelSortBy = view.querySelector('#DefaultLiveTvChannelSortBy').value || null;
         d.liveTvCategoryDisplay = view.querySelector('#DefaultLiveTvCategoryDisplay').value || null;
         if (defaultsState.active === 'global') {
-            var inputs = Array.from(view.querySelectorAll('#DefaultPinnedGuideGroups input[data-guide-filter]'))
-                .filter(function(input) { return !input.disabled; });
+            var inputs = Array.from(view.querySelectorAll('#DefaultPinnedGuideGroups input[data-guide-filter]'));
             var visiblePins = inputs.map(function(input) { return input.getAttribute('data-guide-filter'); });
             var selectedPins = inputs.filter(function(input) { return input.checked; })
                 .map(function(input) { return input.getAttribute('data-guide-filter'); });

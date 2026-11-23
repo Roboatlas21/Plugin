@@ -153,6 +153,14 @@ func (s *Server) handlePostConfiguration(w http.ResponseWriter, r *http.Request)
 	for _, k := range derivedConfigKeys {
 		delete(body, k)
 	}
+	ctx := r.Context()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	saved, err := s.loadPageConfig(ctx)
+	if err != nil {
+		storageFailed(w, r, err)
+		return
+	}
 	if d, ok := body["DefaultUserSettings"].(M); ok {
 		defaults := settings.Clean(d)
 		if raw := defaults["liveTvSavedFilters"]; raw != nil {
@@ -161,8 +169,21 @@ func (s *Server) handlePostConfiguration(w http.ResponseWriter, r *http.Request)
 				writeError(w, http.StatusBadRequest, "Expected a list of saved Live TV filters")
 				return
 			}
+			// Existing legacy pins may be retained or removed on a page save.
+			oldDefaults, _ := saved["DefaultUserSettings"].(M)
+			oldPins, _ := settings.Clean(oldDefaults)["liveTvSavedFilters"].([]any)
+			legacy := map[string]int{}
+			for _, pin := range oldPins {
+				if key, ok := pin.(string); ok && !settings.ValidSavedFilter(key) {
+					legacy[key]++
+				}
+			}
 			for _, pin := range pins {
 				key, ok := pin.(string)
+				if ok && legacy[key] > 0 {
+					legacy[key]--
+					continue
+				}
 				if !ok || !settings.ValidSavedFilter(key) {
 					writeError(w, http.StatusBadRequest, fmt.Sprintf("Invalid guide shortcut %q. Use a group or category key of up to 1,024 bytes.", key))
 					return
@@ -179,14 +200,6 @@ func (s *Server) handlePostConfiguration(w http.ResponseWriter, r *http.Request)
 			}
 		}
 		body["DefaultDeviceSettings"] = devices
-	}
-	ctx := r.Context()
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	saved, err := s.loadPageConfig(ctx)
-	if err != nil {
-		storageFailed(w, r, err)
-		return
 	}
 	for _, k := range secretConfigKeys {
 		if body[k] == secretMask {

@@ -4,6 +4,7 @@
 package plex
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"crypto/rand"
@@ -21,6 +22,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -124,7 +126,9 @@ func (c *Companion) LiveTvFreeGroups(ctx context.Context, token string) ([]strin
 		if status != http.StatusOK {
 			return fmt.Errorf("Plex guide replied %d", status)
 		}
-		return json.Unmarshal(body, target)
+		decoder := json.NewDecoder(bytes.NewReader(body))
+		decoder.UseNumber()
+		return decoder.Decode(target)
 	}
 	var provider struct {
 		MediaProvider struct {
@@ -157,7 +161,9 @@ func (c *Companion) LiveTvFreeGroups(ctx context.Context, token string) ([]strin
 			continue
 		}
 		for _, key := range channel.Keys {
-			used[fmt.Sprint(key)] = true
+			if id := genreKey(key); id != "" {
+				used[id] = true
+			}
 		}
 	}
 	unique := map[string]bool{}
@@ -168,7 +174,7 @@ func (c *Companion) LiveTvFreeGroups(ctx context.Context, token string) ([]strin
 		}
 		for _, group := range feature.GridChannelFilter {
 			name := strings.TrimSpace(group.Title)
-			if name != "" && used[fmt.Sprint(group.Key)] && !unique[name] {
+			if name != "" && used[genreKey(group.Key)] && !unique[name] {
 				unique[name] = true
 				groups = append(groups, name)
 			}
@@ -176,6 +182,22 @@ func (c *Companion) LiveTvFreeGroups(ctx context.Context, token string) ([]strin
 	}
 	sort.Strings(groups)
 	return groups, nil
+}
+
+// Plex can send a genre ID as a string, an integer, or a number such as 7.0.
+func genreKey(key any) string {
+	switch id := key.(type) {
+	case string:
+		return id
+	case json.Number:
+		if !strings.ContainsAny(id.String(), ".eE") {
+			return id.String()
+		}
+		if n, err := id.Float64(); err == nil {
+			return strconv.FormatFloat(n, 'f', -1, 64)
+		}
+	}
+	return ""
 }
 
 // loadOrCreateClientID keeps one X-Plex-Client-Identifier per install, so

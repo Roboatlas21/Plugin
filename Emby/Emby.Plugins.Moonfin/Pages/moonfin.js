@@ -3765,7 +3765,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
                 return typeof key === 'string' && (!visiblePins.includes(key) || selectedPins.includes(key));
             });
             selectedPins.forEach(function(key) { if (!keptPins.includes(key)) keptPins.push(key); });
-            d.liveTvSavedFilters = keptPins.length ? keptPins : null;
+            d.liveTvSavedFilters = keptPins.length || Array.isArray(d.liveTvSavedFilters) ? keptPins : null;
         }
         d.epgMobileView = view.querySelector('#DefaultEpgMobileView').value || null;
         d.mediaBarOverlayColor = view.querySelector('#DefaultMediaBarOverlayColor').value || null;

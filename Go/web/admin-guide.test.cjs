@@ -6,13 +6,17 @@ const vm = require('node:vm');
 const { test } = require('node:test');
 const hostSource = fs.readFileSync(__dirname + '/host.js', 'utf8');
 const page = fs.readFileSync(__dirname + '/configPage.html', 'utf8');
-const start = page.indexOf('var availableDefaultGuideGroups = []');
+const start = page.indexOf('var guideGroups =');
 const end = page.indexOf('// Fills the User defaults form', start);
 assert.ok(start >= 0 && end > start, 'shared guide picker missing');
+const switchStart = page.indexOf('function switchDefaultsProfile(name)');
+const switchEnd = page.indexOf('function userName(id)', switchStart);
+assert.ok(switchStart >= 0 && switchEnd > switchStart, 'profile switch missing');
 
 function picker(host, pins, responses) {
     const calls = [];
     const root = { innerHTML: '', inputs: [], querySelectorAll() { return this.inputs; } };
+    const switcher = { dataset: {}, addEventListener(_, listener) { this.click = listener; } };
     const window = { moonbaseHost: { name: host }, fetch: async url => {
         calls.push(url);
         const groups = responses.shift();
@@ -22,17 +26,48 @@ function picker(host, pins, responses) {
     const context = vm.createContext({
         window, URLSearchParams, TextEncoder, setInterval: () => 1,
         location: { origin: 'https://moonbase.test', pathname: '/admin' },
-        document: { addEventListener() {}, querySelector: () => root },
-        defaultsState: { active: 'global', profiles: { global: { liveTvSavedFilters: pins } } },
+        document: { addEventListener() {}, querySelector(selector) {
+            if (selector === '#DefaultsProfileSwitch') return switcher;
+            if (selector === '#DefaultPinnedGuideGroups') return root;
+            return { addEventListener() {} };
+        } },
+        defaultsState: { active: 'global', profiles: { global: { liveTvSavedFilters: pins }, tv: {} } },
+        collectActiveDefaults() {}, snapshotGlobalLabels() {},
+        ApiClient: { getUrl: path => path, ajax: async () => ({ channels: [{ groups: await responses.shift() }] }) },
         esc: value => String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;'),
     });
-    vm.runInContext(hostSource, context);
-    vm.runInContext(page.slice(start, end), context);
-    return { calls, root, async reload() {
-        vm.runInContext('discoverDefaultGuideGroups()', context);
+    if (host === 'Jellyfin') delete window.moonbaseHost;
+    else vm.runInContext(hostSource, context);
+    function showPage() {
+        return vm.runInContext('(function() {' + page.slice(start, end) +
+            '\nfunction populateDefaults(d) { renderDefaultGuideGroups(d); }\n' +
+            page.slice(switchStart, switchEnd) + '\nreturn discoverDefaultGuideGroups; })()', context);
+    }
+    let discover = showPage();
+    return { calls, root, reopen() { discover = showPage(); }, switchTo(profile) {
+        switcher.click({ target: { closest: () => ({ dataset: { profile } }) } });
+    }, async reload() {
+        discover();
         await new Promise(resolve => setImmediate(resolve));
     }};
 }
+
+test('a retained Jellyfin profile switch uses groups from the latest page visit', async () => {
+    let finishOldRequest;
+    const oldRequest = new Promise(resolve => { finishOldRequest = resolve; });
+    const jellyfin = picker('Jellyfin', [], [oldRequest, ['News', 'Sports']]);
+    await jellyfin.reload();
+    jellyfin.reopen();
+    await jellyfin.reload();
+    assert.equal(checked(jellyfin.root.innerHTML, 'group:Sports'), false);
+    jellyfin.switchTo('tv');
+    jellyfin.switchTo('global');
+    assert.equal(checked(jellyfin.root.innerHTML, 'group:Sports'), false);
+    finishOldRequest(['Old']);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(checked(jellyfin.root.innerHTML, 'group:Sports'), false);
+    assert.doesNotMatch(jellyfin.root.innerHTML, /group:Old/);
+});
 
 function checked(html, key) {
     const tag = (html.match(/<input[^>]*>/g) || []).find(s => s.includes('data-guide-filter="' + key + '"'));

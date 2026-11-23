@@ -11475,10 +11475,11 @@
                 });
 
                 // Use the same group identifiers as the guide's saved shortcuts.
-                var availableDefaultGuideGroups = [];
+                // Profile-switch listeners outlive a page visit. They read the latest discovery.
+                var guideGroups = { names: [], message: 'Loading available groups…' };
+                defaultsState.guideGroups = guideGroups;
                 // The Go hosts count UTF-8 bytes. Jellyfin counts UTF-16 code units.
                 var guideKeyEncoder = window.moonbaseHost ? new TextEncoder() : null;
-                var defaultGuideGroupsMessage = 'Loading available groups…';
                 var defaultGuideCategories = (window.moonbaseHost && window.moonbaseHost.guideCategories) ||
                     [['movies', 'Movies'], ['series', 'Series'], ['sports', 'Sports'],
                      ['news', 'News'], ['kids', 'Kids'], ['premiere', 'Premieres']];
@@ -11498,7 +11499,7 @@
                         ? defaults.liveTvSavedFilters.filter(function(key) { return typeof key === 'string'; })
                         : [];
                     var names = Array.from(new Set(saved.filter(function(key) { return key.startsWith('group:'); })
-                        .map(function(key) { return key.slice(6); }).concat(availableDefaultGuideGroups)));
+                        .map(function(key) { return key.slice(6); }).concat(defaultsState.guideGroups.names)));
                     function checkbox(key, label) {
                         var tooLong = (guideKeyEncoder ? guideKeyEncoder.encode(key).length : key.length) > 1024;
                         var selected = current && current.has(key) ? current.get(key) : saved.includes(key);
@@ -11510,7 +11511,7 @@
                     host.innerHTML = '<div style="font-weight:600;padding:5px 3px;">Program Categories</div>' +
                         defaultGuideCategories.map(function(category) { return checkbox('category:' + category[0], category[1]); }).join('') +
                         '<div style="font-weight:600;padding:8px 3px 5px;">Channel Groups</div>' +
-                        (names.length ? names.map(function(name) { return checkbox('group:' + name, name); }).join('') : defaultGuideGroupsMessage);
+                        (names.length ? names.map(function(name) { return checkbox('group:' + name, name); }).join('') : defaultsState.guideGroups.message);
                 }
 
                 function discoverDefaultGuideGroups() {
@@ -11526,11 +11527,12 @@
                                 return names;
                             });
                     discovery.then(function(names) {
-                        availableDefaultGuideGroups = Array.from(new Set(names)).sort();
-                        defaultGuideGroupsMessage = 'No channel groups available.';
+                        guideGroups.names = Array.from(new Set(names)).sort();
+                        guideGroups.message = 'No channel groups available.';
                     }).catch(function() {
-                        defaultGuideGroupsMessage = 'Could not load groups. Reload to retry.';
+                        guideGroups.message = 'Could not load groups. Reload to retry.';
                     }).finally(function() {
+                        if (defaultsState.guideGroups !== guideGroups) return;
                         renderDefaultGuideGroups(defaultsState.profiles[defaultsState.active] || {}, true);
                     });
                 }

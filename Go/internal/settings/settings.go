@@ -327,7 +327,7 @@ func applySavedFilterChange(env M, change SavedFilterChange) {
 		excluded = slices.DeleteFunc(excluded, func(pin any) bool { return pin == change.Filter })
 	case "remove":
 		personal = slices.DeleteFunc(personal, func(pin any) bool { return pin == change.Filter })
-		if !slices.Contains(excluded, any(change.Filter)) {
+		if slices.Contains(change.Defaults, any(change.Filter)) && !slices.Contains(excluded, any(change.Filter)) {
 			excluded = append(excluded, change.Filter)
 		}
 	}

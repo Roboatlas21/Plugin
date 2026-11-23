@@ -195,3 +195,17 @@ func TestGuidePinsImportDefaultsAndExplicitClear(t *testing.T) {
 		t.Fatalf("empty pins reimported or blocked future defaults: %v", got)
 	}
 }
+
+func TestRemovingGuidePinOnlyExcludesCurrentAdminDefaults(t *testing.T) {
+	const pin = "group:Local"
+	defaults := []any{pin}
+	env := SaveProfile(nil, "tv", M{}, "tv", ServerKeys{}, now, SavedFilterChange{Action: "add", Filter: pin})
+	env = SaveProfile(env, "tv", M{}, "tv", ServerKeys{}, now, SavedFilterChange{Action: "remove", Filter: pin})
+	if got := EffectiveSavedFilters(env, defaults); !reflect.DeepEqual(got, defaults) {
+		t.Fatalf("removing a personal pin hid a later admin default: %v", got)
+	}
+	env = SaveProfile(env, "tv", M{}, "tv", ServerKeys{}, now, SavedFilterChange{Action: "remove", Filter: pin, Defaults: defaults})
+	if got := EffectiveSavedFilters(env, defaults); len(got) != 0 {
+		t.Fatalf("removing an admin pin left it visible: %v", got)
+	}
+}

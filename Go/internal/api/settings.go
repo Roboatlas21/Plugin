@@ -612,11 +612,19 @@ func (s *Server) applyDefaults(w http.ResponseWriter, r *http.Request, req apply
 	}
 	deliveries := 0
 	if s.notify.on {
-		notified := map[int]bool{}
+		savedByUser := map[int]bool{}
 		for i, entry := range entries {
-			if _, saved := writes[keys[i]]; saved && !notified[entry.UserID] {
-				deliveries += s.notifyUser(entry.UserID, M{"type": "settingsUpdated"})
-				notified[entry.UserID] = true
+			_, saved := writes[keys[i]]
+			savedByUser[entry.UserID] = savedByUser[entry.UserID] || saved
+		}
+		for _, userID := range s.connectedUsers() {
+			refresh, indexed := savedByUser[userID]
+			if !indexed && !req.Overwrite {
+				// A viewer without stored settings inherits the defaults on the next read.
+				refresh = targets == nil || slices.ContainsFunc(targets, func(t adminTargetRef) bool { return t.userID == userID })
+			}
+			if refresh {
+				deliveries += s.notifyUser(userID, M{"type": "settingsUpdated"})
 			}
 		}
 	}

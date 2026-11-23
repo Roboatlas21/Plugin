@@ -1097,6 +1097,21 @@ func TestApplyDefaultsPicksProfilesTargetsAndKeys(t *testing.T) {
 	}
 }
 
+func TestMergeRefreshesViewersWithoutStoredSettings(t *testing.T) {
+	s := reminderServer(store.NewMemKV(), &reminderCatalog{})
+	saveConfig(t, s, M{"DefaultUserSettings": M{"liveTvSavedFilters": []any{"group:Sports"}}})
+	tv, phone := make(chan []byte, 2), make(chan []byte, 2)
+	s.notify.streams = map[int]map[chan []byte]struct{}{userMain.user: {tv: {}}, other.user: {phone: {}}}
+	code, got := call(t, s, adminMain, "POST", "/Moonfin/Admin/ApplyDefaults", `{"userIds":["3"]}`, nil)
+	if code != 200 || got["usersAffected"] != 0.0 || got["liveRefreshDeliveries"] != 1.0 || len(tv) != 1 || len(phone) != 0 {
+		t.Fatalf("targeted merge = %d %v, queued on TV %d and phone %d", code, got, len(tv), len(phone))
+	}
+	code, got = call(t, s, adminMain, "POST", "/Moonfin/Admin/ApplyDefaults", `{}`, nil)
+	if code != 200 || got["usersAffected"] != 0.0 || got["liveRefreshDeliveries"] != 2.0 || len(tv) != 2 || len(phone) != 1 {
+		t.Fatalf("merge for everyone = %d %v, queued on TV %d and phone %d", code, got, len(tv), len(phone))
+	}
+}
+
 func TestCopySettingsBetweenProfiles(t *testing.T) {
 	s := newTestServer()
 	call(t, s, adminMain, "POST", "/Moonfin/Settings/Profile/global", `{"profile":{"keyboardStyle":"glass","tmdbApiKey":"admin-key","hiddenNextUpSeries":"{\"admin-series\":\"1\"}"}}`, nil)

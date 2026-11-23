@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -108,6 +109,12 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request) {
 			line = fmt.Appendf(nil, "data: %s\n\n", payload)
 		}
 	}
+}
+
+func (s *Server) connectedUsers() []int {
+	s.notify.mu.Lock()
+	defer s.notify.mu.Unlock()
+	return slices.Collect(maps.Keys(s.notify.streams))
 }
 
 // notifyUser returns the number of open streams that accepted the event.

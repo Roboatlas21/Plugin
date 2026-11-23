@@ -98,10 +98,10 @@ namespace Emby.Plugins.Moonfin.Services
         {
             return AtomicFile.ReadWithRecovery(
                 filePath,
-                json => JsonSerializer.Deserialize<MoonfinUserSettings>(json, _jsonOptions));
+                json => JsonSerializer.Deserialize<MoonfinUserSettings>(json, _jsonOptions), throwIfUnreadable: true);
         }
 
-        public async Task<MoonfinUserSettings?> GetUserSettingsAsync(Guid userId)
+        public async Task<MoonfinUserSettings?> GetUserSettingsAsync(Guid userId, bool throwIfUnreadable = false)
         {
             var filePath = GetUserSettingsPath(userId);
 
@@ -120,7 +120,7 @@ namespace Emby.Plugins.Moonfin.Services
                 }
                 return settings;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!throwIfUnreadable)
             {
                 _logger.ErrorException("Error reading settings for user " + userId, ex);
                 return null;
@@ -175,7 +175,7 @@ namespace Emby.Plugins.Moonfin.Services
 
         public async Task<MoonfinSettingsProfile?> GetResolvedProfileAsync(Guid userId, string profileName)
         {
-            var settings = await GetUserSettingsAsync(userId).ConfigureAwait(false);
+            var settings = await GetUserSettingsAsync(userId, throwIfUnreadable: true).ConfigureAwait(false);
             if (settings == null) return null;
             return ResolveProfile(settings, profileName);
         }

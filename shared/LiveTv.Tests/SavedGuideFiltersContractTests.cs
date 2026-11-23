@@ -33,6 +33,26 @@ public sealed class SavedGuideFiltersContractTests : IDisposable
     private static PluginConfiguration Defaults(params string[] pins) => new() {
         DefaultUserSettings = new MoonfinSettingsProfile { LiveTvSavedFilters = new List<string>(pins) } };
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AnUnreadableProfileKeepsItsPinsUntilTheEditCanBeRetried(bool backupOnly)
+    {
+        var id = Guid.NewGuid();
+        Assert.Null(await _service.GetResolvedProfileAsync(id, "tv"));
+        await Edit(id, "tv", "add", "group:Sports");
+        var primary = Path.Combine(_path, id + ".json");
+        var file = backupOnly ? AtomicFile.BackupPath(primary) : primary;
+        if (backupOnly) File.Move(primary, file);
+        using (File.Open(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            await Assert.ThrowsAsync<IOException>(() => _service.GetResolvedProfileAsync(id, "tv"));
+            await Assert.ThrowsAsync<IOException>(() => Edit(id, "tv", "add", "group:News"));
+        }
+        await Edit(id, "tv", "add", "group:News");
+        Assert.Equal(["group:Sports", "group:News"], (await Read(id))!.Global!.LiveTvSavedFilters);
+    }
+
     [Fact]
     public void ValidationAndLocalImportRespectCurrentButNotFutureDefaults()
     {

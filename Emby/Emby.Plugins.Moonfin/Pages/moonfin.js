@@ -2951,7 +2951,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
         function checkbox(key, label) {
             var tooLong = key.length > 1024;
             var selected = current && current.has(key) ? current.get(key) : saved.includes(key);
-            var state = tooLong && !saved.includes(key) ? ' disabled' : selected ? ' checked' : '';
+            var state = tooLong ? ' disabled' : selected ? ' checked' : '';
             return '<label style="display:flex;align-items:center;gap:8px;padding:5px 3px;">' +
                 '<input type="checkbox" data-guide-filter="' + esc(key) + '"' + state + '><span>' +
                 esc(label) + (tooLong ? ' (too long to pin)' : '') + '</span></label>';

@@ -7,25 +7,22 @@ namespace Moonfin.LiveTv;
 /// <summary>Shared guide-shortcut rules for Jellyfin and Emby; storage stays backend-specific.</summary>
 internal static class GuidePinRules
 {
-    private static bool ValidKey(string? key) => key is { Length: <= 1024 } && IsPinKey(key);
-
-    private static bool IsPinKey(string? key) =>
-        key != null &&
+    private static bool ValidKey(string? key) =>
+        key != null && key.Length <= 1024 &&
         ((key.StartsWith("group:", StringComparison.Ordinal) && key.Length > 6) ||
          (key.StartsWith("category:", StringComparison.Ordinal) && key.Length > 9));
 
     internal static bool ValidChange(string? action, string? filter, List<string>? filters) =>
         action switch
         {
-            "add" => ValidKey(filter),
-            "remove" => IsPinKey(filter),
+            "add" or "remove" => ValidKey(filter),
             "initializeIfAbsent" => filters is { Count: <= 1000 } && filters.All(ValidKey),
             _ => false,
         };
 
     // Only the global administrator list contributes managed guide shortcuts.
     internal static List<string> AdminPins(List<string>? global) =>
-        global?.Where(IsPinKey).Distinct().ToList() ?? new List<string>();
+        global?.Where(ValidKey).Distinct().ToList() ?? new List<string>();
 
     internal static List<string> EffectivePins(
         List<string> defaults, List<string>? exclusions, List<string>? personal)
@@ -34,7 +31,7 @@ internal static class GuidePinRules
         foreach (var pin in defaults)
             if (exclusions?.Contains(pin) != true && !pins.Contains(pin)) pins.Add(pin);
         foreach (var pin in personal ?? new List<string>())
-            if (!pins.Contains(pin)) pins.Add(pin);
+            if (ValidKey(pin) && !pins.Contains(pin)) pins.Add(pin);
         return pins;
     }
 

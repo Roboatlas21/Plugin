@@ -448,23 +448,16 @@ func TestAdminGuidePinsUseTheUserEditLimit(t *testing.T) {
 	}
 }
 
-func TestAdminCanKeepOrRemoveALegacyGuidePin(t *testing.T) {
+func TestOverLimitStoredPinsAreHiddenAndCannotBeSubmitted(t *testing.T) {
 	s := newTestServer()
 	pin := "group:" + strings.Repeat("x", 1024)
 	cfg := M{"DefaultUserSettings": M{"liveTvSavedFilters": []any{pin}}}
 	if err := s.saveJSON(t.Context(), keyConfig, cfg); err != nil {
 		t.Fatal(err)
 	}
-	cfg["WebDefaultServerUrl"] = "https://example.test"
-	saveConfig(t, s, cfg)
-	_, saved := call(t, s, adminMain, "GET", "/Moonfin/Admin/Configuration", "", nil)
-	if saved["WebDefaultServerUrl"] != cfg["WebDefaultServerUrl"] ||
-		!reflect.DeepEqual(saved["DefaultUserSettings"].(M)["liveTvSavedFilters"], []any{pin}) {
-		t.Fatal("saving an unrelated setting must keep the stored pin")
-	}
-	_, resolved := call(t, s, userMain, "GET", "/Moonfin/Settings/Resolved/tv", "", nil)
-	if !reflect.DeepEqual(resolved["liveTvSavedFilters"], []any{pin}) {
-		t.Fatal("stored admin pin missing from the guide")
+	body, _ := json.Marshal(cfg)
+	if code, _ := call(t, s, adminMain, "POST", "/Moonfin/Admin/Configuration", string(body), nil); code != 400 {
+		t.Fatalf("saving an over-limit admin pin returned %d", code)
 	}
 	id := Identity{UserID: userMain.user, ProfileID: userMain.profileID}
 	if err := s.saveJSON(t.Context(), settingsKey(id), M{"global": M{"liveTvSavedFilters": []any{pin}}}); err != nil {
@@ -472,20 +465,15 @@ func TestAdminCanKeepOrRemoveALegacyGuidePin(t *testing.T) {
 	}
 	change := M{"action": "remove", "filter": pin}
 	edit, _ := json.Marshal(M{"profile": M{}, "liveTvSavedFilterChange": change})
-	if code, got := call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv", string(edit), nil); code != 200 ||
-		!reflect.DeepEqual(got["liveTvSavedFilters"], []any{}) {
-		t.Fatalf("remove legacy personal and inherited pin: %d %v", code, got)
+	if code, _ := call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv", string(edit), nil); code != 400 {
+		t.Fatalf("removing an over-limit pin returned %d", code)
 	}
-	_, resolved = call(t, s, userMain, "GET", "/Moonfin/Settings/Resolved/tv", "", nil)
+	_, resolved := call(t, s, userMain, "GET", "/Moonfin/Settings/Resolved/tv", "", nil)
 	if !reflect.DeepEqual(resolved["liveTvSavedFilters"], []any{}) {
-		t.Fatal("removed legacy pin returned after sync")
+		t.Fatal("over-limit pins appeared in the resolved guide")
 	}
 	cfg["DefaultUserSettings"].(M)["liveTvSavedFilters"] = []any{}
 	saveConfig(t, s, cfg)
-	body, _ := json.Marshal(M{"DefaultUserSettings": M{"liveTvSavedFilters": []any{pin}}})
-	if code, _ := call(t, s, adminMain, "POST", "/Moonfin/Admin/Configuration", string(body), nil); code != 400 {
-		t.Fatalf("re-adding the removed pin returned %d", code)
-	}
 }
 
 func TestWatchPartySubtitlesBelongToTheirHost(t *testing.T) {

@@ -163,14 +163,10 @@ type SavedFilterChange struct {
 	Defaults []any // Inherited admin pins for a first explicit add/remove.
 }
 
-// ValidSavedFilter checks a newly added or imported shortcut.
+// ValidSavedFilter accepts the same keys for admin defaults and user edits.
 func ValidSavedFilter(key string) bool {
-	return len(key) <= 1024 && isSavedFilterKey(key)
-}
-
-func isSavedFilterKey(key string) bool {
-	return (strings.HasPrefix(key, "group:") && len(key) > 6) ||
-		(strings.HasPrefix(key, "category:") && len(key) > 9)
+	return len(key) <= 1024 && ((strings.HasPrefix(key, "group:") && len(key) > 6) ||
+		(strings.HasPrefix(key, "category:") && len(key) > 9))
 }
 
 func ParseSavedFilterChange(raw any) (SavedFilterChange, bool) {
@@ -182,7 +178,7 @@ func ParseSavedFilterChange(raw any) (SavedFilterChange, bool) {
 	switch action {
 	case "add", "remove":
 		key, _ := obj["filter"].(string)
-		if !isSavedFilterKey(key) || (action == "add" && !ValidSavedFilter(key)) {
+		if !ValidSavedFilter(key) {
 			return SavedFilterChange{}, false
 		}
 		return SavedFilterChange{Action: action, Filter: key}, true
@@ -258,7 +254,7 @@ func AdminSavedFilters(raw any) []any {
 	list, _ := pinnedStrings(raw)
 	pins := []any{}
 	for _, pin := range list {
-		if isSavedFilterKey(pin.(string)) && !slices.Contains(pins, pin) {
+		if ValidSavedFilter(pin.(string)) && !slices.Contains(pins, pin) {
 			pins = append(pins, pin)
 		}
 	}
@@ -272,7 +268,7 @@ func EffectiveSavedFilters(env M, defaults any) []any {
 	pins = slices.DeleteFunc(pins, func(pin any) bool { return slices.Contains(excluded, pin) })
 	personal := savedGlobalFilters(env)
 	for _, pin := range personal {
-		if !slices.Contains(pins, pin) {
+		if ValidSavedFilter(pin.(string)) && !slices.Contains(pins, pin) {
 			pins = append(pins, pin)
 		}
 	}

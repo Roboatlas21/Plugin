@@ -65,17 +65,12 @@ public sealed class SavedGuideFiltersContractTests : IDisposable
         Assert.False(new LiveTvSavedFilterChange { Action = "initializeIfAbsent",
             Filters = Enumerable.Repeat("group:News", 1001).ToList() }.IsValid());
         var atLimit = "group:" + new string('x', 1018);
-        var legacy = atLimit + "x";
-        Assert.False(new LiveTvSavedFilterChange { Action = "add", Filter = legacy }.IsValid());
-        Assert.False(new LiveTvSavedFilterChange { Action = "initializeIfAbsent", Filters = [legacy] }.IsValid());
-        var remove = new LiveTvSavedFilterChange { Action = "remove", Filter = legacy };
-        Assert.True(remove.IsValid());
-        var saved = new MoonfinUserSettings { Global = new MoonfinSettingsProfile { LiveTvSavedFilters = [legacy] } };
-        var defaults = Defaults(atLimit, legacy);
-        Assert.Equal([atLimit, legacy], _service.ResolveProfile(new MoonfinUserSettings(), "tv", defaults).LiveTvSavedFilters);
-        MoonfinSettingsService.ApplySavedFilterChange(saved, remove, [atLimit, legacy]);
-        Assert.Empty(saved.Global!.LiveTvSavedFilters!);
-        Assert.Equal([atLimit], _service.ResolveProfile(saved, "tv", defaults).LiveTvSavedFilters);
+        var tooLong = atLimit + "x";
+        Assert.False(new LiveTvSavedFilterChange { Action = "add", Filter = tooLong }.IsValid());
+        Assert.False(new LiveTvSavedFilterChange { Action = "remove", Filter = tooLong }.IsValid());
+        Assert.False(new LiveTvSavedFilterChange { Action = "initializeIfAbsent", Filters = [tooLong] }.IsValid());
+        var saved = new MoonfinUserSettings { Global = new MoonfinSettingsProfile { LiveTvSavedFilters = [tooLong] } };
+        Assert.Equal([atLimit], _service.ResolveProfile(saved, "tv", Defaults(atLimit, tooLong)).LiveTvSavedFilters);
         var config = Defaults("group:Sports");
         config.DefaultDeviceSettings = new MoonfinDeviceDefaults {
             Tv = new MoonfinSettingsProfile { LiveTvSavedFilters = ["group:TV"] } };

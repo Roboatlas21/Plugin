@@ -99,29 +99,11 @@ test('Plex guide picker uses provider groups and keeps edits; failure and Silo r
     assert.equal(checked(silo.root.innerHTML, 'category:movies'), true);
 });
 
-test('saving defaults keeps a checked legacy pin and removes it when unchecked', () => {
-    const emby = fs.readFileSync(__dirname + '/../../Emby/Emby.Plugins.Moonfin/Pages/moonfin.js', 'utf8');
-    const tooLong = 'group:' + 'x'.repeat(1024);
-    for (const source of [page, emby]) {
-        const start = source.search(/var inputs = Array\.from\([^\n]+#DefaultPinnedGuideGroups/);
-        const end = source.indexOf(': null;', source.indexOf('= keptPins.length', start));
-        assert.ok(start >= 0 && end > start, 'missing guide pin save handler');
-        for (const checked of [true, false]) {
-            const view = { querySelectorAll: () => [{ getAttribute: () => tooLong, checked }] };
-            const settings = { liveTvSavedFilters: [tooLong] };
-            vm.runInNewContext(source.slice(start, end + 7), { view, document: view, ds: settings, d: settings });
-            assert.deepEqual(Array.from(settings.liveTvSavedFilters), checked ? [tooLong] : []);
-        }
-    }
-});
-
 test('Plex uses the same byte limit in the picker as in the settings API', async () => {
     const atLimit = 'group:' + 'é'.repeat(509);
     const tooLong = atLimit + 'x';
-    const newTooLong = tooLong + 'y';
-    const plex = picker('Plex', [atLimit, tooLong], [[newTooLong.slice(6)]]);
+    const plex = picker('Plex', [atLimit, tooLong], [[]]);
     await plex.reload();
     assert.equal(checked(plex.root.innerHTML, atLimit), true);
-    assert.ok(plex.root.innerHTML.includes('data-guide-filter="' + tooLong + '" checked'));
-    assert.ok(plex.root.innerHTML.includes('data-guide-filter="' + newTooLong + '" disabled'));
+    assert.ok(plex.root.innerHTML.includes('data-guide-filter="' + tooLong + '" disabled'));
 });

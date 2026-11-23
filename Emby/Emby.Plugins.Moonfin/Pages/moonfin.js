@@ -3755,7 +3755,8 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
         d.liveTvChannelSortBy = view.querySelector('#DefaultLiveTvChannelSortBy').value || null;
         d.liveTvCategoryDisplay = view.querySelector('#DefaultLiveTvCategoryDisplay').value || null;
         if (defaultsState.active === 'global') {
-            var inputs = Array.from(view.querySelectorAll('#DefaultPinnedGuideGroups input[data-guide-filter]'));
+            var inputs = Array.from(view.querySelectorAll('#DefaultPinnedGuideGroups input[data-guide-filter]'))
+                .filter(function(input) { return !input.disabled; });
             var visiblePins = inputs.map(function(input) { return input.getAttribute('data-guide-filter'); });
             var selectedPins = inputs.filter(function(input) { return input.checked; })
                 .map(function(input) { return input.getAttribute('data-guide-filter'); });

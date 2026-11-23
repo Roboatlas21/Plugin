@@ -222,6 +222,20 @@ public class MoonfinSettingsService
         }
     }
 
+    /// <summary>A client pull acknowledges hidden items only for an existing user profile.</summary>
+    public async Task<MoonfinSettingsProfile?> GetProfileForPullAsync(Guid userId, string profileName, bool includeLiveTvSavedFilters)
+    {
+        var resolved = await GetResolvedProfileAsync(userId, profileName);
+        if (resolved == null)
+            resolved = AdminDefaultsFor(profileName);
+        else
+            await RecordHiddenContentBaselineAsync(userId, profileName, resolved);
+
+        if (includeLiveTvSavedFilters && resolved != null)
+            resolved.LiveTvSavedFilters ??= new List<string>();
+        return resolved;
+    }
+
     public async Task<MoonfinSettingsProfile?> GetResolvedProfileAsync(Guid userId, string profileName)
     {
         var settings = await GetUserSettingsAsync(userId, throwIfUnreadable: true);
@@ -315,8 +329,7 @@ public class MoonfinSettingsService
     {
         var global = config?.DefaultUserSettings;
         var device = IsDeviceProfile(profileName) ? config?.GetDefaultsFor(profileName) : null;
-        var sharedPins = AdminGuidePins(config);
-        if (device == null && global == null && sharedPins.Count == 0) return null;
+        if (device == null && global == null) return null;
 
         var merged = new MoonfinSettingsProfile();
         foreach (var prop in ProfileProps)
@@ -332,7 +345,7 @@ public class MoonfinSettingsService
         var layout = HasHomeLayout(device) ? device : global;
         merged.HomeSections = layout?.HomeSections;
         merged.HomeRowOrder = layout?.HomeRowOrder;
-        merged.LiveTvSavedFilters = sharedPins;
+        merged.LiveTvSavedFilters = global?.LiveTvSavedFilters == null ? null : AdminGuidePins(config);
         return merged;
     }
 

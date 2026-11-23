@@ -109,6 +109,33 @@ public sealed class SavedGuideFiltersContractTests : IDisposable
     }
 
     [Fact]
+    public async Task PinAwarePullClearsStalePinsAfterAResetAndUnrelatedSave()
+    {
+        var id = Guid.NewGuid();
+        await Edit(id, "tv", "add", "group:Sports");
+        Assert.Equal(["group:Sports"], (await _service.GetProfileForPullAsync(id, "tv", true))!.LiveTvSavedFilters);
+
+        await _service.DeleteUserSettingsAsync(id);
+        Assert.Null(await _service.GetProfileForPullAsync(id, "tv", true));
+        await _service.SaveProfileAsync(id, "global", new MoonfinSettingsProfile { LiveTvCategoryDisplay = "groups" });
+
+        var pulled = await _service.GetProfileForPullAsync(id, "tv", true);
+        Assert.Equal("groups", pulled!.LiveTvCategoryDisplay);
+        Assert.Empty(pulled.LiveTvSavedFilters!);
+        Assert.Null((await _service.GetProfileForPullAsync(id, "tv", false))!.LiveTvSavedFilters);
+        Assert.Null((await Read(id))!.Global!.LiveTvSavedFilters);
+    }
+
+    [Fact]
+    public void AdminDefaultsPreserveUnsetAndExplicitlyEmptyPins()
+    {
+        var config = Defaults();
+        Assert.Empty(MoonfinSettingsService.AdminDefaultsFor("tv", config)!.LiveTvSavedFilters!);
+        config.DefaultUserSettings!.LiveTvSavedFilters = null;
+        Assert.Null(MoonfinSettingsService.AdminDefaultsFor("tv", config)!.LiveTvSavedFilters);
+    }
+
+    [Fact]
     public async Task AtomicEditsOutliveStaleFullSettingsAndImportWrites()
     {
         var id = Guid.NewGuid();

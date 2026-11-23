@@ -210,19 +210,8 @@ namespace Emby.Plugins.Moonfin.Api
             if (!Array.Exists(MoonfinUserSettings.ValidProfiles, p => string.Equals(p, profile, StringComparison.OrdinalIgnoreCase)))
                 return Json(400, new { Error = "Invalid profile: " + profile });
 
-            var resolved = await Settings.GetResolvedProfileAsync(userId.Value, profile).ConfigureAwait(false);
-            if (resolved == null)
-            {
-                var adminDefaults = Settings.AdminDefaultsFor(profile);
-                if (adminDefaults != null) return Json(adminDefaults);
-                return Json(404, new { Error = "No settings found", liveTvSavedFilters = Array.Empty<string>() });
-            }
-
-            // A pull is the only place a client learns about hides made elsewhere, so this is
-            // where its baseline moves.
-            await Settings.RecordHiddenContentBaselineAsync(userId.Value, profile, resolved).ConfigureAwait(false);
-
-            return Json(resolved);
+            var resolved = await Settings.GetProfileForPullAsync(userId.Value, profile, request.IncludeLiveTvSavedFilters).ConfigureAwait(false);
+            return resolved != null ? Json(resolved) : Json(404, new { Error = "No settings found", liveTvSavedFilters = Array.Empty<string>() });
         }
 
         public async Task<object> Post(SaveMyProfileRequest request)

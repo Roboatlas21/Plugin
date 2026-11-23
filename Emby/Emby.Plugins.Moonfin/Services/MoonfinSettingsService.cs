@@ -223,8 +223,13 @@ namespace Emby.Plugins.Moonfin.Services
             // Home layout (sections + row order) resolves as a unit from a single profile layer
             // rather than field-by-field, so a client's sections and order never come from
             // different profiles.
-            resolved.LiveTvSavedFilters = GuidePinRules.EffectivePins(AdminGuidePins(config),
-                    settings.LiveTvSavedFilterExclusions, settings.Global?.LiveTvSavedFilters);
+            var hasGuidePins = config?.DefaultUserSettings?.LiveTvSavedFilters != null
+                || settings.Global?.LiveTvSavedFilters != null
+                || settings.LiveTvSavedFilterExclusions != null;
+            resolved.LiveTvSavedFilters = hasGuidePins
+                ? GuidePinRules.EffectivePins(AdminGuidePins(config),
+                    settings.LiveTvSavedFilterExclusions, settings.Global?.LiveTvSavedFilters)
+                : null;
 
             var homeLayout = ResolveHomeLayout(deviceProfile, global, HasHomeLayout(adminDevice) ? adminDevice : null, adminDefaults);
             resolved.HomeSections = homeLayout.HomeSections;

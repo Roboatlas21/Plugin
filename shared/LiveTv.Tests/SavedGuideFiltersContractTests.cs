@@ -75,6 +75,36 @@ public sealed class SavedGuideFiltersContractTests : IDisposable
     }
 
     [Fact]
+    public void GuidePinExclusionsApplyOnlyToCurrentAdminPins()
+    {
+        var user = new MoonfinUserSettings();
+        MoonfinSettingsService.ApplySavedFilterChange(user,
+            new LiveTvSavedFilterChange { Action = "add", Filter = "group:Local" }, []);
+        MoonfinSettingsService.ApplySavedFilterChange(user,
+            new LiveTvSavedFilterChange { Action = "remove", Filter = "group:Local" }, []);
+        Assert.Empty(user.LiveTvSavedFilterExclusions!);
+        Assert.Equal(["group:Local"], _service.ResolveProfile(user, "tv",
+            Defaults("group:Local")).LiveTvSavedFilters);
+
+        MoonfinSettingsService.ApplySavedFilterChange(user,
+            new LiveTvSavedFilterChange { Action = "remove", Filter = "group:Local" },
+            ["group:Local"]);
+        Assert.Equal(["group:Local"], user.LiveTvSavedFilterExclusions);
+        Assert.Empty(_service.ResolveProfile(user, "tv",
+            Defaults("group:Local")).LiveTvSavedFilters!);
+    }
+
+    [Fact]
+    public void UnsetGuidePinsRemainNullButExplicitEmptyPinsStaySet()
+    {
+        var user = new MoonfinUserSettings();
+        Assert.Null(_service.ResolveProfile(user, "tv", new PluginConfiguration()).LiveTvSavedFilters);
+        Assert.Empty(_service.ResolveProfile(user, "tv", Defaults()).LiveTvSavedFilters!);
+        user.Global = new MoonfinSettingsProfile { LiveTvSavedFilters = [] };
+        Assert.Empty(_service.ResolveProfile(user, "tv", new PluginConfiguration()).LiveTvSavedFilters!);
+    }
+
+    [Fact]
     public async Task AtomicEditsOutliveStaleFullSettingsAndImportWrites()
     {
         var id = Guid.NewGuid();
@@ -86,7 +116,7 @@ public sealed class SavedGuideFiltersContractTests : IDisposable
             Global = new MoonfinSettingsProfile { LiveTvSavedFilters = [] },
             LiveTvSavedFilterExclusions = ["group:News"] }, mergeMode: "replace");
         Assert.Equal(["group:US | SPORTS, Canada", "group:News"], (await Read(id))!.Global!.LiveTvSavedFilters);
-        Assert.Equal(["group:Sports"], (await Read(id))!.LiveTvSavedFilterExclusions);
+        Assert.Empty((await Read(id))!.LiveTvSavedFilterExclusions!);
         await Edit(id, "mobile", "remove", "group:News");
         await Edit(id, "tv", "initializeIfAbsent", null, "group:Ignored");
         Assert.Equal(["group:US | SPORTS, Canada"], (await Read(id))!.Global!.LiveTvSavedFilters);
@@ -102,7 +132,7 @@ public sealed class SavedGuideFiltersContractTests : IDisposable
         await Edit(id, "tv", "add", "group:Local");
         await Edit(id, "tv", "remove", "group:Sports");
         await _service.MergeDefaultsAsync(config, ["tv"], ["liveTvSavedFilters"], [id]);
-        Assert.Equal(["group:News", "group:Local"], _service.ResolveProfile((await Read(id))!, "tv", config).LiveTvSavedFilters);
+        Assert.Equal(["group:Sports", "group:News", "group:Local"], _service.ResolveProfile((await Read(id))!, "tv", config).LiveTvSavedFilters);
         await _service.MergeDefaultsAsync(config, ["global"], ["liveTvSavedFilters"], [id]);
         Assert.Equal(["group:Sports", "group:News", "group:Local"], _service.ResolveProfile((await Read(id))!, "tv", config).LiveTvSavedFilters);
         await _service.ResetUsersToDefaultsAsync(config, ["global"], [id], deleteOrphans: false);

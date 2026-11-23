@@ -59,7 +59,7 @@ internal static class GuidePinRules
         else
         {
             personal.RemoveAll(pin => pin == filter);
-            if (!exclusions.Contains(filter!)) exclusions.Add(filter!);
+            if (defaults?.Contains(filter!) == true && !exclusions.Contains(filter!)) exclusions.Add(filter!);
         }
         return (personal, exclusions);
     }

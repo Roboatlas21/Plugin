@@ -364,6 +364,25 @@ func TestGuidePinsUseGlobalDefaultsAndAtomicProfileEdits(t *testing.T) {
 	}
 }
 
+func TestGuidePinImportCanRetryAfterUnreadableDefaults(t *testing.T) {
+	s := newTestServer()
+	const path = "/Moonfin/Settings/Profile/tv"
+	const body = `{"profile":{},"liveTvSavedFilterChange":{"action":"initializeIfAbsent","filters":["group:News"]}}`
+	if err := s.kv.Put(context.Background(), keyConfig, []byte("{")); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := call(t, s, userMain, "POST", path, body, nil); code != 500 {
+		t.Fatalf("pin import with unreadable defaults returned %d", code)
+	}
+	if err := s.saveJSON(context.Background(), keyConfig, M{"DefaultUserSettings": M{"liveTvSavedFilters": []string{"group:Sports"}}}); err != nil {
+		t.Fatal(err)
+	}
+	code, got := call(t, s, userMain, "POST", path, body, nil)
+	if code != 200 || got["Created"] != true || !reflect.DeepEqual(got["liveTvSavedFilters"], []any{"group:News"}) {
+		t.Fatalf("retry = %d %v", code, got)
+	}
+}
+
 func TestOptionalGuidePinsDoNotChangeOrdinaryProfileUpdates(t *testing.T) {
 	s := newTestServer()
 	if code, _ := call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/global",

@@ -236,8 +236,8 @@ func (s *Server) handlePostSettings(w http.ResponseWriter, r *http.Request) {
 		mode = "merge"
 	}
 	clientID, _ := body["clientid"].(string)
-	s.save(w, r, func(env M) M {
-		return settings.SaveEnvelope(env, incoming, mode, clientID, serverKeys(s.config(r.Context())), time.Now())
+	s.save(w, r, func(env M) (M, error) {
+		return settings.SaveEnvelope(env, incoming, mode, clientID, serverKeys(s.config(r.Context())), time.Now()), nil
 	})
 }
 
@@ -263,15 +263,19 @@ func (s *Server) handlePostProfile(w http.ResponseWriter, r *http.Request) {
 		}
 		extra := M{}
 		changed := false
-		saved := s.save(w, r, func(env M) M {
-			cfg := s.config(r.Context())
+		saved := s.save(w, r, func(env M) (M, error) {
+			stored, err := s.fullConfig(r.Context())
+			if err != nil {
+				return nil, err
+			}
+			cfg := configFrom(stored)
 			change.Defaults = settings.AdminSavedFilters(cfg.Defaults["liveTvSavedFilters"])
 			before := settings.EffectiveSavedFilters(env, change.Defaults)
 			updated := settings.SaveProfile(env, name, cleaned, clientID, serverKeys(cfg), time.Now(), change)
 			pins := settings.EffectiveSavedFilters(updated, change.Defaults)
 			changed = !slices.Equal(before, pins)
 			extra["liveTvSavedFilters"] = pins
-			return updated
+			return updated, nil
 		}, extra)
 		if saved && changed && s.notify.on {
 			s.notifyUser(callerOf(r).UserID, M{"type": "settingsUpdated"})
@@ -284,19 +288,23 @@ func (s *Server) handlePostProfile(w http.ResponseWriter, r *http.Request) {
 // saveProfile merges one profile and answers like the Jellyfin plugin, with
 // extra fields added to the success body.
 func (s *Server) saveProfile(w http.ResponseWriter, r *http.Request, name string, incoming M, clientID string, extra M) {
-	s.save(w, r, func(env M) M {
-		return settings.SaveProfile(env, name, incoming, clientID, serverKeys(s.config(r.Context())), time.Now())
+	s.save(w, r, func(env M) (M, error) {
+		return settings.SaveProfile(env, name, incoming, clientID, serverKeys(s.config(r.Context())), time.Now()), nil
 	}, extra)
 }
 
-func (s *Server) save(w http.ResponseWriter, r *http.Request, apply func(M) M, extra ...M) bool {
+func (s *Server) save(w http.ResponseWriter, r *http.Request, apply func(M) (M, error), extra ...M) bool {
 	id := callerOf(r)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	env, err := s.loadEnvelope(r.Context(), id)
 	if err == nil {
 		created := env == nil
-		if err = s.storeEnvelope(r.Context(), id, apply(env)); err == nil {
+		env, err = apply(env)
+		if err == nil {
+			err = s.storeEnvelope(r.Context(), id, env)
+		}
+		if err == nil {
 			body := M{"Success": true, "Created": created, "UserId": strconv.Itoa(id.UserID)}
 			for _, e := range extra {
 				for k, v := range e {

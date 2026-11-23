@@ -12,6 +12,7 @@ using Moonfin.LiveTv;
 using System.Threading;
 using System.Threading.Tasks;
 using Emby.Plugins.Moonfin.Models;
+using MediaBrowser.Common.Extensions;
 using MediaBrowser.Controller.Session;
 using MediaBrowser.Model.Querying;
 using MediaBrowser.Model.Logging;
@@ -92,13 +93,22 @@ namespace Emby.Plugins.Moonfin.Services
             Path.Combine(_dataPath, $"{userId}.json");
 
         /// <summary>
-        /// Loads settings, falling back to the backup copy when the file is missing or unreadable.
+        /// Returns null for missing settings. If neither copy can be read and one
+        /// failed to load, callers must leave the stored settings intact.
         /// </summary>
         private MoonfinUserSettings? ReadSettingsWithRecovery(string filePath)
         {
-            return AtomicFile.ReadWithRecovery(
-                filePath,
-                json => JsonSerializer.Deserialize<MoonfinUserSettings>(json, _jsonOptions), throwIfUnreadable: true);
+            try
+            {
+                return AtomicFile.ReadWithRecovery(
+                    filePath,
+                    json => JsonSerializer.Deserialize<MoonfinUserSettings>(json, _jsonOptions), throwIfUnreadable: true);
+            }
+            catch (IOException ex)
+            {
+                _logger.ErrorException("Could not read Moonfin settings at " + filePath, ex);
+                throw new ServiceUnavailableException("Moonfin could not read the saved settings or their backup. Restore a readable copy or retry when the files are accessible.");
+            }
         }
 
         public async Task<MoonfinUserSettings?> GetUserSettingsAsync(Guid userId, bool throwIfUnreadable = false)

@@ -2,10 +2,12 @@ using System.Linq;
 using Moonfin.LiveTv;
 using Xunit;
 #if MOONFIN_EMBY_TESTS
+using SettingsReadError = MediaBrowser.Common.Extensions.ServiceUnavailableException;
 using Emby.Plugins.Moonfin.Models;
 using Emby.Plugins.Moonfin.Services;
 namespace Emby.Plugins.Moonfin.Tests;
 #else
+using SettingsReadError = Moonfin.Server.Services.UnreadableSettingsException;
 using Moonfin.Server.Models;
 using Moonfin.Server.Services;
 namespace Moonfin.Server.Tests;
@@ -46,8 +48,10 @@ public sealed class SavedGuideFiltersContractTests : IDisposable
         if (backupOnly) File.Move(primary, file);
         using (File.Open(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
         {
-            await Assert.ThrowsAsync<IOException>(() => _service.GetResolvedProfileAsync(id, "tv"));
-            await Assert.ThrowsAsync<IOException>(() => Edit(id, "tv", "add", "group:News"));
+            await Assert.ThrowsAsync<SettingsReadError>(() => _service.GetResolvedProfileAsync(id, "tv"));
+            await Assert.ThrowsAsync<SettingsReadError>(() => Edit(id, "tv", "add", "group:News"));
+            await Assert.ThrowsAsync<SettingsReadError>(() => _service.SaveUserSettingsAsync(id, new MoonfinUserSettings()));
+            await Assert.ThrowsAsync<SettingsReadError>(() => _service.DeleteProfileAsync(id, "tv"));
         }
         await Edit(id, "tv", "add", "group:News");
         Assert.Equal(["group:Sports", "group:News"], (await Read(id))!.Global!.LiveTvSavedFilters);

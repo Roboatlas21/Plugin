@@ -15,6 +15,11 @@ using Moonfin.Server.Models;
 
 namespace Moonfin.Server.Services;
 
+internal sealed class UnreadableSettingsException(IOException cause)
+    : IOException("Moonfin could not read the saved settings or their backup. Restore a readable copy or retry when the files are accessible.", cause)
+{
+}
+
 /// <summary>
 /// Service for managing Moonfin user settings storage with device profile support.
 /// </summary>
@@ -117,13 +122,21 @@ public class MoonfinSettingsService
     }
 
     /// <summary>
-    /// Loads settings, falling back to the backup copy when the file is missing or unreadable.
+    /// Returns null for missing settings. If neither copy can be read and one
+    /// failed to load, callers must leave the stored settings intact.
     /// </summary>
     private MoonfinUserSettings? ReadSettingsWithRecovery(string filePath)
     {
-        return AtomicFile.ReadWithRecovery(
-            filePath,
-            json => JsonSerializer.Deserialize<MoonfinUserSettings>(json, _jsonOptions), throwIfUnreadable: true);
+        try
+        {
+            return AtomicFile.ReadWithRecovery(
+                filePath,
+                json => JsonSerializer.Deserialize<MoonfinUserSettings>(json, _jsonOptions), throwIfUnreadable: true);
+        }
+        catch (IOException ex)
+        {
+            throw new UnreadableSettingsException(ex);
+        }
     }
 
     public async Task<MoonfinUserSettings?> GetUserSettingsAsync(Guid userId, bool throwIfUnreadable = false)

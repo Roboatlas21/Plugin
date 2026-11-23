@@ -1036,7 +1036,7 @@ func TestAdminUsersWithoutProfiles(t *testing.T) {
 }
 
 func TestApplyDefaultsPicksProfilesTargetsAndKeys(t *testing.T) {
-	s := newTestServer()
+	s := reminderServer(store.NewMemKV(), &reminderCatalog{})
 	call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv", `{"profile":{"clockBehavior":"inMenus"}}`, nil)
 	call(t, s, userKids, "POST", "/Moonfin/Settings/Profile/global", `{"profile":{"theme":"dark"}}`, nil)
 	call(t, s, other, "POST", "/Moonfin/Settings/Profile/global", `{"profile":{"theme":"dark"}}`, nil)
@@ -1064,8 +1064,17 @@ func TestApplyDefaultsPicksProfilesTargetsAndKeys(t *testing.T) {
 		t.Fatalf("a profile that wasn't picked must stay as it was: %v", tv)
 	}
 
-	if code, _ := call(t, s, adminMain, "POST", "/Moonfin/Admin/ApplyDefaults", `{"profiles":["global"],"userIds":["3"]}`, nil); code != 200 {
-		t.Fatalf("apply to an account = %d", code)
+	tv, phone, unrelated := make(chan []byte, 2), make(chan []byte, 2), make(chan []byte, 2)
+	s.notify.streams = map[int]map[chan []byte]struct{}{
+		userMain.user: {tv: {}, phone: {}}, other.user: {unrelated: {}},
+	}
+	code, got = call(t, s, adminMain, "POST", "/Moonfin/Admin/ApplyDefaults", `{"profiles":["global"],"userIds":["3"]}`, nil)
+	if code != 200 || got["usersAffected"] != 2.0 || got["liveRefreshDeliveries"] != 2.0 {
+		t.Fatalf("apply to an account = %d %v", code, got)
+	}
+	if len(tv) != 1 || len(phone) != 1 || len(unrelated) != 0 ||
+		string(<-tv) != `{"type":"settingsUpdated"}` || string(<-phone) != `{"type":"settingsUpdated"}` {
+		t.Fatal("each connected device of the affected account should receive one settings update")
 	}
 	main := env(userMain)
 	if profile(main, "global")["clockBehavior"] != "always" || profile(env(userKids), "global")["clockBehavior"] != "always" {

@@ -110,21 +110,23 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// notifyUser sends an event to the account's open settings streams. A stream
-// that has fallen too far behind misses it.
-func (s *Server) notifyUser(userID int, event any) {
+// notifyUser returns the number of open streams that accepted the event.
+func (s *Server) notifyUser(userID int, event any) int {
 	payload, err := json.Marshal(event)
 	if err != nil {
-		return
+		return 0
 	}
 	s.notify.mu.Lock()
 	defer s.notify.mu.Unlock()
+	deliveries := 0
 	for events := range s.notify.streams[userID] {
 		select {
 		case events <- payload:
+			deliveries++
 		default:
 		}
 	}
+	return deliveries
 }
 
 func (s *Server) handleRegisterDevice(w http.ResponseWriter, r *http.Request) {

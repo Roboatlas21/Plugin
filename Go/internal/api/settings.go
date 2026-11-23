@@ -602,13 +602,26 @@ func (s *Server) applyDefaults(w http.ResponseWriter, r *http.Request, req apply
 		logError(r, "apply defaults", err)
 	}
 	failed += len(notWritten)
-	affected := len(writes) - len(notWritten)
+	for _, key := range notWritten {
+		delete(writes, key)
+	}
+	affected := len(writes)
 	if affected == 0 && failed > 0 {
 		storageFailed(w, r, fmt.Errorf("apply defaults failed for %d profiles", failed))
 		return
 	}
+	deliveries := 0
+	if s.notify.on {
+		notified := map[int]bool{}
+		for i, entry := range entries {
+			if _, saved := writes[keys[i]]; saved && !notified[entry.UserID] {
+				deliveries += s.notifyUser(entry.UserID, M{"type": "settingsUpdated"})
+				notified[entry.UserID] = true
+			}
+		}
+	}
 	writeJSON(w, http.StatusOK, M{"success": true, "overwrite": req.Overwrite, "usersAffected": affected,
-		"orphansDeleted": 0, "liveRefreshDeliveries": 0})
+		"orphansDeleted": 0, "liveRefreshDeliveries": deliveries})
 }
 
 type copyRequest struct {

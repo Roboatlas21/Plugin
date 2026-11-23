@@ -1097,10 +1097,10 @@ func TestApplyDefaultsPicksProfilesTargetsAndKeys(t *testing.T) {
 	}
 }
 
-func TestMergeRefreshesViewersWithoutStoredSettings(t *testing.T) {
+func TestApplyDefaultsRefreshesViewersWithoutStoredSettings(t *testing.T) {
 	s := reminderServer(store.NewMemKV(), &reminderCatalog{})
 	saveConfig(t, s, M{"DefaultUserSettings": M{"liveTvSavedFilters": []any{"group:Sports"}}})
-	tv, phone := make(chan []byte, 2), make(chan []byte, 2)
+	tv, phone := make(chan []byte, 4), make(chan []byte, 4)
 	s.notify.streams = map[int]map[chan []byte]struct{}{userMain.user: {tv: {}}, other.user: {phone: {}}}
 	code, got := call(t, s, adminMain, "POST", "/Moonfin/Admin/ApplyDefaults", `{"userIds":["3"]}`, nil)
 	if code != 200 || got["usersAffected"] != 0.0 || got["liveRefreshDeliveries"] != 1.0 || len(tv) != 1 || len(phone) != 0 {
@@ -1109,6 +1109,14 @@ func TestMergeRefreshesViewersWithoutStoredSettings(t *testing.T) {
 	code, got = call(t, s, adminMain, "POST", "/Moonfin/Admin/ApplyDefaults", `{}`, nil)
 	if code != 200 || got["usersAffected"] != 0.0 || got["liveRefreshDeliveries"] != 2.0 || len(tv) != 2 || len(phone) != 1 {
 		t.Fatalf("merge for everyone = %d %v, queued on TV %d and phone %d", code, got, len(tv), len(phone))
+	}
+	code, got = call(t, s, adminMain, "POST", "/Moonfin/Admin/ApplyDefaults", `{"overwrite":true,"userIds":["3"]}`, nil)
+	if code != 200 || got["usersAffected"] != 0.0 || got["liveRefreshDeliveries"] != 1.0 || len(tv) != 3 || len(phone) != 1 {
+		t.Fatalf("targeted overwrite = %d %v, queued on TV %d and phone %d", code, got, len(tv), len(phone))
+	}
+	code, got = call(t, s, adminMain, "POST", "/Moonfin/Admin/ApplyDefaults", `{"overwrite":true}`, nil)
+	if code != 200 || got["usersAffected"] != 0.0 || got["liveRefreshDeliveries"] != 2.0 || len(tv) != 4 || len(phone) != 2 {
+		t.Fatalf("overwrite for everyone = %d %v, queued on TV %d and phone %d", code, got, len(tv), len(phone))
 	}
 }
 

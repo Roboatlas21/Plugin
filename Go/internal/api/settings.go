@@ -619,8 +619,8 @@ func (s *Server) applyDefaults(w http.ResponseWriter, r *http.Request, req apply
 		}
 		for _, userID := range s.connectedUsers() {
 			refresh, indexed := savedByUser[userID]
-			if !indexed && !req.Overwrite {
-				// A viewer without stored settings inherits the defaults on the next read.
+			if !indexed {
+				// Even an overwrite leaves users without stored settings inheriting defaults.
 				refresh = targets == nil || slices.ContainsFunc(targets, func(t adminTargetRef) bool { return t.userID == userID })
 			}
 			if refresh {

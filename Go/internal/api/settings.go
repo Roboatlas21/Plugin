@@ -261,15 +261,21 @@ func (s *Server) handlePostProfile(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "Invalid saved Live TV filter change")
 			return
 		}
-		// Defaults are only used if this user has never customized the pins.
-		cfg := s.config(r.Context())
-		change.Defaults = settings.AdminSavedFilters(cfg.Defaults["liveTvSavedFilters"])
 		extra := M{}
-		s.save(w, r, func(env M) M {
-			updated := settings.SaveProfile(env, name, cleaned, clientID, serverKeys(s.config(r.Context())), time.Now(), change)
-			extra["liveTvSavedFilters"] = settings.EffectiveSavedFilters(updated, change.Defaults)
+		changed := false
+		saved := s.save(w, r, func(env M) M {
+			cfg := s.config(r.Context())
+			change.Defaults = settings.AdminSavedFilters(cfg.Defaults["liveTvSavedFilters"])
+			before := settings.EffectiveSavedFilters(env, change.Defaults)
+			updated := settings.SaveProfile(env, name, cleaned, clientID, serverKeys(cfg), time.Now(), change)
+			pins := settings.EffectiveSavedFilters(updated, change.Defaults)
+			changed = !slices.Equal(before, pins)
+			extra["liveTvSavedFilters"] = pins
 			return updated
 		}, extra)
+		if saved && changed && s.notify.on {
+			s.notifyUser(callerOf(r).UserID, M{"type": "settingsUpdated"})
+		}
 		return
 	}
 	s.saveProfile(w, r, name, cleaned, clientID, nil)
@@ -283,7 +289,7 @@ func (s *Server) saveProfile(w http.ResponseWriter, r *http.Request, name string
 	}, extra)
 }
 
-func (s *Server) save(w http.ResponseWriter, r *http.Request, apply func(M) M, extra ...M) {
+func (s *Server) save(w http.ResponseWriter, r *http.Request, apply func(M) M, extra ...M) bool {
 	id := callerOf(r)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -298,10 +304,11 @@ func (s *Server) save(w http.ResponseWriter, r *http.Request, apply func(M) M, e
 				}
 			}
 			writeJSON(w, http.StatusOK, body)
-			return
+			return true
 		}
 	}
 	storageFailed(w, r, err)
+	return false
 }
 
 func (s *Server) handleDeleteSettings(w http.ResponseWriter, r *http.Request) {

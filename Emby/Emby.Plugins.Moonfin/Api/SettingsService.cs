@@ -233,7 +233,7 @@ namespace Emby.Plugins.Moonfin.Api
             var pins = body.LiveTvSavedFilterChange == null
                 ? null
                 : (await Settings.GetResolvedProfileAsync(userId.Value, "global").ConfigureAwait(false))?.LiveTvSavedFilters ?? new List<string>();
-            return Json(new { Success = true, Created = !existed, UserId = userId.Value, LiveTvSavedFilters = pins });
+            return Json(new { Success = true, Created = !existed, UserId = userId.Value, liveTvSavedFilters = pins });
         }
 
         public async Task<object> Delete(DeleteMyProfileRequest request)

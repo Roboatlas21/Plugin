@@ -65,8 +65,17 @@ public sealed class SavedGuideFiltersContractTests : IDisposable
         Assert.False(new LiveTvSavedFilterChange { Action = "initializeIfAbsent",
             Filters = Enumerable.Repeat("group:News", 1001).ToList() }.IsValid());
         var atLimit = "group:" + new string('x', 1018);
-        Assert.Equal([atLimit], _service.ResolveProfile(new MoonfinUserSettings(), "tv",
-            Defaults(atLimit, atLimit + "x")).LiveTvSavedFilters);
+        var legacy = atLimit + "x";
+        Assert.False(new LiveTvSavedFilterChange { Action = "add", Filter = legacy }.IsValid());
+        Assert.False(new LiveTvSavedFilterChange { Action = "initializeIfAbsent", Filters = [legacy] }.IsValid());
+        var remove = new LiveTvSavedFilterChange { Action = "remove", Filter = legacy };
+        Assert.True(remove.IsValid());
+        var saved = new MoonfinUserSettings { Global = new MoonfinSettingsProfile { LiveTvSavedFilters = [legacy] } };
+        var defaults = Defaults(atLimit, legacy);
+        Assert.Equal([atLimit, legacy], _service.ResolveProfile(new MoonfinUserSettings(), "tv", defaults).LiveTvSavedFilters);
+        MoonfinSettingsService.ApplySavedFilterChange(saved, remove, [atLimit, legacy]);
+        Assert.Empty(saved.Global!.LiveTvSavedFilters!);
+        Assert.Equal([atLimit], _service.ResolveProfile(saved, "tv", defaults).LiveTvSavedFilters);
         var config = Defaults("group:Sports");
         config.DefaultDeviceSettings = new MoonfinDeviceDefaults {
             Tv = new MoonfinSettingsProfile { LiveTvSavedFilters = ["group:TV"] } };

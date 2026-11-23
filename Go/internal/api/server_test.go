@@ -462,6 +462,24 @@ func TestAdminCanKeepOrRemoveALegacyGuidePin(t *testing.T) {
 		!reflect.DeepEqual(saved["DefaultUserSettings"].(M)["liveTvSavedFilters"], []any{pin}) {
 		t.Fatal("saving an unrelated setting must keep the stored pin")
 	}
+	_, resolved := call(t, s, userMain, "GET", "/Moonfin/Settings/Resolved/tv", "", nil)
+	if !reflect.DeepEqual(resolved["liveTvSavedFilters"], []any{pin}) {
+		t.Fatal("stored admin pin missing from the guide")
+	}
+	id := Identity{UserID: userMain.user, ProfileID: userMain.profileID}
+	if err := s.saveJSON(t.Context(), settingsKey(id), M{"global": M{"liveTvSavedFilters": []any{pin}}}); err != nil {
+		t.Fatal(err)
+	}
+	change := M{"action": "remove", "filter": pin}
+	edit, _ := json.Marshal(M{"profile": M{}, "liveTvSavedFilterChange": change})
+	if code, got := call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv", string(edit), nil); code != 200 ||
+		!reflect.DeepEqual(got["liveTvSavedFilters"], []any{}) {
+		t.Fatalf("remove legacy personal and inherited pin: %d %v", code, got)
+	}
+	_, resolved = call(t, s, userMain, "GET", "/Moonfin/Settings/Resolved/tv", "", nil)
+	if !reflect.DeepEqual(resolved["liveTvSavedFilters"], []any{}) {
+		t.Fatal("removed legacy pin returned after sync")
+	}
 	cfg["DefaultUserSettings"].(M)["liveTvSavedFilters"] = []any{}
 	saveConfig(t, s, cfg)
 	body, _ := json.Marshal(M{"DefaultUserSettings": M{"liveTvSavedFilters": []any{pin}}})

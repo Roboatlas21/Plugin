@@ -16,13 +16,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/big"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -184,20 +184,37 @@ func (c *Companion) LiveTvFreeGroups(ctx context.Context, token string) ([]strin
 	return groups, nil
 }
 
-// Plex can send a genre ID as a string, an integer, or a number such as 7.0.
+var genreDecimal = regexp.MustCompile(`^(-?)(0|[1-9][0-9]*)(?:\.([0-9]+))?(?:[eE]([+-]?[0-9]+))?$`)
+
+// Compare numeric IDs by their significant digits and decimal exponent.
+// This keeps every digit without expanding a short ID such as 1e1000000.
 func genreKey(key any) string {
-	switch id := key.(type) {
-	case string:
-		return id
-	case json.Number:
-		if !strings.ContainsAny(id.String(), ".eE") {
-			return id.String()
+	raw, isString := key.(string)
+	if !isString {
+		number, ok := key.(json.Number)
+		if !ok {
+			return ""
 		}
-		if n, err := id.Float64(); err == nil {
-			return strconv.FormatFloat(n, 'f', -1, 64)
-		}
+		raw = number.String()
 	}
-	return ""
+	if raw == "" {
+		return ""
+	}
+	match := genreDecimal.FindStringSubmatch(raw)
+	if match == nil || (isString && (match[4] != "" || strings.HasSuffix(match[3], "0"))) {
+		return "string:" + raw // Preserve opaque or specially formatted string IDs.
+	}
+	digits := strings.TrimLeft(match[2]+match[3], "0")
+	if digits == "" {
+		return match[1] + "0"
+	}
+	significant := strings.TrimRight(digits, "0")
+	var exponent big.Int
+	if match[4] != "" {
+		exponent.SetString(match[4], 10)
+	}
+	exponent.Add(&exponent, big.NewInt(int64(len(digits)-len(significant)-len(match[3]))))
+	return match[1] + significant + "e" + exponent.String()
 }
 
 // loadOrCreateClientID keeps one X-Plex-Client-Identifier per install, so

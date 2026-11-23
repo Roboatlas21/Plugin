@@ -23,7 +23,7 @@ func (guideRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		{"genreRatingKey":1000000,"title":"News"},{"genreRatingKey":"9007199254740993","title":"Movies"},
 		{"genreRatingKey":7.0,"title":"Comedy"},{"genreRatingKey":"8","title":"Sports"}]}]}}`
 	if req.URL.Path == "/lineups/plex/channels" {
-		body = `{"MediaContainer":{"Channel":[{"genreRatingKeys":["1000000",9007199254740993,"7"]},{"genreRatingKeys":["8"],"drm":true}]}}`
+		body = `{"MediaContainer":{"Channel":[{"genreRatingKeys":[1e6,9007199254740993.0,"7"]},{"genreRatingKeys":["8"],"drm":true}]}}`
 	}
 	return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}, nil
 }
@@ -33,6 +33,18 @@ func TestAdminGroupsMatchPlayablePlexFreeTvGenres(t *testing.T) {
 	groups, err := c.LiveTvFreeGroups(context.Background(), "owner")
 	if err != nil || strings.Join(groups, ",") != "Comedy,Movies,News" {
 		t.Fatalf("playable Plex groups: %v, %v", groups, err)
+	}
+}
+
+func TestGenreKeyPreservesNumericPrecisionAndOpaqueStrings(t *testing.T) {
+	const large = "9007199254740993"
+	for _, number := range []json.Number{large, large + ".0", "90071992547409930e-1"} {
+		if genreKey(number) != genreKey(large) || genreKey(number) == genreKey("9007199254740992") {
+			t.Fatalf("genre ID lost precision: %s", number)
+		}
+	}
+	if genreKey("007") == genreKey(json.Number("7")) || genreKey("7.0") == genreKey("7") {
+		t.Fatal("distinct string IDs were merged")
 	}
 }
 

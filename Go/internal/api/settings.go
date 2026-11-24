@@ -262,7 +262,6 @@ func (s *Server) handlePostProfile(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		extra := M{}
-		changed := false
 		saved := s.save(w, r, func(env M) (M, error) {
 			stored, err := s.fullConfig(r.Context())
 			if err != nil {
@@ -270,14 +269,12 @@ func (s *Server) handlePostProfile(w http.ResponseWriter, r *http.Request) {
 			}
 			cfg := configFrom(stored)
 			change.Defaults = settings.AdminSavedFilters(cfg.Defaults["liveTvSavedFilters"])
-			before := settings.EffectiveSavedFilters(env, change.Defaults)
 			updated := settings.SaveProfile(env, name, cleaned, clientID, serverKeys(cfg), time.Now(), change)
-			pins := settings.EffectiveSavedFilters(updated, change.Defaults)
-			changed = !slices.Equal(before, pins)
-			extra["liveTvSavedFilters"] = pins
+			extra["liveTvSavedFilters"] = settings.EffectiveSavedFilters(updated, change.Defaults)
 			return updated, nil
 		}, extra)
-		if saved && changed && s.notify.on {
+		// A retry can complete an earlier partial save without changing the pins again.
+		if saved && s.notify.on {
 			s.notifyUser(callerOf(r).UserID, M{"type": "settingsUpdated"})
 		}
 		return

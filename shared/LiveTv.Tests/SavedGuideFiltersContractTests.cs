@@ -164,10 +164,14 @@ public sealed class SavedGuideFiltersContractTests : IDisposable
         config.DefaultDeviceSettings = new MoonfinDeviceDefaults {
             Tv = new MoonfinSettingsProfile { LiveTvSavedFilters = ["group:TV"] } };
         var id = Guid.NewGuid();
-        await Edit(id, "tv", "add", "group:Local");
-        await Edit(id, "tv", "remove", "group:Sports");
+        var user = new MoonfinUserSettings {
+            Global = new MoonfinSettingsProfile { LiveTvSavedFilters = ["group:Local"] },
+            LiveTvSavedFilterExclusions = ["group:Sports"] };
+        Directory.CreateDirectory(_path);
+        File.WriteAllText(Path.Combine(_path, id + ".json"), System.Text.Json.JsonSerializer.Serialize(user));
+        Assert.Equal(["group:News", "group:Local"], _service.ResolveProfile((await Read(id))!, "tv", config).LiveTvSavedFilters);
         await _service.MergeDefaultsAsync(config, ["tv"], ["liveTvSavedFilters"], [id]);
-        Assert.Equal(["group:Sports", "group:News", "group:Local"], _service.ResolveProfile((await Read(id))!, "tv", config).LiveTvSavedFilters);
+        Assert.Equal(["group:News", "group:Local"], _service.ResolveProfile((await Read(id))!, "tv", config).LiveTvSavedFilters);
         await _service.MergeDefaultsAsync(config, ["global"], ["liveTvSavedFilters"], [id]);
         Assert.Equal(["group:Sports", "group:News", "group:Local"], _service.ResolveProfile((await Read(id))!, "tv", config).LiveTvSavedFilters);
         await _service.ResetUsersToDefaultsAsync(config, ["global"], [id], deleteOrphans: false);

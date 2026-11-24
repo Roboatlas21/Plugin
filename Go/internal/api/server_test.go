@@ -383,6 +383,38 @@ func TestGuidePinImportCanRetryAfterUnreadableDefaults(t *testing.T) {
 	}
 }
 
+type failingIndexStore struct {
+	store.KV
+	fail bool
+}
+
+func (kv *failingIndexStore) Put(ctx context.Context, key string, value []byte) error {
+	if key == keyIndex && kv.fail {
+		return fmt.Errorf("index unavailable")
+	}
+	return kv.KV.Put(ctx, key, value)
+}
+
+func TestGuidePinRetryNotifiesAfterIndexWriteFailure(t *testing.T) {
+	kv := &failingIndexStore{KV: store.NewMemKV(), fail: true}
+	s := NewServer("1", testHost(kv))
+	events := make(chan []byte, 2)
+	s.notify.on = true
+	s.notify.streams = map[int]map[chan []byte]struct{}{userMain.user: {events: {}}}
+	const path = "/Moonfin/Settings/Profile/tv"
+	const body = `{"profile":{},"liveTvSavedFilterChange":{"action":"add","filter":"group:News"}}`
+	if code, _ := call(t, s, userMain, "POST", path, body, nil); code != 500 || len(events) != 0 {
+		t.Fatalf("failed save returned %d and sent %d events", code, len(events))
+	}
+	kv.fail = false
+	if code, _ := call(t, s, userMain, "POST", path, body, nil); code != 200 || len(events) != 1 {
+		t.Fatalf("retry returned %d and sent %d events", code, len(events))
+	}
+	if got := string(<-events); got != `{"type":"settingsUpdated"}` {
+		t.Fatalf("unexpected retry event: %s", got)
+	}
+}
+
 func TestOptionalGuidePinsDoNotChangeOrdinaryProfileUpdates(t *testing.T) {
 	s := newTestServer()
 	if code, _ := call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/global",

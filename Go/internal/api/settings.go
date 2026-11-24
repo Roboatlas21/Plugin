@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -269,7 +270,10 @@ func (s *Server) handlePostProfile(w http.ResponseWriter, r *http.Request) {
 			}
 			cfg := configFrom(stored)
 			change.Defaults = settings.AdminSavedFilters(cfg.Defaults["liveTvSavedFilters"])
-			updated := settings.SaveProfile(env, name, cleaned, clientID, serverKeys(cfg), time.Now(), change)
+			updated := settings.SaveProfile(env, name, cleaned, clientID, serverKeys(cfg), time.Now())
+			if err := settings.ApplySavedFilterChange(updated, change); err != nil {
+				return nil, err
+			}
 			extra["liveTvSavedFilters"] = settings.EffectiveSavedFilters(updated, change.Defaults)
 			return updated, nil
 		}, extra)
@@ -312,7 +316,11 @@ func (s *Server) save(w http.ResponseWriter, r *http.Request, apply func(M) (M, 
 			return true
 		}
 	}
-	storageFailed(w, r, err)
+	if errors.Is(err, settings.ErrSavedFilterLimit) {
+		writeError(w, http.StatusBadRequest, err.Error())
+	} else {
+		storageFailed(w, r, err)
+	}
 	return false
 }
 

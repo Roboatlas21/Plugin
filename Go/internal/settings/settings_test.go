@@ -158,15 +158,24 @@ func TestCleanLeavesNonASCIIKeysAlone(t *testing.T) {
 	}
 }
 
+func editGuidePin(t *testing.T, env M, profile string, change SavedFilterChange) M {
+	t.Helper()
+	env = SaveProfile(env, profile, M{}, profile, ServerKeys{}, now)
+	if err := ApplySavedFilterChange(env, change); err != nil {
+		t.Fatal(err)
+	}
+	return env
+}
+
 func TestGuidePinsKeepAtomicEditsAcrossFullUploads(t *testing.T) {
 	keys := ServerKeys{}
-	env := SaveProfile(nil, "tv", M{}, "tv", keys, now, SavedFilterChange{Action: "add", Filter: "group:Sports"})
-	env = SaveProfile(env, "mobile", M{}, "mobile", keys, now, SavedFilterChange{Action: "add", Filter: "group:News"})
+	env := editGuidePin(t, nil, "tv", SavedFilterChange{Action: "add", Filter: "group:Sports"})
+	env = editGuidePin(t, env, "mobile", SavedFilterChange{Action: "add", Filter: "group:News"})
 	env = SaveEnvelope(env, decode(t, `{"global":{"liveTvSavedFilters":[]},"tv":{"liveTvSavedFilters":["group:Stale"]}}`), "replace", "tv", keys, now)
 	if got := StoredSavedFilters(env); !reflect.DeepEqual(got, []any{"group:Sports", "group:News"}) {
 		t.Fatalf("whole settings push replaced atomic pins: %v", got)
 	}
-	env = SaveProfile(env, "tv", M{}, "tv", keys, now, SavedFilterChange{Action: "remove", Filter: "group:Sports"})
+	env = editGuidePin(t, env, "tv", SavedFilterChange{Action: "remove", Filter: "group:Sports"})
 	if got := StoredSavedFilters(env); !reflect.DeepEqual(got, []any{"group:News"}) {
 		t.Fatalf("removed the wrong pin: %v", got)
 	}
@@ -181,14 +190,14 @@ func TestGuidePinsImportDefaultsAndExplicitClear(t *testing.T) {
 		M{"liveTvSavedFilters": defaults}, ServerKeys{})["liveTvSavedFilters"]; !reflect.DeepEqual(got, defaults) {
 		t.Fatalf("device-only pins leaked: %v", got)
 	}
-	env := SaveProfile(nil, "tv", M{}, "tv", ServerKeys{}, now, SavedFilterChange{
+	env := editGuidePin(t, nil, "tv", SavedFilterChange{
 		Action: "initializeIfAbsent", Filters: []string{"group:Local"}, Defaults: defaults,
 	})
 	if got := EffectiveSavedFilters(env, defaults); !reflect.DeepEqual(got, []any{"group:Local"}) {
 		t.Fatalf("local import ignored: %v", got)
 	}
-	env = SaveProfile(env, "tv", M{}, "tv", ServerKeys{}, now, SavedFilterChange{Action: "remove", Filter: "group:Local"})
-	env = SaveProfile(env, "mobile", M{}, "mobile", ServerKeys{}, now, SavedFilterChange{
+	env = editGuidePin(t, env, "tv", SavedFilterChange{Action: "remove", Filter: "group:Local"})
+	env = editGuidePin(t, env, "mobile", SavedFilterChange{
 		Action: "initializeIfAbsent", Filters: []string{"group:Ignored"},
 	})
 	if got := EffectiveSavedFilters(env, []any{"group:Tennis"}); !reflect.DeepEqual(got, []any{"group:Tennis"}) {
@@ -199,12 +208,12 @@ func TestGuidePinsImportDefaultsAndExplicitClear(t *testing.T) {
 func TestRemovingGuidePinOnlyExcludesCurrentAdminDefaults(t *testing.T) {
 	const pin = "group:Local"
 	defaults := []any{pin}
-	env := SaveProfile(nil, "tv", M{}, "tv", ServerKeys{}, now, SavedFilterChange{Action: "add", Filter: pin})
-	env = SaveProfile(env, "tv", M{}, "tv", ServerKeys{}, now, SavedFilterChange{Action: "remove", Filter: pin})
+	env := editGuidePin(t, nil, "tv", SavedFilterChange{Action: "add", Filter: pin})
+	env = editGuidePin(t, env, "tv", SavedFilterChange{Action: "remove", Filter: pin})
 	if got := EffectiveSavedFilters(env, defaults); !reflect.DeepEqual(got, defaults) {
 		t.Fatalf("removing a personal pin hid a later admin default: %v", got)
 	}
-	env = SaveProfile(env, "tv", M{}, "tv", ServerKeys{}, now, SavedFilterChange{Action: "remove", Filter: pin, Defaults: defaults})
+	env = editGuidePin(t, env, "tv", SavedFilterChange{Action: "remove", Filter: pin, Defaults: defaults})
 	if got := EffectiveSavedFilters(env, defaults); len(got) != 0 {
 		t.Fatalf("removing an admin pin left it visible: %v", got)
 	}

@@ -33,7 +33,10 @@ function picker(host, pins, responses) {
         } },
         defaultsState: { active: 'global', profiles: { global: { liveTvSavedFilters: pins }, tv: {} } },
         collectActiveDefaults() {}, snapshotGlobalLabels() {},
-        ApiClient: { getUrl: path => path, ajax: async () => ({ channels: [{ groups: await responses.shift() }] }) },
+        ApiClient: { getUrl: path => path, ajax: async () => {
+            const response = await responses.shift();
+            return Array.isArray(response) ? { channels: [{ groups: response }] } : response;
+        } },
         esc: value => String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;'),
     });
     if (host === 'Jellyfin') delete window.moonbaseHost;
@@ -51,6 +54,22 @@ function picker(host, pins, responses) {
         await new Promise(resolve => setImmediate(resolve));
     }};
 }
+
+test('Jellyfin shows partial discovery with or without groups', async () => {
+    const dashboard = picker('Jellyfin', [], [
+        { partial: true, channels: [] }, { partial: true, channels: [{ groups: ['News'] }] },
+        { partial: false, channels: [] },
+    ]);
+    await dashboard.reload();
+    assert.match(dashboard.root.innerHTML, /Reload to retry/);
+    assert.doesNotMatch(dashboard.root.innerHTML, /No channel groups available/);
+    await dashboard.reload();
+    assert.match(dashboard.root.innerHTML, /group:News/);
+    assert.match(dashboard.root.innerHTML, /Reload to retry/);
+    await dashboard.reload();
+    assert.match(dashboard.root.innerHTML, /No channel groups available/);
+    assert.doesNotMatch(dashboard.root.innerHTML, /Reload to retry/);
+});
 
 test('a retained Jellyfin profile switch uses groups from the latest page visit', async () => {
     let finishOldRequest;

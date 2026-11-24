@@ -364,6 +364,35 @@ func TestGuidePinsUseGlobalDefaultsAndAtomicProfileEdits(t *testing.T) {
 	}
 }
 
+func TestGuidePinLimitCountsPersonalPinsAndExclusions(t *testing.T) {
+	s := newTestServer()
+	saveConfig(t, s, M{"DefaultUserSettings": M{"liveTvSavedFilters": []string{"group:Managed"}}})
+	edit := func(change, profile M, want int) {
+		t.Helper()
+		body, err := json.Marshal(M{"profile": profile, "liveTvSavedFilterChange": change})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if code, _ := call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv", string(body), nil); code != want {
+			t.Fatalf("pin %v %v returned %d, want %d", change["action"], change["filter"], code, want)
+		}
+	}
+	pins := make([]string, 999)
+	for i := range pins {
+		pins[i] = fmt.Sprintf("group:%d", i)
+	}
+	edit(M{"action": "initializeIfAbsent", "filters": pins}, M{}, 200)
+	edit(M{"action": "add", "filter": pins[0]}, M{}, 200)
+	edit(M{"action": "add", "filter": "group:extra"}, M{"theme": "over-limit"}, 400)
+	_, got := call(t, s, userMain, "GET", "/Moonfin/Settings/Resolved/tv", "", nil)
+	if stored := got["liveTvSavedFilters"].([]any); len(stored) != len(pins) || got["theme"] == "over-limit" {
+		t.Fatalf("rejected edit changed stored pins or profile")
+	}
+	edit(M{"action": "add", "filter": "group:Managed"}, M{}, 200)
+	edit(M{"action": "remove", "filter": pins[0]}, M{}, 200)
+	edit(M{"action": "add", "filter": "group:extra"}, M{}, 200)
+}
+
 func TestGuidePinImportCanRetryAfterUnreadableDefaults(t *testing.T) {
 	s := newTestServer()
 	const path = "/Moonfin/Settings/Profile/tv"

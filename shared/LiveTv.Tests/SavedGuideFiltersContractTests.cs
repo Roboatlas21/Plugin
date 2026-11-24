@@ -83,6 +83,26 @@ public sealed class SavedGuideFiltersContractTests : IDisposable
     }
 
     [Fact]
+    public async Task PinLimitCountsPersonalPinsAndExclusionsAndRejectsTheWholeSave()
+    {
+        var id = Guid.NewGuid();
+        var pins = Enumerable.Range(0, 1000).Select(i => $"group:{i}").ToArray();
+        await Edit(id, "tv", "initializeIfAbsent", null, pins);
+        await Assert.ThrowsAsync<GuidePinLimitException>(() => _service.SaveProfileAsync(id, "mobile",
+            new MoonfinSettingsProfile { LiveTvCategoryDisplay = "groups" }, savedFilterChange:
+            new LiveTvSavedFilterChange { Action = "add", Filter = "group:extra" }));
+        var stored = (await Read(id))!;
+        Assert.Null(stored.Mobile?.LiveTvCategoryDisplay);
+        Assert.Equal(pins, stored.Global!.LiveTvSavedFilters);
+        var exclude = new LiveTvSavedFilterChange { Action = "remove", Filter = "group:managed" };
+        Assert.Throws<GuidePinLimitException>(() => MoonfinSettingsService.ApplySavedFilterChange(stored, exclude, ["group:managed"]));
+        Assert.Empty(stored.LiveTvSavedFilterExclusions!);
+        await Edit(id, "tv", "remove", pins[0]);
+        await Edit(id, "tv", "add", "group:extra");
+        Assert.Equal(1000, (await Read(id))!.Global!.LiveTvSavedFilters!.Count);
+    }
+
+    [Fact]
     public void GuidePinExclusionsApplyOnlyToCurrentAdminPins()
     {
         var user = new MoonfinUserSettings();

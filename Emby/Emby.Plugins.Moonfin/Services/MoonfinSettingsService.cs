@@ -454,7 +454,7 @@ namespace Emby.Plugins.Moonfin.Services
             var filePath = GetUserSettingsPath(userId);
             bool settingsChanged;
             MoonfinUserSettings saved;
-            long saveGeneration;
+            long? saveGeneration;
             await _lock.WaitAsync().ConfigureAwait(false);
             try
             {
@@ -510,14 +510,16 @@ namespace Emby.Plugins.Moonfin.Services
                 var serialized = JsonSerializer.Serialize(settings, _jsonOptions);
                 await Task.Run(() => AtomicFile.WriteAllText(filePath, serialized)).ConfigureAwait(false);
                 saved = settings;
-                saveGeneration = NextSaveGeneration(userId);
+                saveGeneration = savedFilterChange == null || profile.HideWatchedInRecentRows.HasValue
+                    ? NextSaveGeneration(userId) : (long?)null;
             }
             finally
             {
                 _lock.Release();
             }
 
-            await SyncHideWatchedAsync(userId, saved, profileName, saveGeneration).ConfigureAwait(false);
+            if (saveGeneration.HasValue)
+                await SyncHideWatchedAsync(userId, saved, profileName, saveGeneration.Value).ConfigureAwait(false);
 
             // Same echo guard as SaveUserSettingsAsync.
             if (notifySettingsChanged && settingsChanged) NotifySettingsChanged(userId);

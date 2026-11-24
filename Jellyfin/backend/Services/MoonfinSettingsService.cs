@@ -509,7 +509,7 @@ public class MoonfinSettingsService
         var filePath = GetUserSettingsPath(userId);
         bool settingsChanged;
         MoonfinUserSettings saved;
-        long saveGeneration;
+        long? saveGeneration;
 
         await _lock.WaitAsync();
         try
@@ -596,14 +596,16 @@ public class MoonfinSettingsService
             var serialized = JsonSerializer.Serialize(settings, _jsonOptions);
             AtomicFile.WriteAllText(filePath, serialized);
             saved = settings;
-            saveGeneration = NextSaveGeneration(userId);
+            saveGeneration = savedFilterChange == null || profile.HideWatchedInRecentRows.HasValue
+                ? NextSaveGeneration(userId) : (long?)null;
         }
         finally
         {
             _lock.Release();
         }
 
-        await SyncHideWatchedAsync(userId, saved, profileName, saveGeneration).ConfigureAwait(false);
+        if (saveGeneration.HasValue)
+            await SyncHideWatchedAsync(userId, saved, profileName, saveGeneration.Value).ConfigureAwait(false);
 
         // Same echo guard as SaveUserSettingsAsync.
         if (notifySettingsChanged && settingsChanged)

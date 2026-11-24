@@ -1022,8 +1022,15 @@ public class MoonfinController : ControllerBase
 
         var existed = _settingsService.UserSettingsExist(userId.Value);
 
-        await _settingsService.SaveProfileAsync(userId.Value, profile, request.Profile, request.ClientId,
-            savedFilterChange: request.LiveTvSavedFilterChange);
+        try
+        {
+            await _settingsService.SaveProfileAsync(userId.Value, profile, request.Profile, request.ClientId,
+                savedFilterChange: request.LiveTvSavedFilterChange);
+        }
+        catch (GuidePinLimitException ex)
+        {
+            return BadRequest(new { Error = ex.Message });
+        }
         var updatedPins = request.LiveTvSavedFilterChange == null
             ? null
             : (await _settingsService.GetResolvedProfileAsync(userId.Value, "global"))?.LiveTvSavedFilters ?? new List<string>();

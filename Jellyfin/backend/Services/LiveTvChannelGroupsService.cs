@@ -72,6 +72,14 @@ public sealed class LiveTvChannelGroupsService(
             logger.LogWarning(ex, "Could not read guide programme categories");
         }
         var items = visible.Count == 0 ? [] : BuildChannelDtos(visible, options, viewer.Value);
+        if (!ImportCurrent())
+        {
+            result = new ChannelGroupResult
+            {
+                Partial = true,
+                UnresolvedChannelIds = channels.Select(c => c.ClientId).ToList(),
+            };
+        }
         result.SetChannels(items, item => item.Id.ToString("N"));
         return result;
     }

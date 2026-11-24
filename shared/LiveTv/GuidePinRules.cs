@@ -7,6 +7,8 @@ namespace Moonfin.LiveTv;
 /// <summary>Shared guide-shortcut rules for Jellyfin and Emby; storage stays backend-specific.</summary>
 internal static class GuidePinRules
 {
+    internal const int MaxStoredKeys = 1000;
+
     private static bool ValidKey(string? key) =>
         key != null && key.Length <= 1024 &&
         ((key.StartsWith("group:", StringComparison.Ordinal) && key.Length > 6) ||
@@ -16,7 +18,7 @@ internal static class GuidePinRules
         action switch
         {
             "add" or "remove" => ValidKey(filter),
-            "initializeIfAbsent" => filters is { Count: <= 1000 } && filters.All(ValidKey),
+            "initializeIfAbsent" => filters is { Count: <= MaxStoredKeys } && filters.All(ValidKey),
             _ => false,
         };
 
@@ -41,8 +43,8 @@ internal static class GuidePinRules
         List<string>? personal, List<string>? exclusions)
     {
         if (action == "initializeIfAbsent" && personal != null) return null;
-        personal ??= new List<string>();
-        exclusions ??= new List<string>();
+        personal = personal?.ToList() ?? new List<string>();
+        exclusions = exclusions?.ToList() ?? new List<string>();
         if (action == "initializeIfAbsent")
         {
             foreach (var pin in filters!)
@@ -61,6 +63,12 @@ internal static class GuidePinRules
             personal.RemoveAll(pin => pin == filter);
             if (defaults?.Contains(filter!) == true && !exclusions.Contains(filter!)) exclusions.Add(filter!);
         }
+        if (personal.Count + exclusions.Count > MaxStoredKeys) throw new GuidePinLimitException();
         return (personal, exclusions);
     }
+}
+
+internal sealed class GuidePinLimitException : InvalidOperationException
+{
+    internal GuidePinLimitException() : base("A user can store at most 1,000 guide pins and exclusions in total.") { }
 }

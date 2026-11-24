@@ -14,6 +14,7 @@ using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Querying;
 using MediaBrowser.Model.Services;
 using Moonfin.Calendar;
+using Moonfin.LiveTv;
 
 namespace Emby.Plugins.Moonfin.Api
 {
@@ -228,8 +229,15 @@ namespace Emby.Plugins.Moonfin.Api
                 return Json(400, new { Error = "Invalid saved Live TV filter change" });
 
             var existed = Settings.UserSettingsExist(userId.Value);
-            await Settings.SaveProfileAsync(userId.Value, profile, body.Profile, body.ClientId,
-                savedFilterChange: body.LiveTvSavedFilterChange).ConfigureAwait(false);
+            try
+            {
+                await Settings.SaveProfileAsync(userId.Value, profile, body.Profile, body.ClientId,
+                    savedFilterChange: body.LiveTvSavedFilterChange).ConfigureAwait(false);
+            }
+            catch (GuidePinLimitException ex)
+            {
+                return Json(400, new { Error = ex.Message });
+            }
             var pins = body.LiveTvSavedFilterChange == null
                 ? null
                 : (await Settings.GetResolvedProfileAsync(userId.Value, "global").ConfigureAwait(false))?.LiveTvSavedFilters ?? new List<string>();

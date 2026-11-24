@@ -16,6 +16,49 @@ namespace Moonfin.Server.Tests;
 public class LiveTvChannelGroupsServiceTests
 {
     [Fact]
+    public async Task MixedTunersDiscardBothGroupReadsWhenTheImportChanges()
+    {
+        var cache = Directory.CreateTempSubdirectory();
+        try {
+            var path = Path.Combine(cache.FullName, "first_channels");
+            void WriteM3u(string group) => File.WriteAllText(path,
+                System.Text.Json.JsonSerializer.Serialize(new[] { new { Id = "m3u_news", ChannelGroup = group } }));
+            WriteM3u("News");
+            var finished = new TaskResult { EndTimeUtc = DateTime.UtcNow };
+            var task = RecordingHostProxy.Create<IScheduledTask>((_, _) => "RefreshGuide");
+            var worker = RecordingHostProxy.Create<IScheduledTaskWorker>((method, _) => method.Name switch {
+                "get_ScheduledTask" => task, "get_State" => TaskState.Idle,
+                "get_LastExecutionResult" => finished, _ => throw new NotSupportedException(method.Name)
+            });
+            var tasks = RecordingHostProxy.Create<ITaskManager>((_, _) => new[] { worker });
+            var waiting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource<List<ChannelInfo>>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var tuner = RecordingHostProxy.Create<ITunerHost>((method, _) => {
+                if (method.Name == "get_Type") return "xtream-library";
+                waiting.TrySetResult();
+                return release.Task;
+            });
+            var m3u = new LiveTvChannel { Id = Guid.NewGuid(), ExternalId = "m3u_news", ServiceName = "Emby" };
+            var native = new LiveTvChannel { Id = Guid.NewGuid(), ExternalId = "xtream_42", ServiceName = "Emby" };
+            var service = CreateGroupService(cache.FullName, [tuner], _ => [m3u, native], tasks);
+            var viewer = Guid.NewGuid();
+            var pending = service.GetAsync(viewer, CancellationToken.None);
+            await waiting.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            WriteM3u("Sports");
+            finished.EndTimeUtc = finished.EndTimeUtc.AddSeconds(1);
+            release.SetResult([new() { Id = "xtream_42", TunerHostId = "native", ChannelGroup = "Radio" }]);
+            var first = await pending;
+            var second = await service.GetAsync(viewer, CancellationToken.None);
+            Assert.True(first.Partial);
+            Assert.Empty(first.Groups);
+            Assert.Equal(2, first.Channels.Length);
+            Assert.Contains(m3u.Id.ToString("N"), first.UnresolvedChannelIds!);
+            Assert.Contains(native.Id.ToString("N"), first.UnresolvedChannelIds!);
+            Assert.Equal("Sports", Assert.Single(second.Groups[m3u.Id.ToString("N")]));
+        } finally { cache.Delete(true); }
+    }
+
+    [Fact]
     public async Task StalledXtreamLookupReturnsM3uGroupsAndDoesNotBlockOtherViewers()
     {
         var cache = Directory.CreateTempSubdirectory();

@@ -59,8 +59,45 @@ public class LiveTvChannelGroupsServiceTests
         }
         finally { pending.TrySetResult([]); cache.Delete(true); }
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OverlappingViewersShareGroupsOnlyWithinOneGuideImport(bool refresh)
+    {
+        var finished = new TaskResult { EndTimeUtc = DateTime.UtcNow };
+        var task = RecordingHostProxy.Create<IScheduledTask>((_, _) => "RefreshGuide");
+        var worker = RecordingHostProxy.Create<IScheduledTaskWorker>((method, _) => method.Name switch {
+            "get_ScheduledTask" => task, "get_State" => TaskState.Idle,
+            "get_LastExecutionResult" => finished, _ => throw new NotSupportedException(method.Name)
+        });
+        var tasks = RecordingHostProxy.Create<ITaskManager>((_, _) => new[] { worker });
+        var pending = new TaskCompletionSource<List<ChannelInfo>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        ChannelInfo Station(string label) => new() { Id = "xtream_42", TunerHostId = "native", ChannelGroup = label };
+        var tuner = RecordingHostProxy.Create<ITunerHost>((method, _) => {
+            if (method.Name == "get_Type") return "xtream-library";
+            Assert.Equal("GetChannels", method.Name);
+            return ++calls == 1 ? pending.Task : Task.FromResult(new List<ChannelInfo> { Station("New") });
+        });
+        var channel = new LiveTvChannel { Id = Guid.NewGuid(), ExternalId = "xtream_42", ServiceName = "Emby" };
+        var service = CreateGroupService("", [tuner], _ => [channel], tasks);
+        var first = service.GetAsync(Guid.NewGuid(), CancellationToken.None);
+        Assert.Equal(1, calls);
+        if (refresh) finished.EndTimeUtc = finished.EndTimeUtc.AddSeconds(1);
+        var second = service.GetAsync(Guid.NewGuid(), CancellationToken.None);
+        pending.SetResult([Station("Old")]);
+        var before = await first;
+        var after = await second;
+        if (refresh) {
+            Assert.Empty(before.Groups);
+            Assert.Equal(channel.Id.ToString("N"), Assert.Single(before.UnresolvedChannelIds!));
+        }
+        Assert.Equal(refresh ? "New" : "Old", Assert.Single(after.Groups[channel.Id.ToString("N")]));
+        Assert.Equal(refresh ? 2 : 1, calls);
+    }
+
     private static LiveTvChannelGroupsService CreateGroupService(
-        string cache, ITunerHost[] tuners, Func<Guid, BaseItem[]> channels) => new(
+        string cache, ITunerHost[] tuners, Func<Guid, BaseItem[]> channels, ITaskManager? tasks = null) => new(
             RecordingHostProxy.Create<ILiveTvManager>((_, args) => new QueryResult<BaseItem> {
                 Items = channels(((LiveTvChannelQuery)args![0]!).UserId) }),
             RecordingHostProxy.Create<ITunerHostManager>((_, _) => tuners),
@@ -72,7 +109,7 @@ public class LiveTvChannelGroupsServiceTests
             }),
             RecordingHostProxy.Create<ILibraryManager>((_, _) => new QueryResult<BaseItem>()),
             RecordingHostProxy.Create<IUserManager>((_, _) => new User("viewer", "auth", "reset")),
-            RecordingHostProxy.Create<ITaskManager>((_, _) => Array.Empty<IScheduledTaskWorker>()),
+            tasks ?? RecordingHostProxy.Create<ITaskManager>((_, _) => Array.Empty<IScheduledTaskWorker>()),
             new NoOpLogger<LiveTvChannelGroupsService>(),
             RecordingHostProxy.Create<IHostApplicationLifetime>((_, _) => CancellationToken.None),
             RecordingHostProxy.Create<IDtoService>((_, args) =>

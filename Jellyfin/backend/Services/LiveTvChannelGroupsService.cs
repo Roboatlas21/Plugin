@@ -27,6 +27,7 @@ public sealed class LiveTvChannelGroupsService(
     internal async Task<ChannelGroupResult> GetAsync(Guid userId, CancellationToken token)
     {
         var importTime = ChannelGroupResult.StableImportTime(tasks);
+        bool ImportCurrent() => importTime.HasValue && ChannelGroupResult.StableImportTime(tasks) == importTime;
         var query = new LiveTvChannelQuery { UserId = userId, AddCurrentProgram = false };
         var options = new DtoOptions(false) { EnableImages = true, EnableUserData = true, AddCurrentProgram = false };
         var visible = liveTv.GetInternalChannels(query, options, token).Items;
@@ -42,7 +43,7 @@ public sealed class LiveTvChannelGroupsService(
         var m3u = channels.Where(c => !IsNativeXtreamChannel(c.ExternalId)).ToArray();
         if (m3u.Length != 0)
         {
-            var snapshot = await _m3uReader.GetAsync(m3u.Select(c => c.ExternalId), ReadM3uAsync, token);
+            var snapshot = await _m3uReader.GetAsync(m3u.Select(c => c.ExternalId), importTime, ImportCurrent, ReadM3uAsync, token);
             snapshot.AddVisibleChannelsTo(result, m3u);
         }
         var xtream = channels.Where(c => IsNativeXtreamChannel(c.ExternalId)).ToArray();
@@ -52,7 +53,7 @@ public sealed class LiveTvChannelGroupsService(
             deadline.CancelAfter(XtreamGuideWait);
             try
             {
-                var snapshot = await _xtreamReader.GetAsync(xtream.Select(c => c.ExternalId), ReadXtreamAsync, deadline.Token)
+                var snapshot = await _xtreamReader.GetAsync(xtream.Select(c => c.ExternalId), importTime, ImportCurrent, ReadXtreamAsync, deadline.Token)
                     .WaitAsync(deadline.Token);
                 snapshot.AddVisibleChannelsTo(result, xtream);
             }

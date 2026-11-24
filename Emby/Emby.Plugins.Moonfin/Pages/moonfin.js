@@ -2916,6 +2916,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
             DEFAULTS_PROFILE_NAMES.forEach(function (name) {
                 defaultsState.profiles[name] = (name === 'global' ? camelKeysDeep(config.DefaultUserSettings) : deviceDefaults[name]) || {};
             });
+            defaultsState.guidePinBase = defaultsState.profiles.global.liveTvSavedFilters;
             defaultsState.active = 'global';
             fillUploadedThemes(view, config.UploadedThemes);
             populateDefaults(view, defaultsState.profiles.global);
@@ -2931,6 +2932,17 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
     var defaultGuideGroupsMessage = 'Loading available groups…';
     var defaultGuideCategories = [['movies', 'Movies'], ['series', 'Series'], ['sports', 'Sports'],
         ['news', 'News'], ['kids', 'Kids'], ['premiere', 'Premieres']];
+
+    function withGuidePinEdits(profile, originalPins, latestDefaults) {
+        var before = new Set(originalPins || []);
+        var selected = new Set(profile.liveTvSavedFilters || []);
+        var latest = (latestDefaults || {}).liveTvSavedFilters;
+        var pins = (latest || []).filter(function(key) { return !before.has(key) || selected.has(key); });
+        selected.forEach(function(key) {
+            if (!before.has(key) && !pins.includes(key)) pins.push(key);
+        });
+        return Object.assign({}, profile, { liveTvSavedFilters: pins.length || Array.isArray(latest) ? pins : latest });
+    }
 
     function renderDefaultGuideGroups(view, defaults, preserveSelection) {
         var host = view.querySelector('#DefaultPinnedGuideGroups');
@@ -3401,7 +3413,8 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
             config.GamesRommLibraryId = view.querySelector('#GamesRommLibraryId').value || null;
 
             collectActiveDefaults(view);
-            config.DefaultUserSettings = defaultsState.profiles.global;
+            var editedGlobal = defaultsState.profiles.global;
+            config.DefaultUserSettings = withGuidePinEdits(editedGlobal, defaultsState.guidePinBase, camelKeysDeep(config.DefaultUserSettings));
             config.DefaultDeviceSettings = {};
             DEFAULTS_PROFILE_NAMES.slice(1).forEach(function (name) {
                 var profile = defaultsState.profiles[name];
@@ -3414,6 +3427,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
             });
 
             return ApiClient.updatePluginConfiguration(PluginUniqueId, config).then(function (result) {
+                defaultsState.guidePinBase = editedGlobal.liveTvSavedFilters;
                 Dashboard.processPluginConfigurationUpdateResult(result);
             });
         }).catch(function (error) {
@@ -3755,7 +3769,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
         d.liveTvChannelSortBy = view.querySelector('#DefaultLiveTvChannelSortBy').value || null;
         d.liveTvCategoryDisplay = view.querySelector('#DefaultLiveTvCategoryDisplay').value || null;
         if (defaultsState.active === 'global') {
-            var inputs = Array.from(view.querySelectorAll('#DefaultPinnedGuideGroups input[data-guide-filter]'));
+            var inputs = Array.from(view.querySelectorAll('#DefaultPinnedGuideGroups input[data-guide-filter]:not(:disabled)'));
             var visiblePins = inputs.map(function(input) { return input.getAttribute('data-guide-filter'); });
             var selectedPins = inputs.filter(function(input) { return input.checked; })
                 .map(function(input) { return input.getAttribute('data-guide-filter'); });

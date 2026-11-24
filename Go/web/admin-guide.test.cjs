@@ -107,3 +107,74 @@ test('Plex uses the same byte limit in the picker as in the settings API', async
     assert.equal(checked(plex.root.innerHTML, atLimit), true);
     assert.ok(plex.root.innerHTML.includes('data-guide-filter="' + tooLong + '" disabled'));
 });
+
+function pageFunction(source, name) {
+    const match = source.match(new RegExp('^( *)function ' + name + '\\([^\\n]*\\) \\{[\\s\\S]*?^\\1\\}', 'm'));
+    assert.ok(match, 'missing page function ' + name);
+    return match[0];
+}
+
+test('Moonbase restores both the edited pins and their original selection after sign-in', async () => {
+    const storage = new Map();
+    function open() {
+        const context = vm.createContext({
+            moonbaseHost: { name: 'Plex' }, URLSearchParams, setInterval() {}, clearInterval() {}, scrollTo() {},
+            location: { origin: 'https://moonbase.test', pathname: '/admin' },
+            document: { addEventListener() {}, querySelector() { return null; }, getElementById() { return null; } },
+            sessionStorage: { getItem: k => storage.get(k), setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) },
+            fetch: async (_, init) => init.method === 'POST' ? { ok: false, status: 401 } :
+                { ok: true, json: async () => ({ DefaultUserSettings: { liveTvSavedFilters: ['group:News'] } }) },
+        });
+        context.window = context;
+        vm.runInContext(hostSource, context);
+        context.Dashboard.hideLoadingMsg = () => {};
+        return context.ApiClient;
+    }
+    const api = open();
+    const draft = await api.getPluginConfiguration();
+    draft.DefaultUserSettings.liveTvSavedFilters = ['group:Kids'];
+    await assert.rejects(api.updatePluginConfiguration('', draft), /401/);
+    const restored = await open().getPluginConfiguration();
+    assert.deepEqual(Array.from(restored.moonbaseDraftGuidePinBase), ['group:News']);
+    assert.deepEqual(Array.from(restored.DefaultUserSettings.liveTvSavedFilters), ['group:Kids']);
+});
+
+for (const host of ['Jellyfin/Go', 'Emby']) {
+    test(host + ' saves only the pin changes made in this tab', async () => {
+        const emby = host === 'Emby';
+        const source = emby ? fs.readFileSync(__dirname + '/../../Emby/Emby.Plugins.Moonfin/Pages/moonfin.js', 'utf8') : page;
+        const draft = { liveTvSavedFilters: ['group:News', 'group:Shared'] };
+        const defaultsState = { profiles: { global: draft }, guidePinBase: draft.liveTvSavedFilters };
+        const form = { querySelector: () => ({ value: '' }), querySelectorAll: () => [] };
+        let latest = ['group:Shared', 'group:Sports'], rejectSave = false, reads = 0;
+        const save = vm.runInNewContext([
+            pageFunction(source, 'withGuidePinEdits'), emby ? pageFunction(source, 'camelKeysDeep') : '',
+            pageFunction(source, emby ? 'saveConfig' : 'submit'), emby ? 'saveConfig' : 'submit',
+        ].join('\n'), {
+            defaultsState, document: form, DEFAULTS_PROFILE_NAMES: ['global'], loading: { show() {} },
+            Dashboard: { processPluginConfigurationUpdateResult() {} }, MoonfinConfig: {}, PluginUniqueId: '',
+            getPosterBadgeDefaults() {}, getPosterBadgeRules() {}, collectActiveDefaults() {}, wholeNumberIn() {}, reportConfigError() {},
+            ApiClient: {
+                getPluginConfiguration: async () => {
+                    const pins = !emby && ++reads % 2 === 1 ? ['group:Old'] : latest;
+                    return { DefaultUserSettings: { [emby ? 'LiveTvSavedFilters' : 'liveTvSavedFilters']: pins } };
+                },
+                updatePluginConfiguration: async (_, config) => {
+                    if (rejectSave) throw new Error('save failed');
+                    latest = config.DefaultUserSettings.liveTvSavedFilters;
+                },
+            },
+        });
+        await save(form);
+        assert.deepEqual(Array.from(latest), ['group:Shared', 'group:Sports']);
+        draft.liveTvSavedFilters = ['group:News', 'group:Kids'];
+        rejectSave = true;
+        await assert.rejects(save(form), /save failed/);
+        rejectSave = false;
+        await save(form);
+        assert.deepEqual(Array.from(latest), ['group:Sports', 'group:Kids']);
+        latest = null; // Another admin clears the pins after this tab's successful save.
+        await save(form);
+        assert.equal(latest, null);
+    });
+}

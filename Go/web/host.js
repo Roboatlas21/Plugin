@@ -166,14 +166,18 @@
             }
             draftOffered = true;
             if (draft) {
-                lastConfig = draft;
-                fillArrFields(draft);
-                fillGamePaths(draft);
-                fillLogUploadField(draft);
-                return Promise.resolve(clone(draft));
+                lastConfig = draft.config;
+                var restored = clone(lastConfig);
+                lastServerGuidePins = draft.guidePinBase || (lastConfig.DefaultUserSettings || {}).liveTvSavedFilters || [];
+                restored.moonbaseDraftGuidePinBase = lastServerGuidePins;
+                fillArrFields(restored);
+                fillGamePaths(restored);
+                fillLogUploadField(restored);
+                return Promise.resolve(restored);
             }
             return this.getJSON(getUrl('Moonfin/Admin/Configuration')).then(function (config) {
                 lastConfig = config;
+                lastServerGuidePins = (config.DefaultUserSettings || {}).liveTvSavedFilters || [];
                 fillArrFields(config);
                 fillGamePaths(config);
                 fillLogUploadField(config);
@@ -196,6 +200,8 @@
             readGamePaths(config);
             readLogUploadField(config);
             return send('POST', getUrl('Moonfin/Admin/Configuration'), JSON.stringify(config), 'application/json').then(function () {
+                lastConfig = clone(config);
+                lastServerGuidePins = (config.DefaultUserSettings || {}).liveTvSavedFilters || [];
                 clearDraft();
             }, async function (error) {
                 Dashboard.hideLoadingMsg();
@@ -249,6 +255,7 @@
     };
 
     var lastConfig = null;
+    var lastServerGuidePins = [];
     var draftOffered = false;
 
     function clone(value) {
@@ -262,13 +269,15 @@
     function readDraft() {
         try {
             var draft = JSON.parse(sessionStorage.getItem(draftKey) || 'null');
-            if (draft && Date.now() - draft.savedAt < draftMaxAgeMs) return draft.config;
+            if (draft && draft.config && Date.now() - draft.savedAt < draftMaxAgeMs) return draft;
             clearDraft();
         } catch (e) { /* no usable draft */ }
         return null;
     }
     function saveDraft(config) {
-        try { sessionStorage.setItem(draftKey, JSON.stringify({ savedAt: Date.now(), config: config })); } catch (e) { /* the banner still explains */ }
+        try { sessionStorage.setItem(draftKey, JSON.stringify({
+            savedAt: Date.now(), config: config, guidePinBase: lastServerGuidePins
+        })); } catch (e) { /* the banner still explains */ }
     }
     function clearDraft() {
         try { sessionStorage.removeItem(draftKey); } catch (e) { /* nothing stored */ }

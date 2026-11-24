@@ -3427,7 +3427,12 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
             });
 
             return ApiClient.updatePluginConfiguration(PluginUniqueId, config).then(function (result) {
-                defaultsState.guidePinBase = editedGlobal.liveTvSavedFilters;
+                var saved = config.DefaultUserSettings;
+                // Edits made while saving still belong to this tab.
+                defaultsState.profiles.global = withGuidePinEdits(
+                    defaultsState.profiles.global, editedGlobal.liveTvSavedFilters, saved);
+                defaultsState.guidePinBase = saved.liveTvSavedFilters;
+                if (defaultsState.active === 'global') renderDefaultGuideGroups(view, defaultsState.profiles.global);
                 Dashboard.processPluginConfigurationUpdateResult(result);
             });
         }).catch(function (error) {

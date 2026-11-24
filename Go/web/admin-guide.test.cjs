@@ -144,9 +144,10 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
         const emby = host === 'Emby';
         const source = emby ? fs.readFileSync(__dirname + '/../../Emby/Emby.Plugins.Moonfin/Pages/moonfin.js', 'utf8') : page;
         const draft = { liveTvSavedFilters: ['group:News', 'group:Shared'] };
-        const defaultsState = { profiles: { global: draft }, guidePinBase: draft.liveTvSavedFilters };
+        const defaultsState = { active: 'global', profiles: { global: draft }, guidePinBase: draft.liveTvSavedFilters };
         const form = { querySelector: () => ({ value: '' }), querySelectorAll: () => [] };
         let latest = ['group:Shared', 'group:Sports'], rejectSave = false, reads = 0;
+        let displayed, editDuringSave;
         const save = vm.runInNewContext([
             pageFunction(source, 'withGuidePinEdits'), emby ? pageFunction(source, 'camelKeysDeep') : '',
             pageFunction(source, emby ? 'saveConfig' : 'submit'), emby ? 'saveConfig' : 'submit',
@@ -154,6 +155,7 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
             defaultsState, document: form, DEFAULTS_PROFILE_NAMES: ['global'], loading: { show() {} },
             Dashboard: { processPluginConfigurationUpdateResult() {} }, MoonfinConfig: {}, PluginUniqueId: '',
             getPosterBadgeDefaults() {}, getPosterBadgeRules() {}, collectActiveDefaults() {}, wholeNumberIn() {}, reportConfigError() {},
+            renderDefaultGuideGroups(...args) { displayed = args.at(-1).liveTvSavedFilters; },
             ApiClient: {
                 getPluginConfiguration: async () => {
                     const pins = !emby && ++reads % 2 === 1 ? ['group:Old'] : latest;
@@ -162,17 +164,25 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
                 updatePluginConfiguration: async (_, config) => {
                     if (rejectSave) throw new Error('save failed');
                     latest = config.DefaultUserSettings.liveTvSavedFilters;
+                    if (editDuringSave) defaultsState.profiles.global = { liveTvSavedFilters: editDuringSave };
                 },
             },
         });
         await save(form);
         assert.deepEqual(Array.from(latest), ['group:Shared', 'group:Sports']);
-        draft.liveTvSavedFilters = ['group:News', 'group:Kids'];
+        assert.deepEqual(Array.from(displayed), ['group:Shared', 'group:Sports']);
+        defaultsState.profiles.global = { liveTvSavedFilters: ['group:Kids'] };
         rejectSave = true;
         await assert.rejects(save(form), /save failed/);
         rejectSave = false;
+        latest = [...latest, 'group:Music']; // A different tab adds another pin before the retry.
+        editDuringSave = ['group:Kids', 'group:Movies'];
         await save(form);
-        assert.deepEqual(Array.from(latest), ['group:Sports', 'group:Kids']);
+        assert.deepEqual(Array.from(latest), ['group:Music', 'group:Kids']);
+        assert.deepEqual(Array.from(displayed), ['group:Music', 'group:Kids', 'group:Movies']);
+        editDuringSave = null;
+        await save(form);
+        assert.deepEqual(Array.from(latest), ['group:Music', 'group:Kids', 'group:Movies']);
         latest = null; // Another admin clears the pins after this tab's successful save.
         await save(form);
         assert.equal(latest, null);

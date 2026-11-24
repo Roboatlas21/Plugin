@@ -12519,7 +12519,12 @@
                             config.DefaultUserSettings = withGuidePinEdits(editedGlobal, originalPins, fresh.DefaultUserSettings);
                             return ApiClient.updatePluginConfiguration(MoonfinConfig.pluginUniqueId, config);
                         }).then(function(result) {
-                            defaultsState.guidePinBase = editedGlobal.liveTvSavedFilters;
+                            var saved = config.DefaultUserSettings;
+                            // Edits made while saving still belong to this tab.
+                            defaultsState.profiles.global = withGuidePinEdits(
+                                defaultsState.profiles.global, editedGlobal.liveTvSavedFilters, saved);
+                            defaultsState.guidePinBase = saved.liveTvSavedFilters;
+                            if (defaultsState.active === 'global') renderDefaultGuideGroups(defaultsState.profiles.global);
                             Dashboard.processPluginConfigurationUpdateResult(result);
                         });
                     });

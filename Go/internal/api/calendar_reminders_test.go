@@ -460,9 +460,11 @@ func TestTheSettingsStreamCarriesEvents(t *testing.T) {
 	}
 	s.notifyUser(other.user, M{"type": "seerrNotification", "title": "not yours"})
 	s.notifyUser(userMain.user, M{"type": "seerrNotification", "title": "yours"})
-	_, _ = lines.ReadString('\n')
-	if line, _ := lines.ReadString('\n'); line != `data: {"type":"settingsUpdated"}`+"\n" {
-		t.Fatalf("pin event = %q", line)
+	for range 2 { // Both successful edits by userMain, including the replay.
+		_, _ = lines.ReadString('\n')
+		if line, _ := lines.ReadString('\n'); line != `data: {"type":"settingsUpdated"}`+"\n" {
+			t.Fatalf("pin event = %q", line)
+		}
 	}
 	_, _ = lines.ReadString('\n')
 	line, err := lines.ReadString('\n')

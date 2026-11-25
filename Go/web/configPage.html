@@ -12419,7 +12419,10 @@
                 function submit() {
                     var visit = defaultsState.guideGroups;
                     collectActiveDefaults();
-                    var edit = { visit: visit, profile: defaultsState.profiles.global, base: defaultsState.guidePinBase };
+                    var edit = {
+                        visit: visit, profile: defaultsState.profiles.global,
+                        base: defaultsState.guidePinBase, changedPins: new Set()
+                    };
                     function collectForm(config) {
                         config.EnableSettingsSync = document.querySelector('#EnableSettingsSync').checked;
                         config.SeerrEnabled = document.querySelector('#SeerrEnabled').checked;
@@ -12497,9 +12500,11 @@
 
                         config.GamesEnabled = document.querySelector('#GamesEnabled').checked;
                         config.GamesIsolateWebApp = document.querySelector('#GamesIsolateWebApp').checked;
-                        config.GameLibraryIds = Array.prototype.slice.call(
-                            document.querySelectorAll('.gameLibraryCb:checked')
-                        ).map(function (cb) { return cb.getAttribute('data-id'); });
+                        if (document.querySelector('.gameLibraryCb')) {
+                            config.GameLibraryIds = Array.prototype.slice.call(
+                                document.querySelectorAll('.gameLibraryCb:checked')
+                            ).map(function (cb) { return cb.getAttribute('data-id'); });
+                        }
                         config.GamesRommUrl = document.querySelector('#GamesRommUrl').value.trim() || null;
                         config.GamesRommToken = document.querySelector('#GamesRommToken').value.trim() || null;
                         config.GamesRommLibraryId = document.querySelector('#GamesRommLibraryId').value || null;
@@ -12538,6 +12543,7 @@
                             return config;
                         }).then(function(fresh) {
                             config.Messages = fresh.Messages;
+                            if (!('GameLibraryIds' in fields)) config.GameLibraryIds = fresh.GameLibraryIds;
                             config.DefaultUserSettings = mergePins(fresh.DefaultUserSettings);
                             if (window.moonbaseHost) {
                                 return ApiClient.updatePluginConfiguration(MoonfinConfig.pluginUniqueId, config,
@@ -12547,16 +12553,21 @@
                         }).then(function(result) {
                             var saved = config.DefaultUserSettings;
                             defaultsState.unconfirmedGuidePins = null;
-                            // Carry concurrent admin edits into each waiting draft and its baseline.
+                            // Apply each queued edit relative to the form submitted just before it.
+                            var previousPins = edit.profile.liveTvSavedFilters;
+                            var rebased = saved;
                             queue.slice(1).forEach(function(next) {
                                 if (next.visit !== visit) return;
-                                next.profile = withGuidePinEdits(next.profile, edit.profile.liveTvSavedFilters, saved);
+                                var submittedPins = next.profile.liveTvSavedFilters;
+                                rebased = withGuidePinEdits(next.profile, previousPins, rebased, next.changedPins);
+                                next.profile = rebased;
                                 next.base = saved.liveTvSavedFilters;
+                                previousPins = submittedPins;
                             });
                             if (defaultsState.guideGroups === visit) {
                                 // Preserve edits made during the save on this visit.
                                 defaultsState.profiles.global = withGuidePinEdits(
-                                    defaultsState.profiles.global, edit.profile.liveTvSavedFilters, saved);
+                                    defaultsState.profiles.global, previousPins, rebased);
                                 defaultsState.guidePinBase = saved.liveTvSavedFilters;
                                 if (defaultsState.active === 'global') renderDefaultGuideGroups(defaultsState.profiles.global);
                             }
@@ -12570,6 +12581,7 @@
                         if (!pending || pending.visit !== visit) {
                             pending = defaultsState.unconfirmedGuidePins = { visit: visit, keys: new Set() };
                         }
+                        edit.changedPins.forEach(function(key) { pending.keys.add(key); });
                         return withGuidePinEdits(edit.profile, edit.base, latest, pending.keys);
                     }
                     edit.done = (previous ? previous.done.then(save, save) : save())

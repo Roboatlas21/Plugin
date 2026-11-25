@@ -3416,8 +3416,10 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
 
             config.GamesEnabled = view.querySelector('#GamesEnabled').checked;
             config.GamesIsolateWebApp = view.querySelector('#GamesIsolateWebApp').checked;
-            config.GameLibraryIds = Array.prototype.slice.call(view.querySelectorAll('.gameLibraryCb:checked'))
-                .map(function (cb) { return cb.getAttribute('data-id'); });
+            if (view.querySelector('.gameLibraryCb')) {
+                config.GameLibraryIds = Array.prototype.slice.call(view.querySelectorAll('.gameLibraryCb:checked'))
+                    .map(function (cb) { return cb.getAttribute('data-id'); });
+            }
             config.GamesRommUrl = view.querySelector('#GamesRommUrl').value.trim() || null;
             config.GamesRommToken = view.querySelector('#GamesRommToken').value.trim() || null;
             config.GamesRommLibraryId = view.querySelector('#GamesRommLibraryId').value || null;
@@ -3442,7 +3444,10 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
             reportConfigError(error);
             return Promise.reject(error);
         }
-        var edit = { visit: visit, profile: defaultsState.profiles.global, base: defaultsState.guidePinBase };
+        var edit = {
+            visit: visit, profile: defaultsState.profiles.global,
+            base: defaultsState.guidePinBase, changedPins: new Set()
+        };
         var queue = defaultsState.pendingSaves || (defaultsState.pendingSaves = []);
         var previous = queue[queue.length - 1];
         queue.push(edit);
@@ -3452,6 +3457,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
             if (!pending || pending.visit !== visit) {
                 pending = defaultsState.unconfirmedGuidePins = { visit: visit, keys: new Set() };
             }
+            edit.changedPins.forEach(function(key) { pending.keys.add(key); });
             return withGuidePinEdits(edit.profile, edit.base, latest, pending.keys);
         }
         function save() {
@@ -3461,14 +3467,20 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
                 config.DefaultUserSettings = saved;
                 return ApiClient.updatePluginConfiguration(PluginUniqueId, config).then(function (result) {
                     defaultsState.unconfirmedGuidePins = null;
+                    // Apply each queued edit relative to the form submitted just before it.
+                    var previousPins = edit.profile.liveTvSavedFilters;
+                    var rebased = saved;
                     queue.slice(1).forEach(function (next) {
                         if (next.visit !== visit) return;
-                        next.profile = withGuidePinEdits(next.profile, edit.profile.liveTvSavedFilters, saved);
+                        var submittedPins = next.profile.liveTvSavedFilters;
+                        rebased = withGuidePinEdits(next.profile, previousPins, rebased, next.changedPins);
+                        next.profile = rebased;
                         next.base = saved.liveTvSavedFilters;
+                        previousPins = submittedPins;
                     });
                     if (visit === guideGroupsVisit) {
                         defaultsState.profiles.global = withGuidePinEdits(
-                            defaultsState.profiles.global, edit.profile.liveTvSavedFilters, saved);
+                            defaultsState.profiles.global, previousPins, rebased);
                         defaultsState.guidePinBase = saved.liveTvSavedFilters;
                         if (defaultsState.active === 'global') renderDefaultGuideGroups(view, defaultsState.profiles.global);
                     }

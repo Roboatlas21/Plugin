@@ -253,7 +253,11 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
         const source = emby ? fs.readFileSync(__dirname + '/../../Emby/Emby.Plugins.Moonfin/Pages/moonfin.js', 'utf8') : page;
         const draft = { liveTvSavedFilters: ['group:News', 'group:Shared'] };
         const defaultsState = { active: 'global', profiles: { global: draft }, guidePinBase: draft.liveTvSavedFilters, guideGroups: {} };
-        const form = { querySelector: () => ({ value: '' }), querySelectorAll: () => [] };
+        let librariesReady = false, gameLibraries = ['arcade'];
+        const form = {
+            querySelector: selector => selector === '.gameLibraryCb' && !librariesReady ? null : { value: '' },
+            querySelectorAll: () => [],
+        };
         let latest = ['group:Shared', 'group:Sports'], rejectSave = false, reads = 0;
         let displayed, editDuringSave;
         let visit = 1, delayedAck, loseReply = false;
@@ -269,10 +273,11 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
             ApiClient: {
                 getPluginConfiguration: async () => {
                     const pins = !emby && ++reads % 2 === 1 ? ['group:Old'] : latest;
-                    return { DefaultUserSettings: { [emby ? 'LiveTvSavedFilters' : 'liveTvSavedFilters']: pins } };
+                    return { GameLibraryIds: gameLibraries, DefaultUserSettings: { [emby ? 'LiveTvSavedFilters' : 'liveTvSavedFilters']: pins } };
                 },
                 updatePluginConfiguration: async (_, config) => {
                     if (rejectSave) throw new Error('save failed');
+                    gameLibraries = config.GameLibraryIds;
                     latest = config.DefaultUserSettings.liveTvSavedFilters;
                     if (editDuringSave) defaultsState.profiles.global = { liveTvSavedFilters: editDuringSave };
                     if (delayedAck) await delayedAck;
@@ -298,6 +303,32 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
         latest = null; // Another admin clears the pins after this tab's successful save.
         await save(form);
         assert.equal(latest, null);
+
+        await t.test('a loading game picker preserves libraries and a loaded picker can clear them', async () => {
+            gameLibraries = ['arcade'];
+            const saving = save(form);
+            librariesReady = true;
+            await saving;
+            assert.deepEqual(Array.from(gameLibraries), ['arcade']);
+            await save(form);
+            assert.deepEqual(Array.from(gameLibraries), []);
+        });
+
+        await t.test('a queued save keeps explicit pin edits that the first save already saw on the server', async () => {
+            defaultsState.guidePinBase = ['group:News'];
+            defaultsState.profiles.global = { liveTvSavedFilters: ['group:News'] };
+            latest = ['group:Movies'];
+            let acknowledge;
+            delayedAck = new Promise(resolve => { acknowledge = resolve; });
+            const first = save(form);
+            await new Promise(setImmediate);
+            defaultsState.profiles.global = { liveTvSavedFilters: ['group:Movies'] };
+            const second = save(form);
+            latest = ['group:News', 'group:Music']; // The other admin reverses both pins and adds Music.
+            acknowledge();
+            await Promise.all([first, second]);
+            assert.deepEqual(Array.from(latest), ['group:Music', 'group:Movies']);
+        });
 
         await t.test('an earlier save reply cannot undo an unpin on a new visit', async () => {
             defaultsState.profiles.global = { liveTvSavedFilters: ['group:News'] };

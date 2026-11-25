@@ -6,7 +6,7 @@ name: Moonbase Go
 
 on:
   push:
-    branches: [master]
+    branches: [master, ci/plugin-v4-checks-20261125-b147894]
     paths: ['Go/**', 'shared/SmartSearch/**', 'shared/Seasonal/seasonal-holidays.json', '.github/workflows/moonbase-go.yml']
   pull_request:
     branches: [master]

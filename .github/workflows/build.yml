@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [master]
+    branches: [master, ci/plugin-v4-checks-20261125-b147894]
   pull_request:
     branches: [master]
 

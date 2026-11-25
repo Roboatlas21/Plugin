@@ -208,7 +208,7 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
         const emby = host === 'Emby';
         const source = emby ? fs.readFileSync(__dirname + '/../../Emby/Emby.Plugins.Moonfin/Pages/moonfin.js', 'utf8') : page;
         const draft = { liveTvSavedFilters: ['group:News', 'group:Shared'] };
-        const defaultsState = { active: 'global', profiles: { global: draft }, guidePinBase: draft.liveTvSavedFilters };
+        const defaultsState = { active: 'global', profiles: { global: draft }, guidePinBase: draft.liveTvSavedFilters, guideGroups: {} };
         const form = { querySelector: () => ({ value: '' }), querySelectorAll: () => [] };
         let latest = ['group:Shared', 'group:Sports'], rejectSave = false, reads = 0;
         let displayed, editDuringSave;
@@ -254,7 +254,7 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
         await save(form);
         assert.equal(latest, null);
 
-        if (emby) await t.test('an earlier save reply cannot undo an unpin on a new visit', async () => {
+        await t.test('an earlier save reply cannot undo an unpin on a new visit', async () => {
             defaultsState.profiles.global = { liveTvSavedFilters: ['group:News'] };
             let acknowledge;
             delayedAck = new Promise(resolve => { acknowledge = resolve; });
@@ -262,6 +262,7 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
             await new Promise(setImmediate);
             assert.deepEqual(Array.from(latest), ['group:News']);
             visit++;
+            defaultsState.guideGroups = {};
             latest = ['group:Sports']; // The reopened page loaded another admin's change.
             defaultsState.profiles.global = { liveTvSavedFilters: latest };
             defaultsState.guidePinBase = latest;

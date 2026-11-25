@@ -204,7 +204,7 @@ test('Moonbase restores both the edited pins and their original selection after 
 });
 
 for (const host of ['Jellyfin/Go', 'Emby']) {
-    test(host + ' saves only the pin changes made in this tab', async () => {
+    test(host + ' saves only the pin changes made in this tab', async t => {
         const emby = host === 'Emby';
         const source = emby ? fs.readFileSync(__dirname + '/../../Emby/Emby.Plugins.Moonfin/Pages/moonfin.js', 'utf8') : page;
         const draft = { liveTvSavedFilters: ['group:News', 'group:Shared'] };
@@ -212,11 +212,13 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
         const form = { querySelector: () => ({ value: '' }), querySelectorAll: () => [] };
         let latest = ['group:Shared', 'group:Sports'], rejectSave = false, reads = 0;
         let displayed, editDuringSave;
+        let visit = 1, delayedAck;
         const save = vm.runInNewContext([
             pageFunction(source, 'withGuidePinEdits'), emby ? pageFunction(source, 'camelKeysDeep') : '',
             pageFunction(source, emby ? 'saveConfig' : 'submit'), emby ? 'saveConfig' : 'submit',
         ].join('\n'), {
             defaultsState, document: form, DEFAULTS_PROFILE_NAMES: ['global'], loading: { show() {} },
+            get guideGroupsVisit() { return visit; },
             Dashboard: { processPluginConfigurationUpdateResult() {} }, MoonfinConfig: {}, PluginUniqueId: '',
             getPosterBadgeDefaults() {}, getPosterBadgeRules() {}, collectActiveDefaults() {}, wholeNumberIn() {}, reportConfigError() {},
             renderDefaultGuideGroups(...args) { displayed = args.at(-1).liveTvSavedFilters; },
@@ -229,6 +231,7 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
                     if (rejectSave) throw new Error('save failed');
                     latest = config.DefaultUserSettings.liveTvSavedFilters;
                     if (editDuringSave) defaultsState.profiles.global = { liveTvSavedFilters: editDuringSave };
+                    if (delayedAck) await delayedAck;
                 },
             },
         });
@@ -250,5 +253,23 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
         latest = null; // Another admin clears the pins after this tab's successful save.
         await save(form);
         assert.equal(latest, null);
+
+        if (emby) await t.test('an earlier save reply cannot undo an unpin on a new visit', async () => {
+            defaultsState.profiles.global = { liveTvSavedFilters: ['group:News'] };
+            let acknowledge;
+            delayedAck = new Promise(resolve => { acknowledge = resolve; });
+            const saving = save(form);
+            await new Promise(setImmediate);
+            assert.deepEqual(Array.from(latest), ['group:News']);
+            visit++;
+            latest = ['group:Sports']; // The reopened page loaded another admin's change.
+            defaultsState.profiles.global = { liveTvSavedFilters: latest };
+            defaultsState.guidePinBase = latest;
+            acknowledge();
+            await saving;
+            defaultsState.profiles.global = { liveTvSavedFilters: [] };
+            await save(form);
+            assert.deepEqual(Array.from(latest), []);
+        });
     });
 }

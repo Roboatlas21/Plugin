@@ -3334,6 +3334,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
     }
 
     function saveConfig(view) {
+        var visit = guideGroupsVisit;
         loading.show();
         return ApiClient.getPluginConfiguration(PluginUniqueId).then(function (config) {
             config.EnableSettingsSync = view.querySelector('#EnableSettingsSync').checked;
@@ -3433,12 +3434,14 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
             });
 
             return ApiClient.updatePluginConfiguration(PluginUniqueId, config).then(function (result) {
-                var saved = config.DefaultUserSettings;
-                // Edits made while saving still belong to this tab.
-                defaultsState.profiles.global = withGuidePinEdits(
-                    defaultsState.profiles.global, editedGlobal.liveTvSavedFilters, saved);
-                defaultsState.guidePinBase = saved.liveTvSavedFilters;
-                if (defaultsState.active === 'global') renderDefaultGuideGroups(view, defaultsState.profiles.global);
+                if (visit === guideGroupsVisit) {
+                    var saved = config.DefaultUserSettings;
+                    // Preserve edits made during the save on this visit.
+                    defaultsState.profiles.global = withGuidePinEdits(
+                        defaultsState.profiles.global, editedGlobal.liveTvSavedFilters, saved);
+                    defaultsState.guidePinBase = saved.liveTvSavedFilters;
+                    if (defaultsState.active === 'global') renderDefaultGuideGroups(view, defaultsState.profiles.global);
+                }
                 Dashboard.processPluginConfigurationUpdateResult(result);
             });
         }).catch(function (error) {

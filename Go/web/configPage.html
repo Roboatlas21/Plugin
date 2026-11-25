@@ -11466,6 +11466,9 @@
                         defaultsState.profiles[name] = (name === 'global' ? config.DefaultUserSettings : deviceDefaults[name]) || {};
                     });
                     defaultsState.guidePinBase = config.moonbaseDraftGuidePinBase || defaultsState.profiles.global.liveTvSavedFilters;
+                    if (Array.isArray(config.moonbaseDraftGuidePinKeys)) {
+                        defaultsState.unconfirmedGuidePins = { visit: guideGroups, keys: new Set(config.moonbaseDraftGuidePinKeys) };
+                    }
                     defaultsState.active = 'global';
                     fillUploadedThemes(config.UploadedThemes);
                     populateDefaults(defaultsState.profiles.global);
@@ -12536,6 +12539,10 @@
                         }).then(function(fresh) {
                             config.Messages = fresh.Messages;
                             config.DefaultUserSettings = mergePins(fresh.DefaultUserSettings);
+                            if (window.moonbaseHost) {
+                                return ApiClient.updatePluginConfiguration(MoonfinConfig.pluginUniqueId, config,
+                                    Array.from(defaultsState.unconfirmedGuidePins.keys));
+                            }
                             return ApiClient.updatePluginConfiguration(MoonfinConfig.pluginUniqueId, config);
                         }).then(function(result) {
                             var saved = config.DefaultUserSettings;

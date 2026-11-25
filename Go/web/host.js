@@ -169,7 +169,12 @@
                 lastConfig = draft.config;
                 var restored = clone(lastConfig);
                 lastServerGuidePins = draft.guidePinBase || (lastConfig.DefaultUserSettings || {}).liveTvSavedFilters || [];
-                restored.moonbaseDraftGuidePinBase = lastServerGuidePins;
+                if (Array.isArray(draft.guidePinKeys)) {
+                    // The merged form includes untouched server pins. Replay only the submitted edits.
+                    restored.moonbaseDraftGuidePinKeys = draft.guidePinKeys;
+                } else {
+                    restored.moonbaseDraftGuidePinBase = lastServerGuidePins;
+                }
                 fillArrFields(restored);
                 fillGamePaths(restored);
                 fillLogUploadField(restored);
@@ -195,7 +200,7 @@
                 throw error;
             });
         },
-        updatePluginConfiguration: function (id, config) {
+        updatePluginConfiguration: function (id, config, guidePinKeys) {
             readArrFields(config);
             readGamePaths(config);
             readLogUploadField(config);
@@ -207,7 +212,7 @@
                 Dashboard.hideLoadingMsg();
                 var status = error && error.status;
                 if (status === 401) {
-                    saveDraft(config);
+                    saveDraft(config, guidePinKeys);
                 } else {
                     var detail = status === 400 ? await error.json().catch(function () { return null; }) : null;
                     toast((detail && detail.Error) || hostName + ' didn’t save the settings' + (status ? ' (status ' + status + ').' : '.'));
@@ -274,9 +279,9 @@
         } catch (e) { /* no usable draft */ }
         return null;
     }
-    function saveDraft(config) {
+    function saveDraft(config, guidePinKeys) {
         try { sessionStorage.setItem(draftKey, JSON.stringify({
-            savedAt: Date.now(), config: config, guidePinBase: lastServerGuidePins
+            savedAt: Date.now(), config: config, guidePinBase: lastServerGuidePins, guidePinKeys: guidePinKeys
         })); } catch (e) { /* the banner still explains */ }
     }
     function clearDraft() {

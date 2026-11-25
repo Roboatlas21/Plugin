@@ -178,22 +178,26 @@ function pageFunction(source, name) {
     return match[0];
 }
 
-test('Moonbase restores both the edited pins and their original selection after sign-in', async () => {
+function moonbaseSession(fetch) {
     const storage = new Map();
-    function open() {
+    return function open() {
         const context = vm.createContext({
             moonbaseHost: { name: 'Plex' }, URLSearchParams, setInterval() {}, clearInterval() {}, scrollTo() {},
             location: { origin: 'https://moonbase.test', pathname: '/admin' },
             document: { addEventListener() {}, querySelector() { return null; }, getElementById() { return null; } },
             sessionStorage: { getItem: k => storage.get(k), setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) },
-            fetch: async (_, init) => init.method === 'POST' ? { ok: false, status: 401 } :
-                { ok: true, json: async () => ({ DefaultUserSettings: { liveTvSavedFilters: ['group:News'] } }) },
+            fetch,
         });
         context.window = context;
         vm.runInContext(hostSource, context);
         context.Dashboard.hideLoadingMsg = () => {};
         return context.ApiClient;
-    }
+    };
+}
+
+test('Moonbase restores both the edited pins and their original selection after sign-in', async () => {
+    const open = moonbaseSession(async (_, init) => init.method === 'POST' ? { ok: false, status: 401 } :
+        { ok: true, json: async () => ({ DefaultUserSettings: { liveTvSavedFilters: ['group:News'] } }) });
     const api = open();
     const draft = await api.getPluginConfiguration();
     draft.DefaultUserSettings.liveTvSavedFilters = ['group:Kids'];
@@ -201,6 +205,46 @@ test('Moonbase restores both the edited pins and their original selection after 
     const restored = await open().getPluginConfiguration();
     assert.deepEqual(Array.from(restored.moonbaseDraftGuidePinBase), ['group:News']);
     assert.deepEqual(Array.from(restored.DefaultUserSettings.liveTvSavedFilters), ['group:Kids']);
+});
+
+test('a restored Go admin save keeps explicit pin edits and preserves other changes', async () => {
+    let pins = ['group:News'], expired = false;
+    const open = moonbaseSession(async (_, init) => {
+        if (init.method !== 'POST') return { ok: true, json: async () => ({ DefaultUserSettings: { liveTvSavedFilters: [...pins] } }) };
+        if (expired) return { ok: false, status: 401 };
+        pins = JSON.parse(init.body).DefaultUserSettings.liveTvSavedFilters;
+        return { ok: true };
+    });
+    async function openPage() {
+        const api = open();
+        const config = await api.getPluginConfiguration();
+        const guideGroups = {};
+        const defaultsState = { active: 'global', guideGroups, profiles: { global: config.DefaultUserSettings } };
+        const load = page.indexOf('defaultsState.guidePinBase = config.');
+        assert.ok(load >= 0);
+        const save = vm.runInNewContext([
+            page.slice(load, page.indexOf("defaultsState.active = 'global';", load)),
+            pageFunction(page, 'withGuidePinEdits'), pageFunction(page, 'submit'), 'submit',
+        ].join('\n'), {
+            config, guideGroups, defaultsState, window: { moonbaseHost: { name: 'Plex' } }, ApiClient: api,
+            document: { querySelector: () => ({ value: '' }), querySelectorAll: () => [] },
+            MoonfinConfig: {}, DEFAULTS_PROFILE_NAMES: ['global'], Dashboard: { processPluginConfigurationUpdateResult() {} },
+            collectActiveDefaults() {}, getPosterBadgeDefaults() {}, getPosterBadgeRules() {}, wholeNumberIn() {}, renderDefaultGuideGroups() {},
+        });
+        return { save, profile: defaultsState.profiles.global };
+    }
+
+    const editor = await openPage();
+    editor.profile.liveTvSavedFilters = ['category:movies']; // Add Movies and remove News.
+    pins = ['category:movies', 'group:Sports']; // Another admin made both edits before our save.
+    expired = true;
+    await assert.rejects(editor.save(), /401/);
+    pins = ['group:News', 'group:Music']; // Both edits were reversed and Sports was removed.
+    expired = false;
+    const restored = await openPage();
+    assert.deepEqual(Array.from(restored.profile.liveTvSavedFilters), ['category:movies', 'group:Sports']);
+    await restored.save();
+    assert.deepEqual(pins, ['group:Music', 'category:movies']);
 });
 
 for (const host of ['Jellyfin/Go', 'Emby']) {
@@ -217,7 +261,7 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
             pageFunction(source, 'withGuidePinEdits'), emby ? pageFunction(source, 'camelKeysDeep') : '',
             pageFunction(source, emby ? 'saveConfig' : 'submit'), emby ? 'saveConfig' : 'submit',
         ].join('\n'), {
-            defaultsState, document: form, DEFAULTS_PROFILE_NAMES: ['global'], loading: { show() {} },
+            defaultsState, document: form, window: {}, DEFAULTS_PROFILE_NAMES: ['global'], loading: { show() {} },
             get guideGroupsVisit() { return visit; },
             Dashboard: { processPluginConfigurationUpdateResult() {} }, MoonfinConfig: {}, PluginUniqueId: '',
             getPosterBadgeDefaults() {}, getPosterBadgeRules() {}, collectActiveDefaults() {}, wholeNumberIn() {}, reportConfigError() {},

@@ -12412,7 +12412,9 @@
 
                 function submit() {
                     var visit = defaultsState.guideGroups;
-                    return ApiClient.getPluginConfiguration(MoonfinConfig.pluginUniqueId).then(function(config) {
+                    collectActiveDefaults();
+                    var edit = { visit: visit, profile: defaultsState.profiles.global, base: defaultsState.guidePinBase };
+                    function collectForm(config) {
                         config.EnableSettingsSync = document.querySelector('#EnableSettingsSync').checked;
                         config.SeerrEnabled = document.querySelector('#SeerrEnabled').checked;
                         config.SeerrUrl = document.querySelector('#SeerrUrl').value || null;
@@ -12496,9 +12498,6 @@
                         config.GamesRommToken = document.querySelector('#GamesRommToken').value.trim() || null;
                         config.GamesRommLibraryId = document.querySelector('#GamesRommLibraryId').value || null;
 
-                        collectActiveDefaults();
-                        var editedGlobal = defaultsState.profiles.global;
-                        var originalPins = defaultsState.guidePinBase;
                         config.DefaultDeviceSettings = {};
                         DEFAULTS_PROFILE_NAMES.slice(1).forEach(function(name) {
                             var profile = defaultsState.profiles[name];
@@ -12509,7 +12508,20 @@
                             }
                             config.DefaultDeviceSettings[name] = countSetDefaults(profile) > 0 ? profile : null;
                         });
+                    }
 
+                    var fields = {};
+                    collectForm(fields);
+                    var queue = defaultsState.pendingSaves || (defaultsState.pendingSaves = []);
+                    var previous = queue[queue.length - 1];
+                    queue.push(edit);
+                    function save() {
+                        return ApiClient.getPluginConfiguration(MoonfinConfig.pluginUniqueId).then(function(config) {
+                            return Object.assign(config, fields);
+                        }).then(writeConfig);
+                    }
+
+                    function writeConfig(config) {
                         // Messages live in this object but are managed through their own
                         // endpoints, so the copy read at the top of submit() is already stale.
                         return ApiClient.getPluginConfiguration(MoonfinConfig.pluginUniqueId).then(function(fresh) {
@@ -12520,20 +12532,40 @@
                             return config;
                         }).then(function(fresh) {
                             config.Messages = fresh.Messages;
-                            config.DefaultUserSettings = withGuidePinEdits(editedGlobal, originalPins, fresh.DefaultUserSettings);
+                            config.DefaultUserSettings = mergePins(fresh.DefaultUserSettings);
                             return ApiClient.updatePluginConfiguration(MoonfinConfig.pluginUniqueId, config);
                         }).then(function(result) {
+                            var saved = config.DefaultUserSettings;
+                            // Carry concurrent admin edits into each waiting draft and its baseline.
+                            queue.slice(1).forEach(function(next) {
+                                if (next.visit !== visit) return;
+                                next.profile = withGuidePinEdits(next.profile, edit.profile.liveTvSavedFilters, saved);
+                                next.base = saved.liveTvSavedFilters;
+                            });
                             if (defaultsState.guideGroups === visit) {
-                                var saved = config.DefaultUserSettings;
                                 // Preserve edits made during the save on this visit.
                                 defaultsState.profiles.global = withGuidePinEdits(
-                                    defaultsState.profiles.global, editedGlobal.liveTvSavedFilters, saved);
+                                    defaultsState.profiles.global, edit.profile.liveTvSavedFilters, saved);
                                 defaultsState.guidePinBase = saved.liveTvSavedFilters;
                                 if (defaultsState.active === 'global') renderDefaultGuideGroups(defaultsState.profiles.global);
                             }
                             Dashboard.processPluginConfigurationUpdateResult(result);
                         });
-                    });
+                    }
+
+                    function mergePins(latest) {
+                        return withGuidePinEdits(edit.profile, edit.base, edit.retry ? edit.retry(latest) : latest);
+                    }
+                    edit.done = (previous ? previous.done.then(save, save) : save()).catch(function(error) {
+                        // The first write may have landed even if its reply was lost.
+                        var next = queue.slice(1).find(function(item) { return item.visit === visit; });
+                        if (next) {
+                            next.retry = mergePins;
+                            next.base = edit.profile.liveTvSavedFilters;
+                        }
+                        throw error;
+                    }).finally(function() { queue.shift(); });
+                    return edit.done;
                 }
 
                 // Reads the User defaults form into ds, the profile being edited.

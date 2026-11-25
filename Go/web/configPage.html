@@ -11485,13 +11485,16 @@
                     [['movies', 'Movies'], ['series', 'Series'], ['sports', 'Sports'],
                      ['news', 'News'], ['kids', 'Kids'], ['premiere', 'Premieres']];
 
-                function withGuidePinEdits(profile, originalPins, latestDefaults) {
+                function withGuidePinEdits(profile, originalPins, latestDefaults, changedPins) {
                     var before = new Set(originalPins || []);
                     var selected = new Set(profile.liveTvSavedFilters || []);
                     var latest = (latestDefaults || {}).liveTvSavedFilters;
-                    var pins = (latest || []).filter(function(key) { return !before.has(key) || selected.has(key); });
+                    changedPins = changedPins || new Set();
+                    before.forEach(function(key) { if (!selected.has(key)) changedPins.add(key); });
+                    selected.forEach(function(key) { if (!before.has(key)) changedPins.add(key); });
+                    var pins = (latest || []).filter(function(key) { return !changedPins.has(key) || selected.has(key); });
                     selected.forEach(function(key) {
-                        if (!before.has(key) && !pins.includes(key)) pins.push(key);
+                        if (changedPins.has(key) && !pins.includes(key)) pins.push(key);
                     });
                     return Object.assign({}, profile, { liveTvSavedFilters: pins.length || Array.isArray(latest) ? pins : latest });
                 }
@@ -12536,6 +12539,7 @@
                             return ApiClient.updatePluginConfiguration(MoonfinConfig.pluginUniqueId, config);
                         }).then(function(result) {
                             var saved = config.DefaultUserSettings;
+                            defaultsState.unconfirmedGuidePins = null;
                             // Carry concurrent admin edits into each waiting draft and its baseline.
                             queue.slice(1).forEach(function(next) {
                                 if (next.visit !== visit) return;
@@ -12554,17 +12558,15 @@
                     }
 
                     function mergePins(latest) {
-                        return withGuidePinEdits(edit.profile, edit.base, edit.retry ? edit.retry(latest) : latest);
-                    }
-                    edit.done = (previous ? previous.done.then(save, save) : save()).catch(function(error) {
-                        // The first write may have landed even if its reply was lost.
-                        var next = queue.slice(1).find(function(item) { return item.visit === visit; });
-                        if (next) {
-                            next.retry = mergePins;
-                            next.base = edit.profile.liveTvSavedFilters;
+                        // Track only the pins submitted on this visit until the server acknowledges them.
+                        var pending = defaultsState.unconfirmedGuidePins;
+                        if (!pending || pending.visit !== visit) {
+                            pending = defaultsState.unconfirmedGuidePins = { visit: visit, keys: new Set() };
                         }
-                        throw error;
-                    }).finally(function() { queue.shift(); });
+                        return withGuidePinEdits(edit.profile, edit.base, latest, pending.keys);
+                    }
+                    edit.done = (previous ? previous.done.then(save, save) : save())
+                        .finally(function() { queue.shift(); });
                     return edit.done;
                 }
 

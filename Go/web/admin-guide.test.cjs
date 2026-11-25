@@ -212,7 +212,7 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
         const form = { querySelector: () => ({ value: '' }), querySelectorAll: () => [] };
         let latest = ['group:Shared', 'group:Sports'], rejectSave = false, reads = 0;
         let displayed, editDuringSave;
-        let visit = 1, delayedAck;
+        let visit = 1, delayedAck, loseReply = false;
         const save = vm.runInNewContext([
             pageFunction(source, 'withGuidePinEdits'), emby ? pageFunction(source, 'camelKeysDeep') : '',
             pageFunction(source, emby ? 'saveConfig' : 'submit'), emby ? 'saveConfig' : 'submit',
@@ -232,6 +232,7 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
                     latest = config.DefaultUserSettings.liveTvSavedFilters;
                     if (editDuringSave) defaultsState.profiles.global = { liveTvSavedFilters: editDuringSave };
                     if (delayedAck) await delayedAck;
+                    if (loseReply) throw new Error('reply lost');
                 },
             },
         });
@@ -301,6 +302,19 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
             fail(new Error('save failed'));
             await Promise.all([first, second]);
             assert.deepEqual(Array.from(latest), ['group:Movies']);
+        });
+        await t.test('an edit after a lost reply can undo the earlier pin changes', async () => {
+            defaultsState.profiles.global = { liveTvSavedFilters: ['group:News'] };
+            loseReply = true;
+            await assert.rejects(save(form), /reply lost/);
+            assert.deepEqual(Array.from(latest), ['group:News']);
+
+            latest = [...latest, 'group:Music']; // Added independently after the failed reply.
+            defaultsState.profiles.global = { liveTvSavedFilters: ['group:Movies'] };
+            loseReply = false;
+            await save(form);
+            assert.deepEqual(Array.from(latest), ['group:Music', 'group:Movies']);
+            assert.deepEqual(Array.from(displayed), Array.from(latest));
         });
     });
 }

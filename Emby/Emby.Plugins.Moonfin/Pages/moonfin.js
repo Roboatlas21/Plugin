@@ -2935,13 +2935,16 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
     var defaultGuideCategories = [['movies', 'Movies'], ['series', 'Series'], ['sports', 'Sports'],
         ['news', 'News'], ['kids', 'Kids'], ['premiere', 'Premieres']];
 
-    function withGuidePinEdits(profile, originalPins, latestDefaults) {
+    function withGuidePinEdits(profile, originalPins, latestDefaults, changedPins) {
         var before = new Set(originalPins || []);
         var selected = new Set(profile.liveTvSavedFilters || []);
         var latest = (latestDefaults || {}).liveTvSavedFilters;
-        var pins = (latest || []).filter(function(key) { return !before.has(key) || selected.has(key); });
+        changedPins = changedPins || new Set();
+        before.forEach(function(key) { if (!selected.has(key)) changedPins.add(key); });
+        selected.forEach(function(key) { if (!before.has(key)) changedPins.add(key); });
+        var pins = (latest || []).filter(function(key) { return !changedPins.has(key) || selected.has(key); });
         selected.forEach(function(key) {
-            if (!before.has(key) && !pins.includes(key)) pins.push(key);
+            if (changedPins.has(key) && !pins.includes(key)) pins.push(key);
         });
         return Object.assign({}, profile, { liveTvSavedFilters: pins.length || Array.isArray(latest) ? pins : latest });
     }
@@ -3444,7 +3447,12 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
         var previous = queue[queue.length - 1];
         queue.push(edit);
         function mergePins(latest) {
-            return withGuidePinEdits(edit.profile, edit.base, edit.retry ? edit.retry(latest) : latest);
+            // Track only the pins submitted on this visit until the server acknowledges them.
+            var pending = defaultsState.unconfirmedGuidePins;
+            if (!pending || pending.visit !== visit) {
+                pending = defaultsState.unconfirmedGuidePins = { visit: visit, keys: new Set() };
+            }
+            return withGuidePinEdits(edit.profile, edit.base, latest, pending.keys);
         }
         function save() {
             return ApiClient.getPluginConfiguration(PluginUniqueId).then(function (config) {
@@ -3452,6 +3460,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
                 var saved = mergePins(camelKeysDeep(config.DefaultUserSettings));
                 config.DefaultUserSettings = saved;
                 return ApiClient.updatePluginConfiguration(PluginUniqueId, config).then(function (result) {
+                    defaultsState.unconfirmedGuidePins = null;
                     queue.slice(1).forEach(function (next) {
                         if (next.visit !== visit) return;
                         next.profile = withGuidePinEdits(next.profile, edit.profile.liveTvSavedFilters, saved);
@@ -3468,12 +3477,6 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
             });
         }
         edit.done = (previous ? previous.done.then(save, save) : save()).catch(function (error) {
-            // The write may have landed even if its acknowledgement was lost.
-            var next = queue.slice(1).find(function (item) { return item.visit === visit; });
-            if (next) {
-                next.retry = mergePins;
-                next.base = edit.profile.liveTvSavedFilters;
-            }
             reportConfigError(error);
             throw error;
         }).finally(function () { queue.shift(); });

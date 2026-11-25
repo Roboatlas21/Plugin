@@ -16,9 +16,15 @@ namespace Moonfin.Server.Tests;
 public class LiveTvChannelGroupsServiceTests
 {
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task MixedTunersUseOnlyCacheFilesUpdatedByTheNewImport(bool updated)
+    [InlineData(TaskCompletionStatus.Completed, true)]
+    [InlineData(TaskCompletionStatus.Completed, false)]
+    [InlineData(TaskCompletionStatus.Failed, true)]
+    [InlineData(TaskCompletionStatus.Failed, false)]
+    [InlineData(TaskCompletionStatus.Cancelled, true)]
+    [InlineData(TaskCompletionStatus.Cancelled, false)]
+    [InlineData(TaskCompletionStatus.Aborted, true)]
+    [InlineData(TaskCompletionStatus.Aborted, false)]
+    public async Task MixedTunersUseOnlyCacheFilesUpdatedByTheNewImport(TaskCompletionStatus status, bool updated)
     {
         var cache = Directory.CreateTempSubdirectory();
         try {
@@ -50,6 +56,7 @@ public class LiveTvChannelGroupsServiceTests
             await waiting.Task.WaitAsync(TimeSpan.FromSeconds(5));
             finished.StartTimeUtc = finished.EndTimeUtc;
             finished.EndTimeUtc = start.AddMinutes(10);
+            finished.Status = status;
             if (updated) {
                 WriteM3u("Sports");
                 File.SetLastWriteTimeUtc(path, start.AddMinutes(6));

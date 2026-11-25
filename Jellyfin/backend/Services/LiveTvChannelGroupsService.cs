@@ -132,8 +132,8 @@ public sealed class LiveTvChannelGroupsService(
                     continue;
                 }
                 var path = Path.Combine(config.ApplicationPaths.CachePath, host.Id + "_channels");
-                // Jellyfin can finish importing channels even if writing this tuner's cache failed.
-                if (import is { Status: TaskCompletionStatus.Completed } && File.GetLastWriteTimeUtc(path) < import.StartTimeUtc)
+                // An import can update some tuner caches and leave others from the previous lineup.
+                if (import != null && File.GetLastWriteTimeUtc(path) < import.StartTimeUtc)
                 {
                     result.MissingTuner = true;
                     continue;

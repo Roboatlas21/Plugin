@@ -6,6 +6,27 @@ namespace Moonfin.Tests
     public class ChannelGroupTests
     {
         [Fact]
+        public void KnownConflictRequiresAnExactSourceMatchToClear()
+        {
+            var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "same" };
+            var channels = new[] { ("c1", "same"), ("c2", "missing") };
+            ChannelGroupResult Read(string? externalId)
+            {
+                var snapshot = new ChannelGroupSnapshot(new[] { "same", "missing" });
+                snapshot.Add(1, "B", externalId, new[] { "News" });
+                snapshot.UpdateConflicts(known);
+                var result = new ChannelGroupResult();
+                snapshot.AddVisibleChannelsTo(result, channels);
+                return result;
+            }
+
+            Assert.Equal(new[] { "c2" }, Read(null).UnresolvedChannelIds);
+            Assert.Equal(new[] { "c2" }, Read("SAME").UnresolvedChannelIds);
+            Assert.Equal("News", Assert.Single(Read("same").Groups["c1"]));
+            Assert.Empty(known);
+        }
+
+        [Fact]
         public void AmbiguousExternalIdRemainsUngroupedEvenWhenSeenAgain()
         {
             var snapshot = new ChannelGroupSnapshot(new[] { "same", "other", "untagged" });

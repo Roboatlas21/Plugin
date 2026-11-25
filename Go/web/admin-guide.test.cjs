@@ -112,6 +112,27 @@ test('Emby ignores late group lists and errors from an earlier visit', async () 
     assert.deepEqual(renders, ['current']);
 });
 
+test('Emby shows a discovery failure alongside saved groups and clears it after recovery', async () => {
+    const source = fs.readFileSync(__dirname + '/../../Emby/Emby.Plugins.Moonfin/Pages/moonfin.js', 'utf8');
+    const host = { innerHTML: '', querySelectorAll: () => [] };
+    const context = vm.createContext({
+        guideGroupsVisit: 1, availableDefaultGuideGroups: [], defaultGuideGroupsMessage: '', defaultGuideCategories: [],
+        defaultsState: { active: 'global', profiles: { global: { liveTvSavedFilters: ['group:News'] } } },
+        ApiClient: { getUrl: path => path, ajax: async () => { throw new Error('offline'); } }, esc: s => s,
+    });
+    vm.runInContext(pageFunction(source, 'renderDefaultGuideGroups') + '\n' + pageFunction(source, 'discoverDefaultGuideGroups'), context);
+    const view = { querySelector: () => host };
+    context.discoverDefaultGuideGroups(view, 1);
+    await new Promise(setImmediate);
+    assert.equal(checked(host.innerHTML, 'group:News'), true);
+    assert.match(host.innerHTML, /Reload to retry/);
+    context.ApiClient.ajax = async () => ({ Items: [] });
+    context.discoverDefaultGuideGroups(view, 1);
+    await new Promise(setImmediate);
+    assert.equal(checked(host.innerHTML, 'group:News'), true);
+    assert.doesNotMatch(host.innerHTML, /retry|No channel tags/i);
+});
+
 function checked(html, key) {
     const tag = (html.match(/<input[^>]*>/g) || []).find(s => s.includes('data-guide-filter="' + key + '"'));
     assert.ok(tag, 'missing ' + key);

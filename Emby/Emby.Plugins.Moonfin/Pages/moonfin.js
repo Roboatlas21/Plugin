@@ -2973,7 +2973,8 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
         host.innerHTML = '<div style="font-weight:600;padding:5px 3px;">Program Categories</div>' +
             defaultGuideCategories.map(function(category) { return checkbox('category:' + category[0], category[1]); }).join('') +
             '<div style="font-weight:600;padding:8px 3px 5px;">Channel Groups</div>' +
-            (names.length ? names.map(function(name) { return checkbox('group:' + name, name); }).join('') : defaultGuideGroupsMessage);
+            names.map(function(name) { return checkbox('group:' + name, name); }).join('') +
+            (defaultGuideGroupsMessage || (names.length ? '' : 'No channel tags available.'));
     }
 
     function discoverDefaultGuideGroups(view, visit) {
@@ -2995,7 +2996,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
             availableDefaultGuideGroups = Array.from(new Set(names.filter(function(name) {
                 return typeof name === 'string' && name.trim();
             }).map(function(name) { return name.trim(); }))).sort();
-            defaultGuideGroupsMessage = 'No channel tags available.';
+            defaultGuideGroupsMessage = '';
         }).catch(function() {
             if (visit !== guideGroupsVisit) return;
             defaultGuideGroupsMessage = 'Could not load channel tags. Reload to retry.';

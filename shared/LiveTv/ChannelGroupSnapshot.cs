@@ -67,14 +67,13 @@ namespace Moonfin.LiveTv
         private readonly HashSet<string> _incompleteGroups = new HashSet<string>(StringComparer.Ordinal);
         public bool MissingTuner { get; set; }
 
-        // Only a complete read can clear a previous ID conflict.
-        // Each viewer can only resolve conflicts for channels they can access.
+        // Clear a conflict only when a complete read identifies the viewer's exact channel.
         public void UpdateConflicts(HashSet<string> known)
         {
-            if (MissingTuner)
-                _ambiguous.UnionWith(known.Where(_visibleIds.Contains));
-            else
-                known.ExceptWith(_visibleIds);
+            if (!MissingTuner)
+                known.RemoveWhere(id => _visibleIds.TryGetValue(id, out var visibleId) &&
+                    _channels.TryGetValue(id, out var source) && source.ExternalId == visibleId);
+            _ambiguous.UnionWith(known.Where(_visibleIds.Contains));
             known.UnionWith(_ambiguous);
         }
 

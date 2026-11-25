@@ -15,8 +15,10 @@ using Xunit;
 namespace Moonfin.Server.Tests;
 public class LiveTvChannelGroupsServiceTests
 {
-    [Fact]
-    public async Task MixedTunersDiscardBothGroupReadsWhenTheImportChanges()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task MixedTunersUseOnlyCacheFilesUpdatedByTheNewImport(bool updated)
     {
         var cache = Directory.CreateTempSubdirectory();
         try {
@@ -24,7 +26,9 @@ public class LiveTvChannelGroupsServiceTests
             void WriteM3u(string group) => File.WriteAllText(path,
                 System.Text.Json.JsonSerializer.Serialize(new[] { new { Id = "m3u_news", ChannelGroup = group } }));
             WriteM3u("News");
-            var finished = new TaskResult { EndTimeUtc = DateTime.UtcNow };
+            var start = DateTime.UtcNow.AddHours(-1);
+            File.SetLastWriteTimeUtc(path, start.AddMinutes(1));
+            var finished = new TaskResult { StartTimeUtc = start, EndTimeUtc = start.AddMinutes(5), Status = TaskCompletionStatus.Completed };
             var task = RecordingHostProxy.Create<IScheduledTask>((_, _) => "RefreshGuide");
             var worker = RecordingHostProxy.Create<IScheduledTaskWorker>((method, _) => method.Name switch {
                 "get_ScheduledTask" => task, "get_State" => TaskState.Idle,
@@ -44,8 +48,12 @@ public class LiveTvChannelGroupsServiceTests
             var viewer = Guid.NewGuid();
             var pending = service.GetAsync(viewer, CancellationToken.None);
             await waiting.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            WriteM3u("Sports");
-            finished.EndTimeUtc = finished.EndTimeUtc.AddSeconds(1);
+            finished.StartTimeUtc = finished.EndTimeUtc;
+            finished.EndTimeUtc = start.AddMinutes(10);
+            if (updated) {
+                WriteM3u("Sports");
+                File.SetLastWriteTimeUtc(path, start.AddMinutes(6));
+            }
             release.SetResult([new() { Id = "xtream_42", TunerHostId = "native", ChannelGroup = "Radio" }]);
             var first = await pending;
             var second = await service.GetAsync(viewer, CancellationToken.None);
@@ -54,6 +62,15 @@ public class LiveTvChannelGroupsServiceTests
             Assert.Equal(2, first.Channels.Length);
             Assert.Contains(m3u.Id.ToString("N"), first.UnresolvedChannelIds!);
             Assert.Contains(native.Id.ToString("N"), first.UnresolvedChannelIds!);
+            Assert.Equal("Radio", Assert.Single(second.Groups[native.Id.ToString("N")]));
+            Assert.Equal(!updated, second.Partial);
+            if (!updated) {
+                Assert.Equal(m3u.Id.ToString("N"), Assert.Single(second.UnresolvedChannelIds!));
+                Assert.DoesNotContain(m3u.Id.ToString("N"), second.Groups.Keys);
+                WriteM3u("Sports");
+                second = await service.GetAsync(viewer, CancellationToken.None);
+                Assert.False(second.Partial);
+            }
             Assert.Equal("Sports", Assert.Single(second.Groups[m3u.Id.ToString("N")]));
         } finally { cache.Delete(true); }
     }

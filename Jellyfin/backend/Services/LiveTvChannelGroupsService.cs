@@ -118,6 +118,7 @@ public sealed class LiveTvChannelGroupsService(
     private async Task ReadM3uAsync(ChannelGroupSnapshot result, CancellationToken token)
     {
         var configured = ((LiveTvOptions)config.GetConfiguration("livetv")).TunerHosts;
+        var import = tasks.ScheduledTasks.FirstOrDefault(task => task.ScheduledTask.Key == "RefreshGuide")?.LastExecutionResult;
         // Read the imported M3U lineup instead of downloading the playlist again.
         // Jellyfin's tuner may refetch it even with caching enabled.
         foreach (var host in configured.Where(host => IsM3u(host.Type)))
@@ -131,6 +132,12 @@ public sealed class LiveTvChannelGroupsService(
                     continue;
                 }
                 var path = Path.Combine(config.ApplicationPaths.CachePath, host.Id + "_channels");
+                // Jellyfin can finish importing channels even if writing this tuner's cache failed.
+                if (import is { Status: TaskCompletionStatus.Completed } && File.GetLastWriteTimeUtc(path) < import.StartTimeUtc)
+                {
+                    result.MissingTuner = true;
+                    continue;
+                }
                 var bytes = await File.ReadAllBytesAsync(path, token);
                 var channels = ReadImportedChannels(bytes);
                 foreach (var channel in channels)

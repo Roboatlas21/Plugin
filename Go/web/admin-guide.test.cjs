@@ -272,7 +272,7 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
             await save(form);
             assert.deepEqual(Array.from(latest), []);
         });
-        if (!emby) await t.test('overlapping saves keep the submitted unpin and later unsaved edits', async () => {
+        await t.test('overlapping saves keep the submitted unpin and later unsaved edits', async () => {
             defaultsState.profiles.global = { liveTvSavedFilters: ['group:News'] };
             let acknowledge;
             delayedAck = new Promise(resolve => { acknowledge = resolve; });
@@ -290,7 +290,7 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
             assert.deepEqual(Array.from(latest), ['group:Sports']);
             assert.deepEqual(Array.from(displayed), ['group:Sports', 'group:Kids']);
         });
-        if (!emby) await t.test('a lost save reply still allows the queued unpin', async () => {
+        await t.test('a lost save reply still allows the queued unpin', async () => {
             let fail;
             delayedAck = new Promise((_, reject) => { fail = reject; });
             const first = assert.rejects(save(form), /save failed/);

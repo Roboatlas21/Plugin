@@ -88,6 +88,30 @@ test('a retained Jellyfin profile switch uses groups from the latest page visit'
     assert.doesNotMatch(jellyfin.root.innerHTML, /group:Old/);
 });
 
+test('Emby ignores late group lists and errors from an earlier visit', async () => {
+    const source = fs.readFileSync(__dirname + '/../../Emby/Emby.Plugins.Moonfin/Pages/moonfin.js', 'utf8');
+    const requests = [], renders = [];
+    const context = vm.createContext({
+        guideGroupsVisit: 0, availableDefaultGuideGroups: [], defaultGuideGroupsMessage: '',
+        ApiClient: { getUrl: path => path, ajax: () => new Promise((resolve, reject) => requests.push({ resolve, reject })) },
+        defaultsState: { active: 'global', profiles: {} },
+        renderDefaultGuideGroups(view) { renders.push(view); },
+    });
+    vm.runInContext(pageFunction(source, 'discoverDefaultGuideGroups'), context);
+    const discover = view => context.discoverDefaultGuideGroups(view, ++context.guideGroupsVisit);
+    discover('old success');
+    discover('old error');
+    discover('current');
+    requests[2].resolve({ Items: [{ Tags: ['Sports'] }] });
+    await new Promise(setImmediate);
+    requests[0].resolve({ Items: [{ Tags: ['News'] }] });
+    requests[1].reject(new Error('offline'));
+    await new Promise(setImmediate);
+    assert.deepEqual(Array.from(context.availableDefaultGuideGroups), ['Sports']);
+    assert.doesNotMatch(context.defaultGuideGroupsMessage, /retry/i);
+    assert.deepEqual(renders, ['current']);
+});
+
 function checked(html, key) {
     const tag = (html.match(/<input[^>]*>/g) || []).find(s => s.includes('data-guide-filter="' + key + '"'));
     assert.ok(tag, 'missing ' + key);

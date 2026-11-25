@@ -2838,6 +2838,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
     }
 
     function loadConfig(view) {
+        var visit = ++guideGroupsVisit;
         loading.show();
         ApiClient.getPluginConfiguration(PluginUniqueId).then(function (config) {
             view.querySelector('#EnableSettingsSync').checked = config.EnableSettingsSync;
@@ -2921,13 +2922,14 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
             fillUploadedThemes(view, config.UploadedThemes);
             populateDefaults(view, defaultsState.profiles.global);
             refreshDefaultsActions(view);
-            discoverDefaultGuideGroups(view);
+            if (visit === guideGroupsVisit) discoverDefaultGuideGroups(view, visit);
 
             loading.hide();
         }).catch(reportConfigError);
     }
 
     // The admin selects the same native channel tags used by the guide.
+    var guideGroupsVisit = 0;
     var availableDefaultGuideGroups = [];
     var defaultGuideGroupsMessage = 'Loading available groups…';
     var defaultGuideCategories = [['movies', 'Movies'], ['series', 'Series'], ['sports', 'Sports'],
@@ -2974,12 +2976,13 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
             (names.length ? names.map(function(name) { return checkbox('group:' + name, name); }).join('') : defaultGuideGroupsMessage);
     }
 
-    function discoverDefaultGuideGroups(view) {
+    function discoverDefaultGuideGroups(view, visit) {
         ApiClient.ajax({
             type: 'GET',
             url: ApiClient.getUrl('LiveTv/Channels', {Fields: 'ImageTags,UserData,Tags', EnableTotalRecordCount: false}),
             dataType: 'json'
         }).then(function(result) {
+            if (visit !== guideGroupsVisit) return;
             var names = [];
             (result.Items || result.items || []).forEach(function(channel) {
                 if (!channel) return;
@@ -2994,8 +2997,10 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
             }).map(function(name) { return name.trim(); }))).sort();
             defaultGuideGroupsMessage = 'No channel tags available.';
         }).catch(function() {
+            if (visit !== guideGroupsVisit) return;
             defaultGuideGroupsMessage = 'Could not load channel tags. Reload to retry.';
         }).finally(function() {
+            if (visit !== guideGroupsVisit) return;
             renderDefaultGuideGroups(view, defaultsState.profiles[defaultsState.active] || {}, true);
         });
     }
@@ -6999,6 +7004,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
     };
 
     View.prototype.onPause = function () {
+        guideGroupsVisit++;
         var view = this.view;
         if (view.__moonfinState && view.__moonfinState.timer) {
             clearInterval(view.__moonfinState.timer);

@@ -14,31 +14,40 @@ function deferred() {
     const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
     return { promise, resolve, reject };
 }
-const start = page.indexOf('var guideGroups =');
-const end = page.indexOf('// Fills the User defaults form', start);
-assert.ok(start >= 0 && end > start, 'shared guide picker missing');
-const switchStart = page.indexOf('function switchDefaultsProfile(name)');
-const switchEnd = page.indexOf('function userName(id)', switchStart);
-assert.ok(switchStart >= 0 && switchEnd > switchStart, 'profile switch missing');
+function pageSection(start, end) {
+    const from = page.indexOf(start), to = page.indexOf(end, from);
+    assert.ok(from >= 0 && to > from, 'missing dashboard section ' + start);
+    return page.slice(from, to);
+}
+
+function browser(host, document, fetch, globals = {}) {
+    const context = vm.createContext({
+        document, fetch, URLSearchParams, TextEncoder, setInterval() {}, clearInterval() {}, scrollTo() {},
+        location: { origin: 'https://moonbase.test', pathname: '/admin' }, ...globals,
+    });
+    context.window = context;
+    if (host !== 'Jellyfin') {
+        context.moonbaseHost = { name: host, arr: true };
+        vm.runInContext(hostSource, context);
+    }
+    return context;
+}
 
 function picker(host, pins, responses) {
     const calls = [];
     const root = { innerHTML: '', inputs: [], querySelectorAll() { return this.inputs; } };
     const switcher = { dataset: {}, addEventListener(_, listener) { this.click = listener; } };
-    const window = { moonbaseHost: { name: host }, fetch: async url => {
+    const document = { addEventListener() {}, querySelector(selector) {
+        if (selector === '#DefaultsProfileSwitch') return switcher;
+        if (selector === '#DefaultPinnedGuideGroups') return root;
+        return this;
+    } };
+    const context = browser(host, document, async url => {
         calls.push(url);
         const groups = responses.shift();
-        return groups instanceof Error ? { ok: false, status: 502 } :
-            { ok: true, status: 200, json: async () => ({ availableGuideGroups: groups }) };
-    }};
-    const context = vm.createContext({
-        window, URLSearchParams, TextEncoder, setInterval: () => 1,
-        location: { origin: 'https://moonbase.test', pathname: '/admin' },
-        document: { addEventListener() {}, querySelector(selector) {
-            if (selector === '#DefaultsProfileSwitch') return switcher;
-            if (selector === '#DefaultPinnedGuideGroups') return root;
-            return { addEventListener() {} };
-        } },
+        if (groups instanceof Error) return { ok: false, status: 502 };
+        return { ok: true, json: async () => ({ availableGuideGroups: groups }) };
+    }, {
         defaultsState: { active: 'global', profiles: { global: { liveTvSavedFilters: pins }, tv: {} } },
         collectActiveDefaults() {}, snapshotGlobalLabels() {},
         ApiClient: { getUrl: path => path, ajax: async () => {
@@ -47,12 +56,10 @@ function picker(host, pins, responses) {
         } },
         esc: value => String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;'),
     });
-    if (host === 'Jellyfin') delete window.moonbaseHost;
-    else vm.runInContext(hostSource, context);
     function showPage() {
-        return vm.runInContext('(function() {' + page.slice(start, end) +
+        return vm.runInContext('(function() {' + pageSection('var guideGroups =', '// Fills the User defaults form') +
             '\nfunction populateDefaults(d) { renderDefaultGuideGroups(d); }\n' +
-            page.slice(switchStart, switchEnd) + '\nreturn discoverDefaultGuideGroups; })()', context);
+            pageSection('function switchDefaultsProfile(name)', 'function userName(id)') + '\nreturn discoverDefaultGuideGroups; })()', context);
     }
     let discover = showPage();
     return { calls, root, reopen() { discover = showPage(); }, switchTo(profile) {
@@ -90,35 +97,31 @@ test('Jellyfin retries incomplete discovery and ignores a late reply after reope
 });
 
 test('Emby preserves saved groups during discovery and ignores replies from earlier visits', async () => {
-    const requests = [];
+    let reply;
     const context = vm.createContext({
         guideGroupsVisit: 0, availableDefaultGuideGroups: [], defaultGuideGroupsMessage: '', defaultGuideCategories: [],
         defaultsState: { active: 'global', profiles: { global: { liveTvSavedFilters: ['group:News'] } } },
-        ApiClient: { getUrl: path => path, ajax: () => {
-            const request = deferred();
-            requests.push(request);
-            return request.promise;
-        } }, esc: s => s,
+        ApiClient: { getUrl: path => path, ajax: () => reply }, esc: s => s,
     });
     vm.runInContext(['renderDefaultGuideGroups', 'discoverDefaultGuideGroups']
         .map(name => pageFunction(embyPage, name)).join('\n'), context);
-    function visit() {
+    function visit(response) {
+        reply = response;
         const root = { innerHTML: '', querySelectorAll: () => [] };
         context.discoverDefaultGuideGroups({ querySelector: () => root }, ++context.guideGroupsVisit);
         return root;
     }
-    const abandoned = [visit(), visit()];
-    const failed = visit();
-    requests[2].reject(new Error('offline'));
+    const old = deferred(), offline = deferred();
+    const abandoned = [visit(old.promise), visit(offline.promise)];
+    const failed = visit(Promise.reject(Error('offline')));
     await nextTurn();
     assert.equal(checked(failed.innerHTML, 'group:News'), true);
     assert.match(failed.innerHTML, /Reload to retry/);
-    const root = visit();
-    requests[3].resolve({ Items: [{ Tags: ['Sports'] }] });
+    const root = visit(Promise.resolve({ Items: [{ Tags: ['Sports'] }] }));
     await nextTurn();
     const latest = root.innerHTML;
-    requests[0].resolve({ Items: [{ Tags: ['Old'] }] });
-    requests[1].reject(new Error('late'));
+    old.resolve({ Items: [{ Tags: ['Old'] }] });
+    offline.reject(Error('late'));
     await nextTurn();
     assert.deepEqual(abandoned.map(view => view.innerHTML), ['', '']);
     assert.equal(root.innerHTML, latest);
@@ -167,38 +170,30 @@ function pageFunction(source, name) {
     return match[0];
 }
 
-function moonbaseSession(fetch, controls = {}) {
-    const storage = new Map();
-    return function open() {
-        const context = vm.createContext({
-            moonbaseHost: { name: 'Plex', arr: true }, URLSearchParams, setInterval() {}, clearInterval() {}, scrollTo() {},
-            location: { origin: 'https://moonbase.test', pathname: '/admin' },
-            document: { addEventListener() {}, querySelector() { return null; }, getElementById(id) { return controls[id] || null; } },
-            sessionStorage: { getItem: k => storage.get(k), setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) },
-            fetch,
-        });
-        context.window = context;
-        vm.runInContext(hostSource, context);
-        context.Dashboard.hideLoadingMsg = () => {};
-        return context.ApiClient;
+function settingsPage(emby, defaultsState, api, form, globals = {}, loadDraft = '') {
+    const source = emby ? embyPage : page;
+    const submit = emby ? 'saveConfig' : 'submit';
+    const code = [
+        loadDraft, pageFunction(source, 'withGuidePinEdits'), emby ? pageFunction(source, 'camelKeysDeep') : '',
+        pageFunction(source, submit), submit,
+    ].join('\n');
+    const context = {
+        defaultsState, ApiClient: api, document: form, window: {}, DOMException, DEFAULTS_PROFILE_NAMES: ['global'],
+        loading: { show() {} }, Dashboard: { processPluginConfigurationUpdateResult() {} }, PluginUniqueId: '', MoonfinConfig: {},
+        collectActiveDefaults() {}, getPosterBadgeDefaults() {}, getPosterBadgeRules() {}, wholeNumberIn() {},
+        reportConfigError() {}, renderDefaultGuideGroups() {},
     };
+    Object.defineProperties(context, Object.getOwnPropertyDescriptors(globals));
+    const save = vm.runInNewContext(code, context);
+    return () => save(form);
 }
 
 async function openMoonbaseSettings(api) {
     const config = await api.getPluginConfiguration();
-    const guideGroups = {};
-    const defaultsState = { active: 'global', guideGroups, profiles: { global: config.DefaultUserSettings } };
-    const load = page.indexOf('defaultsState.guidePinBase = config.');
-    assert.ok(load >= 0);
-    const save = vm.runInNewContext([
-        page.slice(load, page.indexOf("defaultsState.active = 'global';", load)),
-        pageFunction(page, 'withGuidePinEdits'), pageFunction(page, 'submit'), 'submit',
-    ].join('\n'), {
-        config, guideGroups, defaultsState, window: { moonbaseHost: { name: 'Plex' } }, ApiClient: api,
-        document: { querySelector: () => ({ value: '' }), querySelectorAll: () => [] },
-        MoonfinConfig: {}, DEFAULTS_PROFILE_NAMES: ['global'], Dashboard: { processPluginConfigurationUpdateResult() {} },
-        collectActiveDefaults() {}, getPosterBadgeDefaults() {}, getPosterBadgeRules() {}, wholeNumberIn() {}, renderDefaultGuideGroups() {},
-    });
+    const guideGroups = {}, defaultsState = { active: 'global', guideGroups, profiles: { global: config.DefaultUserSettings } };
+    const loadDraft = pageSection('defaultsState.guidePinBase = config.', "defaultsState.active = 'global';");
+    const save = settingsPage(false, defaultsState, api, { querySelector: () => ({ value: '' }), querySelectorAll: () => [] },
+        { config, guideGroups, window: { moonbaseHost: { name: 'Plex' } } }, loadDraft);
     return { save, profile: defaultsState.profiles.global };
 }
 
@@ -206,7 +201,10 @@ for (const direct of [false, true]) {
     test('Go restores a signed-out ' + (direct ? 'configuration' : 'dashboard') + ' save and queues its retry', async () => {
         const sonarr = { value: '' }, gate = deferred(), writes = [];
         let pins = ['group:News'], signedIn = false;
-        const open = moonbaseSession(async (_, init) => {
+        const storage = new Map();
+        const sessionStorage = { getItem: k => storage.get(k), setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) };
+        const document = { addEventListener() {}, querySelector() { return null; }, getElementById: id => id === 'SonarrUrl' ? sonarr : null };
+        async function fetch(_, init) {
             if (init.method !== 'POST') return { ok: true, json: async () => ({ DefaultUserSettings: { liveTvSavedFilters: [...pins] } }) };
             if (!signedIn) return { ok: false, status: 401 };
             const config = JSON.parse(init.body);
@@ -214,8 +212,12 @@ for (const direct of [false, true]) {
             writes.push(config.SonarrUrl);
             if (writes.length === 1) await gate.promise;
             return { ok: true };
-        }, { SonarrUrl: sonarr });
-
+        }
+        function open() {
+            const tab = browser('Plex', document, fetch, { sessionStorage });
+            tab.Dashboard.hideLoadingMsg = () => {};
+            return tab.ApiClient;
+        }
         const api = open();
         if (direct) {
             const draft = await api.getPluginConfiguration();
@@ -248,187 +250,126 @@ for (const direct of [false, true]) {
 }
 
 for (const host of ['Jellyfin/Go', 'Emby']) {
-    test(host + ' saves only the pin changes made in this tab', async t => {
+    test(host + ' keeps submitted edits separate from later changes in either tab', async () => {
         const emby = host === 'Emby';
-        const source = emby ? embyPage : page;
-        const draft = { liveTvSavedFilters: ['group:News', 'group:Shared'] };
-        const defaultsState = { active: 'global', profiles: { global: draft }, guidePinBase: draft.liveTvSavedFilters, guideGroups: {} };
-        let librariesReady = false, selectedLibraries = [], gameLibraries = ['arcade'];
-        let rommSelection = '', savedRomm, address = '', savedAddress;
+        const state = { active: 'global', profiles: {}, guideGroups: {}, guidePinBase: ['group:News'] };
+        let pins = ['group:Sports'], displayed, writes = [], ack, failRead = false, rejectWrite = false, visit = 0;
+        let libraryIds, romm = '', address = '', reads = 0, failOnRead;
+        const edit = (...values) => { state.profiles.global = { liveTvSavedFilters: values }; };
+        const leave = () => { visit++; state.guideGroups = {}; };
         const form = {
             querySelector(selector) {
-                if (selector === '.gameLibraryCb' && !librariesReady) return null;
-                if (selector === '#GamesRommLibraryId') return { value: rommSelection };
-                if (selector === '#PublicServerUrl') return { value: address };
-                return { value: '' };
+                if (selector === '.gameLibraryCb' && !libraryIds) return null;
+                return { value: selector === '#GamesRommLibraryId' ? romm : selector === '#PublicServerUrl' ? address : '' };
             },
             querySelectorAll: selector => selector === '.gameLibraryCb:checked'
-                ? selectedLibraries.map(id => ({ getAttribute: () => id })) : [],
+                ? (libraryIds || []).map(id => ({ getAttribute: () => id })) : [],
         };
-        let latest = ['group:Shared', 'group:Sports'], rejectSave = false, rejectRead = false, reads = 0;
-        let displayed;
-        let visit = 1, delayedAck, loseReply = false;
-        const save = vm.runInNewContext([
-            pageFunction(source, 'withGuidePinEdits'), emby ? pageFunction(source, 'camelKeysDeep') : '',
-            pageFunction(source, emby ? 'saveConfig' : 'submit'), emby ? 'saveConfig' : 'submit',
-        ].join('\n'), {
-            defaultsState, document: form, window: {}, DOMException, DEFAULTS_PROFILE_NAMES: ['global'], loading: { show() {} },
-            get guideGroupsVisit() { return visit; },
-            Dashboard: { processPluginConfigurationUpdateResult() {} }, MoonfinConfig: {}, PluginUniqueId: '',
-            getPosterBadgeDefaults() {}, getPosterBadgeRules() {}, collectActiveDefaults() {}, wholeNumberIn() {}, reportConfigError() {},
-            renderDefaultGuideGroups(...args) { displayed = args.at(-1).liveTvSavedFilters; },
-            ApiClient: {
-                getPluginConfiguration: async () => {
-                    if (rejectRead) throw new Error('read failed');
-                    const pins = !emby && ++reads === 1 ? ['group:Old'] : latest;
-                    return { GameLibraryIds: gameLibraries, DefaultUserSettings: { [emby ? 'LiveTvSavedFilters' : 'liveTvSavedFilters']: pins } };
-                },
-                updatePluginConfiguration: async (_, config) => {
-                    if (rejectSave) throw new Error('save failed');
-                    gameLibraries = config.GameLibraryIds;
-                    savedRomm = config.GamesRommLibraryId;
-                    savedAddress = config.PublicServerUrl;
-                    latest = config.DefaultUserSettings.liveTvSavedFilters;
-                    if (delayedAck) await delayedAck;
-                    if (loseReply) throw new Error('reply lost');
-                },
+        const api = {
+            async getPluginConfiguration() {
+                const read = ++reads;
+                if (failRead || read === failOnRead) throw Error('read failed');
+                const latest = !emby && read === 1 ? ['group:Old'] : pins;
+                return { GameLibraryIds: ['arcade'], DefaultUserSettings: { [emby ? 'LiveTvSavedFilters' : 'liveTvSavedFilters']: latest } };
             },
+            async updatePluginConfiguration(_, config) {
+                if (rejectWrite) throw Error('write rejected');
+                writes.push(config);
+                pins = config.DefaultUserSettings.liveTvSavedFilters;
+                if (ack) await ack.promise;
+            },
+        };
+        const save = settingsPage(emby, state, api, form, {
+            get guideGroupsVisit() { return visit; },
+            renderDefaultGuideGroups(...args) { displayed = args.at(-1).liveTvSavedFilters; },
         });
-        function edit(...pins) {
-            defaultsState.profiles.global = { liveTvSavedFilters: pins };
-        }
-        function reopenWithPins(...pins) {
-            leavePage();
-            defaultsState.guidePinBase = latest = pins;
-            edit(...pins);
-        }
-        function leavePage() {
-            visit++;
-            defaultsState.guideGroups = {};
-        }
-        const submit = () => save(form);
-        async function holdSave() {
-            const gate = deferred();
-            delayedAck = gate.promise;
-            const saving = submit();
+        const expectPins = (...values) => assert.deepEqual(Array.from(pins), values);
+        async function delaySave() {
+            ack = deferred();
+            const saving = save();
             await nextTurn();
-            delayedAck = null;
+            const gate = ack;
+            ack = null;
             return { gate, saving };
         }
 
-        await submit();
-        assert.deepEqual(Array.from(latest), ['group:Shared', 'group:Sports']);
-        assert.deepEqual(Array.from(displayed), ['group:Shared', 'group:Sports']);
-        edit('group:Kids');
-        rejectSave = true;
-        await assert.rejects(submit(), /save failed/);
-        rejectSave = false;
-        latest = [...latest, 'group:Music']; // A different tab adds another pin before the retry.
-        const retry = await holdSave();
-        edit('group:Kids', 'group:Movies');
-        retry.gate.resolve();
-        await retry.saving;
-        assert.deepEqual(Array.from(latest), ['group:Music', 'group:Kids']);
-        assert.deepEqual(Array.from(displayed), ['group:Music', 'group:Kids', 'group:Movies']);
-        await submit();
-        assert.deepEqual(Array.from(latest), ['group:Music', 'group:Kids', 'group:Movies']);
-        latest = null; // Another admin clears the pins after this tab's successful save.
-        await submit();
-        assert.equal(latest, null);
+        edit('group:News'); // This tab has no edits. A newer read must win.
+        await save();
+        expectPins('group:Sports');
+        assert.deepEqual(Array.from(writes.at(-1).GameLibraryIds), ['arcade']);
+        if (!emby) failOnRead = reads + 2; // The host's refresh fails after the initial configuration loads.
+        const loading = save();
+        libraryIds = ['arcade'];
+        romm = 'retro';
+        await loading;
+        assert.deepEqual(Array.from(writes.at(-1).GameLibraryIds), ['arcade']);
+        assert.equal(writes.at(-1).GamesRommLibraryId, 'retro');
+        libraryIds = [];
+        romm = '';
+        pins = null;
+        await save();
+        assert.equal(pins, null);
+        assert.deepEqual(Array.from(writes.at(-1).GameLibraryIds), []);
+        assert.equal(writes.at(-1).GamesRommLibraryId, null);
 
-        await t.test('library picks are read after configuration arrives and can be cleared', async () => {
-            gameLibraries = ['arcade'];
-            await submit(); // Game library checkboxes are still loading.
-            assert.deepEqual(Array.from(gameLibraries), ['arcade']);
-            const saving = submit();
-            librariesReady = true;
-            selectedLibraries = ['arcade'];
-            rommSelection = 'retro';
-            await saving;
-            assert.deepEqual(Array.from(gameLibraries), ['arcade']);
-            assert.equal(savedRomm, 'retro');
-            selectedLibraries = [];
-            rommSelection = '';
-            await submit();
-            assert.deepEqual(Array.from(gameLibraries), []);
-            assert.equal(savedRomm, null);
-        });
-
-        await t.test('a save awaiting the form read cannot use a reopened page', async () => {
-            const before = savedAddress;
-            const saving = submit();
-            leavePage();
-            address = 'https://reopened.example';
-            await assert.rejects(saving, /page changed/);
-            assert.equal(savedAddress, before);
-        });
-
-        for (const failRead of [false, true]) {
-            await t.test('queued pin edits survive a concurrent change, failed read=' + failRead, async () => {
-                reopenWithPins('group:News');
-                latest = ['group:Movies'];
-                const { gate, saving: first } = await holdSave();
-                edit('group:Movies');
-                const second = submit();
-                latest = ['group:News', 'group:Music']; // The other admin reverses both pins and adds Music.
-                rejectRead = failRead;
-                gate.resolve();
-                if (failRead) {
-                    await assert.rejects(second, /read failed/);
-                    rejectRead = false;
-                    await submit();
-                } else {
-                    await second;
-                }
-                await first;
-                assert.deepEqual(Array.from(latest), ['group:Music', 'group:Movies']);
-            });
-        }
-
-        await t.test('an earlier save reply cannot undo an unpin on a new visit', async () => {
+        for (const failure of ['none', 'read', 'ack']) {
+            state.guidePinBase = pins = ['group:News'];
             edit('group:News');
-            const { gate, saving } = await holdSave();
-            assert.deepEqual(Array.from(latest), ['group:News']);
-            reopenWithPins('group:Sports');
-            gate.resolve();
-            await saving;
-            edit();
-            await submit();
-            assert.deepEqual(Array.from(latest), []);
-        });
-        for (const replyLost of [false, true]) {
-            await t.test('a queued unpin survives other edits, lost acknowledgement=' + replyLost, async () => {
-                reopenWithPins('group:News');
-                const { gate, saving } = await holdSave();
-                const first = replyLost ? assert.rejects(saving, /save failed/) : saving;
-                assert.deepEqual(Array.from(latest), ['group:News']);
-                edit();
-                const second = submit();
-                address = 'https://submitted.example';
-                await nextTurn();
-                address = 'https://unsaved.example';
-                latest = [...latest, 'group:Sports'];
-                edit('group:Kids');
-                if (replyLost) gate.reject(new Error('save failed'));
-                else gate.resolve();
-                await Promise.all([first, second]);
-                assert.equal(savedAddress, 'https://submitted.example');
-                assert.deepEqual(Array.from(latest), ['group:Sports']);
-                assert.deepEqual(Array.from(displayed), ['group:Sports', 'group:Kids']);
-            });
-        }
-        await t.test('an edit after a lost reply can undo the earlier pin changes', async () => {
-            edit('group:News');
-            loseReply = true;
-            await assert.rejects(submit(), /reply lost/);
-            assert.deepEqual(Array.from(latest), ['group:News']);
-
-            latest = [...latest, 'group:Music']; // Added independently after the failed reply.
+            if (failure === 'read') pins = ['group:Movies'];
+            const { gate, saving } = await delaySave();
+            const first = failure === 'ack' ? assert.rejects(saving, /reply lost/) : saving;
             edit('group:Movies');
-            loseReply = false;
-            await submit();
-            assert.deepEqual(Array.from(latest), ['group:Music', 'group:Movies']);
-            assert.deepEqual(Array.from(displayed), Array.from(latest));
-        });
+            address = 'https://submitted.example';
+            const queued = save();
+            await nextTurn();
+            address = 'https://unsaved.example';
+            pins = ['group:News', 'group:Music']; // The other tab restored News and added Music.
+            edit('group:Movies', 'group:Kids');
+            failRead = failure === 'read';
+            if (failure === 'ack') gate.reject(Error('reply lost')); else gate.resolve();
+            if (failRead) {
+                await assert.rejects(queued, /read failed/);
+                failRead = false;
+                edit('group:Movies');
+                await save();
+            } else {
+                await queued;
+                assert.equal(writes.at(-1).PublicServerUrl, 'https://submitted.example');
+                assert.deepEqual(Array.from(displayed), ['group:Music', 'group:Movies', 'group:Kids']);
+            }
+            await first;
+            expectPins('group:Music', 'group:Movies');
+        }
+
+        edit('group:News');
+        rejectWrite = true;
+        await assert.rejects(save(), /write rejected/);
+        expectPins('group:Music', 'group:Movies');
+        rejectWrite = false;
+        const lost = await delaySave();
+        lost.gate.reject(Error('reply lost'));
+        await assert.rejects(lost.saving, /reply lost/);
+        expectPins('group:News');
+        pins = [...pins, 'group:Weather'];
+        edit('group:Movies');
+        await save();
+        expectPins('group:Weather', 'group:Movies');
+
+        edit('group:News');
+        const old = await delaySave();
+        expectPins('group:News');
+        leave();
+        state.guidePinBase = pins = ['group:Sports'];
+        edit('group:Sports');
+        old.gate.resolve();
+        await old.saving;
+        edit();
+        await save();
+        expectPins();
+        const count = writes.length;
+        const pending = save();
+        leave();
+        await assert.rejects(pending, /page changed/);
+        assert.equal(writes.length, count);
     });
 }

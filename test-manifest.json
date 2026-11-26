@@ -6,8 +6,17 @@
     "description": "Moonbase is the Moonfin server plugin for Jellyfin, powering settings sync, the Moonfin Web app at /Moonfin/Web/, a built-in theme editor with custom theme APIs, media bar and ratings integrations, and Seerr proxy/SSO with admin defaults and broadcasts across Moonfin clients.",
     "owner": "Roboatlas21",
     "category": "General",
-    "imageUrl": "https://raw.githubusercontent.com/Roboatlas21/Plugin/f2ad94f17dd3af07632316fac6117f8efd4d21c1/Jellyfin/backend/assets/logo.png",
+    "imageUrl": "https://raw.githubusercontent.com/Roboatlas21/Plugin/972aca8f2f6639e9fd9c444ea70413318a196868/Jellyfin/backend/assets/logo.png",
     "versions": [
+      {
+        "version": "3.1.1.4",
+        "targetAbi": "10.10.0.0",
+        "sourceUrl": "https://github.com/Roboatlas21/Plugin/releases/download/test-3.1.1.4/Moonfin.Server-3.1.1.4.zip",
+        "checksum": "FF1AB7F483C2FEED6E0BB19F7B0A9D3E",
+        "changelog": "Plugin v4 for Jellyfin improves live TV channel groups during guide imports and preserves administrator guide pin edits across overlapping saves.",
+        "timestamp": "2026-11-26T05:07:23Z",
+        "dependencies": []
+      },
       {
         "version": "3.1.1.3",
         "targetAbi": "10.10.0.0",

@@ -6708,7 +6708,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
         var who = state.users === 'all' ? 'every user' : joinWithAnd(state.pickedUsers.map(userName));
         var message = reset
             ? 'Reset ' + who + ' to the defaults?\n\nThis permanently erases their current Moonfin settings, device profiles included, and replaces them with the ' + joinWithAnd(on.map(function(e) { return e.label; })) + ' defaults.'
-            : 'Apply the defaults to ' + who + '?\n\nSelected defaults replace the user\'s choices. Pinned groups already update on Save; Merge restores selected groups they hid and keeps their personal additions.';
+            : 'Apply the defaults to ' + who + '?\n\nEach default you push replaces that user\'s own choice for that setting. Everything else they chose stays.';
         if (!window.confirm(message)) return;
 
         var button = view.querySelector('#ApplyDefaultsBtn');

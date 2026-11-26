@@ -18,6 +18,7 @@ public sealed class SavedGuideFiltersContractTests : IDisposable
 {
     private readonly string _path = Path.Combine(Path.GetTempPath(), "guide-pins-" + Guid.NewGuid().ToString("N"));
     private readonly MoonfinSettingsService _service;
+    private readonly Guid _user = Guid.NewGuid();
     public SavedGuideFiltersContractTests()
     {
 #if MOONFIN_EMBY_TESTS
@@ -27,154 +28,151 @@ public sealed class SavedGuideFiltersContractTests : IDisposable
 #endif
     }
     public void Dispose() { if (Directory.Exists(_path)) Directory.Delete(_path, true); }
-    private Task<MoonfinUserSettings?> Read(Guid id) => _service.GetUserSettingsAsync(id);
-    private Task Edit(Guid id, string profile, string action, string? pin = null, params string[] filters) =>
-        _service.SaveProfileAsync(id, profile, new MoonfinSettingsProfile(), notifySettingsChanged: false,
+    private Task<MoonfinUserSettings?> Read() => _service.GetUserSettingsAsync(_user);
+    private Task Edit(string profile, string action, string? pin = null, params string[] filters) =>
+        _service.SaveProfileAsync(_user, profile, new MoonfinSettingsProfile(), notifySettingsChanged: false,
             savedFilterChange: new LiveTvSavedFilterChange { Action = action, Filter = pin,
                 Filters = action == "initializeIfAbsent" ? new List<string>(filters) : null });
     private static PluginConfiguration Defaults(params string[] pins) => new() {
         DefaultUserSettings = new MoonfinSettingsProfile { LiveTvSavedFilters = new List<string>(pins) } };
+
+    private static LiveTvSavedFilterChange Change(string action, string pin) => new() { Action = action, Filter = pin };
+    private List<string>? Pins(MoonfinUserSettings user, PluginConfiguration config) =>
+        _service.ResolveProfile(user, "tv", config).LiveTvSavedFilters;
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task AnUnreadableProfileKeepsItsPinsUntilTheEditCanBeRetried(bool backupOnly)
     {
-        var id = Guid.NewGuid();
-        Assert.Null(await _service.GetResolvedProfileAsync(id, "tv"));
-        await Edit(id, "tv", "add", "group:Sports");
-        var primary = Path.Combine(_path, id + ".json");
+        Assert.Null(await _service.GetResolvedProfileAsync(_user, "tv"));
+        await Edit("tv", "add", "group:Sports");
+        var primary = Path.Combine(_path, _user + ".json");
         var file = backupOnly ? AtomicFile.BackupPath(primary) : primary;
         if (backupOnly) File.Move(primary, file);
         using (File.Open(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
         {
-            await Assert.ThrowsAsync<SettingsReadError>(() => _service.GetResolvedProfileAsync(id, "tv"));
-            await Assert.ThrowsAsync<SettingsReadError>(() => Edit(id, "tv", "add", "group:News"));
-            await Assert.ThrowsAsync<SettingsReadError>(() => _service.SaveUserSettingsAsync(id, new MoonfinUserSettings()));
-            await Assert.ThrowsAsync<SettingsReadError>(() => _service.DeleteProfileAsync(id, "tv"));
+            await Assert.ThrowsAsync<SettingsReadError>(() => _service.GetResolvedProfileAsync(_user, "tv"));
+            await Assert.ThrowsAsync<SettingsReadError>(() => Edit("tv", "add", "group:News"));
+            await Assert.ThrowsAsync<SettingsReadError>(() => _service.SaveUserSettingsAsync(_user, new MoonfinUserSettings()));
+            await Assert.ThrowsAsync<SettingsReadError>(() => _service.DeleteProfileAsync(_user, "tv"));
         }
-        await Edit(id, "tv", "add", "group:News");
-        Assert.Equal(["group:Sports", "group:News"], (await Read(id))!.Global!.LiveTvSavedFilters);
+        await Edit("tv", "add", "group:News");
+        Assert.Equal(["group:Sports", "group:News"], (await Read())!.Global!.LiveTvSavedFilters);
+    }
+
+    [Fact]
+    public async Task CorruptCopiesSurviveRejectedWrites()
+    {
+        Directory.CreateDirectory(_path);
+        var primary = Path.Combine(_path, _user + ".json");
+        var backup = AtomicFile.BackupPath(primary);
+        File.WriteAllText(primary, "{bad primary");
+        File.WriteAllText(backup, "{bad backup");
+        var error = await Assert.ThrowsAsync<SettingsReadError>(() => _service.SaveUserSettingsAsync(_user, new()));
+        await Assert.ThrowsAsync<SettingsReadError>(() => Edit("tv", "add", "group:News"));
+        await Assert.ThrowsAsync<SettingsReadError>(() => _service.DeleteProfileAsync(_user, "tv"));
+        Assert.DoesNotContain(primary, error.Message);
+        Assert.Equal("{bad primary", File.ReadAllText(primary));
+        Assert.Equal("{bad backup", File.ReadAllText(backup));
     }
 
     [Fact]
     public void ValidationAndLocalImportRespectCurrentButNotFutureDefaults()
     {
-        Assert.True(new LiveTvSavedFilterChange { Action = "add", Filter = "group:News" }.IsValid());
-        Assert.False(new LiveTvSavedFilterChange { Action = "remove", Filter = "group:" }.IsValid());
+        Assert.True(Change("add", "group:News").IsValid());
+        Assert.False(Change("remove", "group:").IsValid());
         Assert.False(new LiveTvSavedFilterChange { Action = "initializeIfAbsent",
             Filters = Enumerable.Repeat("group:News", 1001).ToList() }.IsValid());
         var atLimit = "group:" + new string('x', 1018);
         var tooLong = atLimit + "x";
-        Assert.False(new LiveTvSavedFilterChange { Action = "add", Filter = tooLong }.IsValid());
-        Assert.False(new LiveTvSavedFilterChange { Action = "remove", Filter = tooLong }.IsValid());
+        Assert.False(Change("add", tooLong).IsValid());
+        Assert.False(Change("remove", tooLong).IsValid());
         Assert.False(new LiveTvSavedFilterChange { Action = "initializeIfAbsent", Filters = [tooLong] }.IsValid());
         var saved = new MoonfinUserSettings { Global = new MoonfinSettingsProfile { LiveTvSavedFilters = [tooLong] } };
-        Assert.Equal([atLimit], _service.ResolveProfile(saved, "tv", Defaults(atLimit, tooLong)).LiveTvSavedFilters);
+        Assert.Equal([atLimit], Pins(saved, Defaults(atLimit, tooLong)));
         var config = Defaults("group:Sports");
-        config.DefaultDeviceSettings = new MoonfinDeviceDefaults {
-            Tv = new MoonfinSettingsProfile { LiveTvSavedFilters = ["group:TV"] } };
         var user = new MoonfinUserSettings();
-        MoonfinSettingsService.ApplySavedFilterChange(user, new LiveTvSavedFilterChange {
+        MoonfinSettingsService.ApplySavedFilterChange(user, new() {
             Action = "initializeIfAbsent", Filters = ["group:Local"] }, config.DefaultUserSettings!.LiveTvSavedFilters);
-        Assert.Equal(["group:Local"], _service.ResolveProfile(user, "tv", config).LiveTvSavedFilters);
+        Assert.Equal(["group:Local"], Pins(user, config));
         config.DefaultUserSettings.LiveTvSavedFilters = ["group:News"];
-        Assert.Equal(["group:News", "group:Local"], _service.ResolveProfile(user, "tv", config).LiveTvSavedFilters);
+        Assert.Equal(["group:News", "group:Local"], Pins(user, config));
+        var remove = Change("remove", "group:Local");
+        MoonfinSettingsService.ApplySavedFilterChange(user, remove, []);
+        Assert.DoesNotContain("group:Local", user.LiveTvSavedFilterExclusions!);
+        var managed = Defaults("group:Local");
+        Assert.Equal(["group:Local"], Pins(user, managed));
+        MoonfinSettingsService.ApplySavedFilterChange(user, remove, ["group:Local"]);
+        Assert.Contains("group:Local", user.LiveTvSavedFilterExclusions!);
+        Assert.Empty(Pins(user, managed)!);
     }
 
     [Fact]
     public async Task PinLimitCountsPersonalPinsAndExclusionsAndRejectsTheWholeSave()
     {
-        var id = Guid.NewGuid();
         var pins = Enumerable.Range(0, 1000).Select(i => $"group:{i}").ToArray();
-        await Edit(id, "tv", "initializeIfAbsent", null, pins);
-        await Assert.ThrowsAsync<GuidePinLimitException>(() => _service.SaveProfileAsync(id, "mobile",
+        await Edit("tv", "initializeIfAbsent", null, pins);
+        await Assert.ThrowsAsync<GuidePinLimitException>(() => _service.SaveProfileAsync(_user, "mobile",
             new MoonfinSettingsProfile { LiveTvCategoryDisplay = "groups" }, savedFilterChange:
-            new LiveTvSavedFilterChange { Action = "add", Filter = "group:extra" }));
-        var stored = (await Read(id))!;
+            Change("add", "group:extra")));
+        var stored = (await Read())!;
         Assert.Null(stored.Mobile?.LiveTvCategoryDisplay);
         Assert.Equal(pins, stored.Global!.LiveTvSavedFilters);
-        var exclude = new LiveTvSavedFilterChange { Action = "remove", Filter = "group:managed" };
+        var exclude = Change("remove", "group:managed");
         Assert.Throws<GuidePinLimitException>(() => MoonfinSettingsService.ApplySavedFilterChange(stored, exclude, ["group:managed"]));
         Assert.Empty(stored.LiveTvSavedFilterExclusions!);
-        await Edit(id, "tv", "remove", pins[0]);
-        await Edit(id, "tv", "add", "group:extra");
-        Assert.Equal(1000, (await Read(id))!.Global!.LiveTvSavedFilters!.Count);
+        await Edit("tv", "remove", pins[0]);
+        await Edit("tv", "add", "group:extra");
+        Assert.Equal(1000, (await Read())!.Global!.LiveTvSavedFilters!.Count);
     }
 
-    [Fact]
-    public void GuidePinExclusionsApplyOnlyToCurrentAdminPins()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void UnsetAndEmptyPinsAreDistinctInAdminAndUserProfiles(bool configured)
     {
+        var config = configured ? Defaults() : new PluginConfiguration();
+        var pins = configured ? new List<string>() : null;
+        Assert.Equal(pins, MoonfinSettingsService.AdminDefaultsFor("tv", config)?.LiveTvSavedFilters);
         var user = new MoonfinUserSettings();
-        MoonfinSettingsService.ApplySavedFilterChange(user,
-            new LiveTvSavedFilterChange { Action = "add", Filter = "group:Local" }, []);
-        MoonfinSettingsService.ApplySavedFilterChange(user,
-            new LiveTvSavedFilterChange { Action = "remove", Filter = "group:Local" }, []);
-        Assert.Empty(user.LiveTvSavedFilterExclusions!);
-        Assert.Equal(["group:Local"], _service.ResolveProfile(user, "tv",
-            Defaults("group:Local")).LiveTvSavedFilters);
-
-        MoonfinSettingsService.ApplySavedFilterChange(user,
-            new LiveTvSavedFilterChange { Action = "remove", Filter = "group:Local" },
-            ["group:Local"]);
-        Assert.Equal(["group:Local"], user.LiveTvSavedFilterExclusions);
-        Assert.Empty(_service.ResolveProfile(user, "tv",
-            Defaults("group:Local")).LiveTvSavedFilters!);
-    }
-
-    [Fact]
-    public void UnsetGuidePinsRemainNullButExplicitEmptyPinsStaySet()
-    {
-        var user = new MoonfinUserSettings();
-        Assert.Null(_service.ResolveProfile(user, "tv", new PluginConfiguration()).LiveTvSavedFilters);
-        Assert.Empty(_service.ResolveProfile(user, "tv", Defaults()).LiveTvSavedFilters!);
-        user.Global = new MoonfinSettingsProfile { LiveTvSavedFilters = [] };
-        Assert.Empty(_service.ResolveProfile(user, "tv", new PluginConfiguration()).LiveTvSavedFilters!);
+        Assert.Equal(pins, Pins(user, config));
+        user.Global = new() { LiveTvSavedFilters = [] };
+        Assert.Empty(Pins(user, config)!);
     }
 
     [Fact]
     public async Task PinAwarePullClearsStalePinsAfterAResetAndUnrelatedSave()
     {
-        var id = Guid.NewGuid();
-        await Edit(id, "tv", "add", "group:Sports");
-        Assert.Equal(["group:Sports"], (await _service.GetProfileForPullAsync(id, "tv", true))!.LiveTvSavedFilters);
+        await Edit("tv", "add", "group:Sports");
+        Assert.Equal(["group:Sports"], (await _service.GetProfileForPullAsync(_user, "tv", true))!.LiveTvSavedFilters);
 
-        await _service.DeleteUserSettingsAsync(id);
-        Assert.Null(await _service.GetProfileForPullAsync(id, "tv", true));
-        await _service.SaveProfileAsync(id, "global", new MoonfinSettingsProfile { LiveTvCategoryDisplay = "groups" });
+        await _service.DeleteUserSettingsAsync(_user);
+        Assert.Null(await _service.GetProfileForPullAsync(_user, "tv", true));
+        await _service.SaveProfileAsync(_user, "global", new MoonfinSettingsProfile { LiveTvCategoryDisplay = "groups" });
 
-        var pulled = await _service.GetProfileForPullAsync(id, "tv", true);
+        var pulled = await _service.GetProfileForPullAsync(_user, "tv", true);
         Assert.Equal("groups", pulled!.LiveTvCategoryDisplay);
         Assert.Empty(pulled.LiveTvSavedFilters!);
-        Assert.Null((await _service.GetProfileForPullAsync(id, "tv", false))!.LiveTvSavedFilters);
-        Assert.Null((await Read(id))!.Global!.LiveTvSavedFilters);
-    }
-
-    [Fact]
-    public void AdminDefaultsPreserveUnsetAndExplicitlyEmptyPins()
-    {
-        var config = Defaults();
-        Assert.Empty(MoonfinSettingsService.AdminDefaultsFor("tv", config)!.LiveTvSavedFilters!);
-        config.DefaultUserSettings!.LiveTvSavedFilters = null;
-        Assert.Null(MoonfinSettingsService.AdminDefaultsFor("tv", config)!.LiveTvSavedFilters);
+        Assert.Null((await _service.GetProfileForPullAsync(_user, "tv", false))!.LiveTvSavedFilters);
+        Assert.Null((await Read())!.Global!.LiveTvSavedFilters);
     }
 
     [Fact]
     public async Task AtomicEditsOutliveStaleFullSettingsAndImportWrites()
     {
-        var id = Guid.NewGuid();
-        await Edit(id, "tv", "initializeIfAbsent", null, "group:US | SPORTS, Canada");
-        await Edit(id, "mobile", "add", "group:News");
-        await Edit(id, "tv", "remove", "group:Sports");
-        await _service.SaveProfileAsync(id, "mobile", new MoonfinSettingsProfile { LiveTvSavedFilters = [] }, notifySettingsChanged: false);
-        await _service.SaveUserSettingsAsync(id, new MoonfinUserSettings {
+        await Edit("tv", "initializeIfAbsent", null, "group:US | SPORTS, Canada");
+        await Edit("mobile", "add", "group:News");
+        await Edit("tv", "remove", "group:Sports");
+        await _service.SaveProfileAsync(_user, "mobile", new MoonfinSettingsProfile { LiveTvSavedFilters = [] }, notifySettingsChanged: false);
+        await _service.SaveUserSettingsAsync(_user, new MoonfinUserSettings {
             Global = new MoonfinSettingsProfile { LiveTvSavedFilters = [] },
             LiveTvSavedFilterExclusions = ["group:News"] }, mergeMode: "replace");
-        Assert.Equal(["group:US | SPORTS, Canada", "group:News"], (await Read(id))!.Global!.LiveTvSavedFilters);
-        Assert.Empty((await Read(id))!.LiveTvSavedFilterExclusions!);
-        await Edit(id, "mobile", "remove", "group:News");
-        await Edit(id, "tv", "initializeIfAbsent", null, "group:Ignored");
-        Assert.Equal(["group:US | SPORTS, Canada"], (await Read(id))!.Global!.LiveTvSavedFilters);
+        Assert.Equal(["group:US | SPORTS, Canada", "group:News"], (await Read())!.Global!.LiveTvSavedFilters);
+        Assert.Empty((await Read())!.LiveTvSavedFilterExclusions!);
+        await Edit("mobile", "remove", "group:News");
+        await Edit("tv", "initializeIfAbsent", null, "group:Ignored");
+        Assert.Equal(["group:US | SPORTS, Canada"], (await Read())!.Global!.LiveTvSavedFilters);
     }
 
     [Fact]
@@ -182,50 +180,42 @@ public sealed class SavedGuideFiltersContractTests : IDisposable
     {
         var config = Defaults("group:Sports", "group:News");
         config.DefaultDeviceSettings = new MoonfinDeviceDefaults {
-            Tv = new MoonfinSettingsProfile { LiveTvSavedFilters = ["group:TV"] } };
-        var id = Guid.NewGuid();
+            Tv = new MoonfinSettingsProfile { LiveTvSavedFilters = ["group:TV"], LiveTvCategoryDisplay = "programmes" } };
+        config.DefaultUserSettings!.LiveTvCategoryDisplay = "groups";
+        var viewer = new MoonfinUserSettings();
+        Assert.Equal("programmes", _service.ResolveProfile(viewer, "tv", config).LiveTvCategoryDisplay);
+        Assert.Equal("groups", _service.ResolveProfile(viewer, "mobile", config).LiveTvCategoryDisplay);
         var user = new MoonfinUserSettings {
             Global = new MoonfinSettingsProfile { LiveTvSavedFilters = ["group:Local"] },
             LiveTvSavedFilterExclusions = ["group:Sports"] };
         Directory.CreateDirectory(_path);
-        File.WriteAllText(Path.Combine(_path, id + ".json"), System.Text.Json.JsonSerializer.Serialize(user));
-        Assert.Equal(["group:News", "group:Local"], _service.ResolveProfile((await Read(id))!, "tv", config).LiveTvSavedFilters);
-        await _service.MergeDefaultsAsync(config, ["tv"], ["liveTvSavedFilters"], [id]);
-        Assert.Equal(["group:News", "group:Local"], _service.ResolveProfile((await Read(id))!, "tv", config).LiveTvSavedFilters);
-        await _service.MergeDefaultsAsync(config, ["global"], ["liveTvSavedFilters"], [id]);
-        Assert.Equal(["group:Sports", "group:News", "group:Local"], _service.ResolveProfile((await Read(id))!, "tv", config).LiveTvSavedFilters);
-        await _service.ResetUsersToDefaultsAsync(config, ["global"], [id], deleteOrphans: false);
-        Assert.Empty((await Read(id))!.Global!.LiveTvSavedFilters!);
-        Assert.Equal(["group:Sports", "group:News"], _service.ResolveProfile((await Read(id))!, "tv", config).LiveTvSavedFilters);
+        File.WriteAllText(Path.Combine(_path, _user + ".json"), System.Text.Json.JsonSerializer.Serialize(user));
+        Assert.Equal(["group:News", "group:Local"], Pins((await Read())!, config));
+        await _service.MergeDefaultsAsync(config, ["tv"], ["liveTvSavedFilters"], [_user]);
+        Assert.Equal(["group:News", "group:Local"], Pins((await Read())!, config));
+        await _service.MergeDefaultsAsync(config, ["global"], ["liveTvSavedFilters"], [_user]);
+        Assert.Equal(["group:Sports", "group:News", "group:Local"], Pins((await Read())!, config));
+        await _service.ResetUsersToDefaultsAsync(config, ["global"], [_user], deleteOrphans: false);
+        Assert.Empty((await Read())!.Global!.LiveTvSavedFilters!);
+        Assert.Equal(["group:Sports", "group:News"], Pins((await Read())!, config));
     }
 
     [Fact]
     public async Task AdminCopyAndProfileDeletionPreserveSavedPins()
     {
-        var from = Guid.NewGuid();
         var to = Guid.NewGuid();
-        await Edit(from, "tv", "add", "group:News");
-        await Edit(to, "tv", "add", "group:Old");
+        await Edit("tv", "add", "group:News");
+        await _service.SaveProfileAsync(to, "tv", new(), savedFilterChange: Change("add", "group:Old"));
         await _service.SaveProfileAsync(to, "tv", new MoonfinSettingsProfile { ClockBehavior = "never" }, notifySettingsChanged: false);
 
-        Assert.Equal(1, await _service.CopySettingsAsync(from, [to], ["global"], ["liveTvSavedFilters"], replace: false));
-        Assert.Equal(["group:News"], (await Read(to))!.Global!.LiveTvSavedFilters);
-        Assert.Equal("never", (await Read(to))!.Tv!.ClockBehavior);
+        Assert.Equal(1, await _service.CopySettingsAsync(_user, [to], ["global"], ["liveTvSavedFilters"], replace: false));
+        Assert.Equal(["group:News"], (await _service.GetUserSettingsAsync(to))!.Global!.LiveTvSavedFilters);
+        Assert.Equal("never", (await _service.GetUserSettingsAsync(to))!.Tv!.ClockBehavior);
 
         await _service.DeleteProfileAsync(to, "tv");
-        Assert.Equal(["group:News"], (await Read(to))!.Global!.LiveTvSavedFilters);
+        Assert.Equal(["group:News"], (await _service.GetUserSettingsAsync(to))!.Global!.LiveTvSavedFilters);
         await _service.SaveProfileAsync(to, "mobile", new MoonfinSettingsProfile { LiveTvSavedFilters = ["group:Stale"] }, notifySettingsChanged: false);
-        Assert.Equal(["group:News"], (await Read(to))!.Global!.LiveTvSavedFilters);
+        Assert.Equal(["group:News"], (await _service.GetUserSettingsAsync(to))!.Global!.LiveTvSavedFilters);
     }
 
-    [Fact]
-    public void ProgramCategoriesRetainDeviceOverrides()
-    {
-        var config = Defaults();
-        config.DefaultUserSettings!.LiveTvCategoryDisplay = "groups";
-        config.DefaultDeviceSettings = new MoonfinDeviceDefaults {
-            Tv = new MoonfinSettingsProfile { LiveTvCategoryDisplay = "programmes" } };
-        Assert.Equal("programmes", _service.ResolveProfile(new MoonfinUserSettings(), "tv", config).LiveTvCategoryDisplay);
-        Assert.Equal("groups", _service.ResolveProfile(new MoonfinUserSettings(), "mobile", config).LiveTvCategoryDisplay);
-    }
 }

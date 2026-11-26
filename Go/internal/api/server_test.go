@@ -309,46 +309,34 @@ func TestDeviceDefaults(t *testing.T) {
 // Exercise the existing pin endpoint, global-only inheritance and admin actions together.
 func TestGuidePinsUseGlobalDefaultsAndAtomicProfileEdits(t *testing.T) {
 	s := newTestServer()
-	saveConfig(t, s, map[string]any{
-		"DefaultUserSettings": map[string]any{
-			"liveTvSavedFilters": []any{"group:Sports", "group:News"}, "liveTvCategoryDisplay": "groups",
-		},
-		"DefaultDeviceSettings": map[string]any{"tv": map[string]any{
-			"liveTvSavedFilters": []any{"group:TV"}, "liveTvCategoryDisplay": "programmes",
-		}},
+	saveConfig(t, s, M{
+		"DefaultUserSettings":   M{"liveTvSavedFilters": []any{"group:Sports", "group:News"}, "liveTvCategoryDisplay": "groups"},
+		"DefaultDeviceSettings": M{"tv": M{"liveTvSavedFilters": []any{"group:TV"}, "liveTvCategoryDisplay": "programmes"}},
 	})
 	check := func(want ...any) map[string]any {
-		_, got := call(t, s, userMain, "GET", "/Moonfin/Settings/Resolved/tv", "", nil)
-		if !reflect.DeepEqual(got["liveTvSavedFilters"], want) {
-			t.Fatalf("resolved pins = %v, want %v", got["liveTvSavedFilters"], want)
-		}
-		return got
+		t.Helper()
+		return assertResolvedGuidePins(t, s, userMain, nil, want)
 	}
-	_, ping := call(t, s, userMain, "GET", "/Moonfin/Ping", "", map[string]any{"profile": "tv"})
+	_, ping := call(t, s, userMain, "GET", "/Moonfin/Ping", "", M{"profile": "tv"})
 	if !reflect.DeepEqual(ping["defaultSettings"].(map[string]any)["liveTvSavedFilters"], []any{"group:Sports", "group:News"}) {
 		t.Fatalf("device pin leaked into sign-in defaults: %v", ping)
 	}
 	if got := check("group:Sports", "group:News"); got["liveTvCategoryDisplay"] != "programmes" {
 		t.Fatalf("category display defaults: %v", got)
 	}
-	for _, change := range []string{
-		`{"action":"add","filter":"group:Movies"}`,
-		`{"action":"remove","filter":"group:Sports"}`,
-	} {
-		call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv",
-			`{"profile":{},"liveTvSavedFilterChange":`+change+`}`, nil)
+	for _, change := range []M{{"action": "add", "filter": "group:Movies"}, {"action": "remove", "filter": "group:Sports"}} {
+		postGuideSettings(t, s, userMain, "/Moonfin/Settings/Profile/tv", M{"profile": M{}, "liveTvSavedFilterChange": change}, 200)
 	}
 	call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/mobile", `{"profile":{"liveTvSavedFilters":[]}}`, nil)
 	check("group:News", "group:Movies")
-	for _, profile := range []string{"tv", "global"} {
-		body := `{"profiles":["` + profile + `"],"keys":["liveTvSavedFilters"],"userIds":["3~30"]}`
-		if code, _ := call(t, s, adminMain, "POST", "/Moonfin/Admin/ApplyDefaults", body, nil); code != 200 {
-			t.Fatalf("apply %s defaults: %d", profile, code)
-		}
-		if profile == "tv" {
-			check("group:News", "group:Movies")
-		}
+	apply := func(profile string) {
+		postGuideSettings(t, s, adminMain, "/Moonfin/Admin/ApplyDefaults", M{
+			"profiles": []string{profile}, "keys": []string{"liveTvSavedFilters"}, "userIds": []string{"3~30"},
+		}, 200)
 	}
+	apply("tv")
+	check("group:News", "group:Movies")
+	apply("global")
 	check("group:Sports", "group:News", "group:Movies")
 	call(t, s, adminMain, "POST", "/Moonfin/Admin/ApplyDefaults",
 		`{"overwrite":true,"profiles":["global"],"userIds":["3~30"]}`, nil)
@@ -358,10 +346,31 @@ func TestGuidePinsUseGlobalDefaultsAndAtomicProfileEdits(t *testing.T) {
 	if got := check("group:Sports", "group:News"); got["liveTvCategoryDisplay"] != "both" {
 		t.Fatalf("user category display: %v", got)
 	}
-	if code, _ := call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv",
-		`{"profile":{},"liveTvSavedFilterChange":{"action":"initializeIfAbsent","filters":[42]}}`, nil); code != 400 {
-		t.Fatalf("invalid pin import accepted: %d", code)
+	postGuideSettings(t, s, userMain, "/Moonfin/Settings/Profile/tv", M{
+		"profile": M{}, "liveTvSavedFilterChange": M{"action": "initializeIfAbsent", "filters": []int{42}},
+	}, 400)
+}
+
+func assertResolvedGuidePins(t *testing.T, s *Server, viewer caller, query M, want []any) M {
+	t.Helper()
+	code, got := call(t, s, viewer, "GET", "/Moonfin/Settings/Resolved/tv", "", query)
+	if code != 200 || !reflect.DeepEqual(got["liveTvSavedFilters"], want) {
+		t.Fatalf("resolved pins = %v (HTTP %d), want %v", got, code, want)
 	}
+	return got
+}
+
+func postGuideSettings(t *testing.T, s *Server, viewer caller, path string, payload M, want int) M {
+	t.Helper()
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, got := call(t, s, viewer, "POST", path, string(body), nil)
+	if code != want {
+		t.Fatalf("%s returned %d, want %d: %v", path, code, want, got)
+	}
+	return got
 }
 
 func TestGuidePinLimitCountsPersonalPinsAndExclusions(t *testing.T) {
@@ -369,13 +378,7 @@ func TestGuidePinLimitCountsPersonalPinsAndExclusions(t *testing.T) {
 	saveConfig(t, s, M{"DefaultUserSettings": M{"liveTvSavedFilters": []string{"group:Managed"}}})
 	edit := func(change, profile M, want int) {
 		t.Helper()
-		body, err := json.Marshal(M{"profile": profile, "liveTvSavedFilterChange": change})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if code, _ := call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv", string(body), nil); code != want {
-			t.Fatalf("pin %v %v returned %d, want %d", change["action"], change["filter"], code, want)
-		}
+		postGuideSettings(t, s, userMain, "/Moonfin/Settings/Profile/tv", M{"profile": profile, "liveTvSavedFilterChange": change}, want)
 	}
 	pins := make([]string, 999)
 	for i := range pins {
@@ -457,84 +460,55 @@ func TestOptionalGuidePinsDoNotChangeOrdinaryProfileUpdates(t *testing.T) {
 	if _, present := got["liveTvSavedFilters"]; present {
 		t.Fatalf("unset guide pins should be omitted: %v", got)
 	}
-	saveConfig(t, s, map[string]any{
-		"DefaultUserSettings": map[string]any{"liveTvSavedFilters": []any{}},
-	})
-	_, got = call(t, s, userMain, "GET", "/Moonfin/Settings/Resolved/tv", "", nil)
-	if pins, ok := got["liveTvSavedFilters"].([]any); !ok || len(pins) != 0 {
-		t.Fatalf("explicit empty admin pins should be returned: %v", got)
-	}
+	saveConfig(t, s, M{"DefaultUserSettings": M{"liveTvSavedFilters": []any{}}})
+	assertResolvedGuidePins(t, s, userMain, nil, []any{})
 }
 
 func TestResolvedPinsAfterResetAndExactCopy(t *testing.T) {
 	s := newTestServer()
 	const write = "/Moonfin/Settings/Profile/global"
-	const read = "/Moonfin/Settings/Resolved/tv"
 	const add = `{"profile":{},"liveTvSavedFilterChange":{"action":"add","filter":"group:News"}}`
 	query := M{"includeLiveTvSavedFilters": true}
-	check := func(want []any) {
-		t.Helper()
-		if code, got := call(t, s, other, "GET", read, "", query); code != 200 || !reflect.DeepEqual(got["liveTvSavedFilters"], want) {
-			t.Fatalf("resolved pins = %v (%d), want %v", got, code, want)
-		}
-	}
 	call(t, s, other, "POST", write, add, nil)
-	check([]any{"group:News"})
+	assertResolvedGuidePins(t, s, other, query, []any{"group:News"})
 	call(t, s, other, "DELETE", "/Moonfin/Settings", "", nil)
-	check([]any{})
+	assertResolvedGuidePins(t, s, other, query, []any{})
 	call(t, s, other, "POST", write, add, nil)
 	call(t, s, adminMain, "POST", write, `{"profile":{"theme":"dark"}}`, nil)
 	if code, got := call(t, s, adminMain, "POST", "/Moonfin/Admin/CopySettings",
 		`{"fromUserId":"2~20","toUserIds":["4"],"profiles":["global"],"replace":true}`, nil); code != 200 || got["usersAffected"] != 1.0 {
 		t.Fatalf("exact copy = %d %v", code, got)
 	}
-	check([]any{})
+	assertResolvedGuidePins(t, s, other, query, []any{})
 }
 
-func TestAdminGuidePinsUseTheUserEditLimit(t *testing.T) {
+func TestAdminGuidePinsRespectTheByteLimitAcrossConfigurationAndProfiles(t *testing.T) {
 	s := newTestServer()
-	pin := "group:" + strings.Repeat("é", 509) // Exactly 1,024 bytes.
-	saveConfig(t, s, M{"DefaultUserSettings": M{"liveTvSavedFilters": []any{pin}}})
-	tooLong := pin + "é"
-	for _, field := range []string{"liveTvSavedFilters", "LiveTvSavedFilters"} {
-		body, _ := json.Marshal(M{"DefaultUserSettings": M{field: []any{tooLong}}})
-		code, got := call(t, s, adminMain, "POST", "/Moonfin/Admin/Configuration", string(body), nil)
-		if code != 400 || !strings.Contains(fmt.Sprint(got["Error"]), tooLong) {
-			t.Fatalf("invalid %s response = %d %v", field, code, got)
+	atLimit := "group:" + strings.Repeat("é", 509)
+	tooLong := atLimit + "é"
+	config := func(key, pin string) M { return M{"DefaultUserSettings": M{key: []any{pin}}} }
+	saveConfig(t, s, config("liveTvSavedFilters", atLimit))
+	for _, key := range []string{"liveTvSavedFilters", "LiveTvSavedFilters"} {
+		got := postGuideSettings(t, s, adminMain, "/Moonfin/Admin/Configuration", config(key, tooLong), 400)
+		if !strings.Contains(fmt.Sprint(got["Error"]), tooLong) {
+			t.Fatalf("invalid %s: %v", key, got)
 		}
 	}
-	_, resolved := call(t, s, other, "GET", "/Moonfin/Settings/Resolved/tv", "", nil)
-	if !reflect.DeepEqual(resolved["liveTvSavedFilters"], []any{pin}) {
-		t.Fatalf("rejected save changed admin pins: %v", resolved)
-	}
-}
-
-func TestOverLimitStoredPinsAreHiddenAndCannotBeSubmitted(t *testing.T) {
-	s := newTestServer()
-	pin := "group:" + strings.Repeat("x", 1024)
-	cfg := M{"DefaultUserSettings": M{"liveTvSavedFilters": []any{pin}}}
-	if err := s.saveJSON(t.Context(), keyConfig, cfg); err != nil {
+	assertResolvedGuidePins(t, s, other, nil, []any{atLimit})
+	legacy := config("liveTvSavedFilters", tooLong)
+	if err := s.saveJSON(t.Context(), keyConfig, legacy); err != nil {
 		t.Fatal(err)
-	}
-	body, _ := json.Marshal(cfg)
-	if code, _ := call(t, s, adminMain, "POST", "/Moonfin/Admin/Configuration", string(body), nil); code != 400 {
-		t.Fatalf("saving an over-limit admin pin returned %d", code)
 	}
 	id := Identity{UserID: userMain.user, ProfileID: userMain.profileID}
-	if err := s.saveJSON(t.Context(), settingsKey(id), M{"global": M{"liveTvSavedFilters": []any{pin}}}); err != nil {
+	if err := s.saveJSON(t.Context(), settingsKey(id), M{"global": legacy["DefaultUserSettings"]}); err != nil {
 		t.Fatal(err)
 	}
-	change := M{"action": "remove", "filter": pin}
-	edit, _ := json.Marshal(M{"profile": M{}, "liveTvSavedFilterChange": change})
-	if code, _ := call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/tv", string(edit), nil); code != 400 {
-		t.Fatalf("removing an over-limit pin returned %d", code)
-	}
-	_, resolved := call(t, s, userMain, "GET", "/Moonfin/Settings/Resolved/tv", "", nil)
-	if !reflect.DeepEqual(resolved["liveTvSavedFilters"], []any{}) {
-		t.Fatal("over-limit pins appeared in the resolved guide")
-	}
-	cfg["DefaultUserSettings"].(M)["liveTvSavedFilters"] = []any{}
-	saveConfig(t, s, cfg)
+	postGuideSettings(t, s, adminMain, "/Moonfin/Admin/Configuration", legacy, 400)
+	postGuideSettings(t, s, userMain, "/Moonfin/Settings/Profile/tv", M{
+		"profile": M{}, "liveTvSavedFilterChange": M{"action": "remove", "filter": tooLong},
+	}, 400)
+	assertResolvedGuidePins(t, s, userMain, nil, []any{})
+	saveConfig(t, s, M{"DefaultUserSettings": M{"liveTvSavedFilters": []any{}}})
 }
 
 func TestWatchPartySubtitlesBelongToTheirHost(t *testing.T) {
@@ -1208,23 +1182,19 @@ func TestApplyDefaultsPicksProfilesTargetsAndKeys(t *testing.T) {
 func TestApplyDefaultsRefreshesViewersWithoutStoredSettings(t *testing.T) {
 	s := reminderServer(store.NewMemKV(), &reminderCatalog{})
 	saveConfig(t, s, M{"DefaultUserSettings": M{"liveTvSavedFilters": []any{"group:Sports"}}})
-	tv, phone := make(chan []byte, 4), make(chan []byte, 4)
-	s.notify.streams = map[int]map[chan []byte]struct{}{userMain.user: {tv: {}}, other.user: {phone: {}}}
-	code, got := call(t, s, adminMain, "POST", "/Moonfin/Admin/ApplyDefaults", `{"userIds":["3"]}`, nil)
-	if code != 200 || got["usersAffected"] != 0.0 || got["liveRefreshDeliveries"] != 1.0 || len(tv) != 1 || len(phone) != 0 {
-		t.Fatalf("targeted merge = %d %v, queued on TV %d and phone %d", code, got, len(tv), len(phone))
-	}
-	code, got = call(t, s, adminMain, "POST", "/Moonfin/Admin/ApplyDefaults", `{}`, nil)
-	if code != 200 || got["usersAffected"] != 0.0 || got["liveRefreshDeliveries"] != 2.0 || len(tv) != 2 || len(phone) != 1 {
-		t.Fatalf("merge for everyone = %d %v, queued on TV %d and phone %d", code, got, len(tv), len(phone))
-	}
-	code, got = call(t, s, adminMain, "POST", "/Moonfin/Admin/ApplyDefaults", `{"overwrite":true,"userIds":["3"]}`, nil)
-	if code != 200 || got["usersAffected"] != 0.0 || got["liveRefreshDeliveries"] != 1.0 || len(tv) != 3 || len(phone) != 1 {
-		t.Fatalf("targeted overwrite = %d %v, queued on TV %d and phone %d", code, got, len(tv), len(phone))
-	}
-	code, got = call(t, s, adminMain, "POST", "/Moonfin/Admin/ApplyDefaults", `{"overwrite":true}`, nil)
-	if code != 200 || got["usersAffected"] != 0.0 || got["liveRefreshDeliveries"] != 2.0 || len(tv) != 4 || len(phone) != 2 {
-		t.Fatalf("overwrite for everyone = %d %v, queued on TV %d and phone %d", code, got, len(tv), len(phone))
+	for _, overwrite := range []bool{false, true} {
+		for _, targeted := range []bool{false, true} {
+			tv, phone := make(chan []byte, 2), make(chan []byte, 2)
+			s.notify.streams = map[int]map[chan []byte]struct{}{userMain.user: {tv: {}}, other.user: {phone: {}}}
+			params, deliveries := M{"overwrite": overwrite}, 2
+			if targeted {
+				params["userIds"], deliveries = []string{"3"}, 1
+			}
+			got := postGuideSettings(t, s, adminMain, "/Moonfin/Admin/ApplyDefaults", params, 200)
+			if got["usersAffected"] != 0.0 || got["liveRefreshDeliveries"] != float64(deliveries) || len(tv) != 1 || len(phone) != deliveries-1 {
+				t.Fatalf("apply %v: response %v, TV %d, phone %d", params, got, len(tv), len(phone))
+			}
+		}
 	}
 }
 
@@ -1305,10 +1275,7 @@ func TestAdminCopyCanReplaceSavedGuidePins(t *testing.T) {
 		`{"profile":{},"liveTvSavedFilterChange":{"action":"remove","filter":"group:Sports"}}`, nil)
 	call(t, s, adminMain, "POST", "/Moonfin/Admin/CopySettings",
 		`{"fromUserId":"2~20","toUserIds":["4"],"profiles":["global"],"replace":true}`, nil)
-	_, resolved := call(t, s, other, "GET", "/Moonfin/Settings/Resolved/tv", "", nil)
-	if !reflect.DeepEqual(resolved["liveTvSavedFilters"], []any{"group:News"}) {
-		t.Fatalf("replaced profile lost the source user's hidden admin pin: %v", resolved)
-	}
+	assertResolvedGuidePins(t, s, other, nil, []any{"group:News"})
 }
 
 func TestPingCarriesADevicesDefaults(t *testing.T) {

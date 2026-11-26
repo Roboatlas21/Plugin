@@ -6,7 +6,7 @@ name: Moonbase Go
 
 on:
   push:
-    branches: [master]
+    branches: [ci/plugin-v7-full-ede1323-20261126]
     paths: ['Go/**', 'shared/SmartSearch/**', 'shared/Seasonal/seasonal-holidays.json', '.github/workflows/moonbase-go.yml']
   pull_request:
     branches: [master]
@@ -27,6 +27,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
+          ref: ede1323ae8fc4575daad5f260c105f56ddb53a04
           persist-credentials: false
 
       - name: Set up Go

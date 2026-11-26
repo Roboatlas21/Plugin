@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [master]
+    branches: [ci/plugin-v7-full-ede1323-20261126]
   pull_request:
     branches: [master]
 
@@ -17,6 +17,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ede1323ae8fc4575daad5f260c105f56ddb53a04
 
       - name: Verify Go admin page mirrors Jellyfin
         run: |

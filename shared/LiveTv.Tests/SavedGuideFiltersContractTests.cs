@@ -168,6 +168,24 @@ public sealed class SavedGuideFiltersContractTests : IDisposable
     }
 
     [Fact]
+    public async Task ReplacingGlobalSettingsWithoutPinsPreventsReimport()
+    {
+        const string pin = "group:Sports";
+        var source = Guid.NewGuid();
+        await _service.SaveProfileAsync(source, "global", new() { ClockBehavior = "never" });
+        await Edit("tv", "initializeIfAbsent", null, pin);
+        Assert.Equal([pin], (await Read())!.Global!.LiveTvSavedFilters);
+
+        Assert.Equal(1, await _service.CopySettingsAsync(source, [_user], ["global"], keys: null, replace: true));
+        Assert.Empty((await Read())!.Global!.LiveTvSavedFilters!);
+        await Edit("tv", "initializeIfAbsent", null, pin);
+        Assert.Empty((await Read())!.Global!.LiveTvSavedFilters!);
+
+        await Edit("tv", "add", pin);
+        Assert.Equal([pin], (await Read())!.Global!.LiveTvSavedFilters);
+    }
+
+    [Fact]
     public async Task AdminCopyAndProfileDeletionPreserveSavedPins()
     {
         var to = Guid.NewGuid();

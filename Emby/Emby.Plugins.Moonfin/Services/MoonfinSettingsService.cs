@@ -494,7 +494,8 @@ namespace Emby.Plugins.Moonfin.Services
                 if (guidePinSource != null)
                 {
                     settings.Global ??= new MoonfinSettingsProfile();
-                    settings.Global.LiveTvSavedFilters = guidePinSource.Global?.LiveTvSavedFilters?.ToList();
+                    // An explicit copy initializes the target even when the source has no pins.
+                    settings.Global.LiveTvSavedFilters = guidePinSource.Global?.LiveTvSavedFilters?.ToList() ?? [];
                     settings.LiveTvSavedFilterExclusions = guidePinSource.LiveTvSavedFilterExclusions?.ToList();
                 }
                 ApplySavedFilterChange(settings, savedFilterChange, AdminGuidePins(Plugin.Instance?.Configuration));

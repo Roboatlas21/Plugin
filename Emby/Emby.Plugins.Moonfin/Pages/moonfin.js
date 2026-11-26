@@ -6238,6 +6238,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
 
     // Settings that share a form field, or whose field isn't named Default plus the key.
     var SETTING_FIELD_IDS = {
+        liveTvSavedFilters: 'DefaultPinnedGuideGroups',
         homeBackdropEnabled: 'DefaultHomeBackdropStyle',
         episodePreviewEnabled: 'DefaultMediaPreviewMode',
         homeSections: 'DefaultHomeRowOrder',

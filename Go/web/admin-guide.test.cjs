@@ -178,13 +178,13 @@ function pageFunction(source, name) {
     return match[0];
 }
 
-function moonbaseSession(fetch) {
+function moonbaseSession(fetch, controls = {}) {
     const storage = new Map();
     return function open() {
         const context = vm.createContext({
-            moonbaseHost: { name: 'Plex' }, URLSearchParams, setInterval() {}, clearInterval() {}, scrollTo() {},
+            moonbaseHost: { name: 'Plex', arr: true }, URLSearchParams, setInterval() {}, clearInterval() {}, scrollTo() {},
             location: { origin: 'https://moonbase.test', pathname: '/admin' },
-            document: { addEventListener() {}, querySelector() { return null; }, getElementById() { return null; } },
+            document: { addEventListener() {}, querySelector() { return null; }, getElementById(id) { return controls[id] || null; } },
             sessionStorage: { getItem: k => storage.get(k), setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) },
             fetch,
         });
@@ -207,6 +207,46 @@ test('Moonbase restores both the edited pins and their original selection after 
     assert.deepEqual(Array.from(restored.DefaultUserSettings.liveTvSavedFilters), ['group:Kids']);
 });
 
+async function openMoonbaseSettings(api) {
+    const config = await api.getPluginConfiguration();
+    const guideGroups = {};
+    const defaultsState = { active: 'global', guideGroups, profiles: { global: config.DefaultUserSettings } };
+    const load = page.indexOf('defaultsState.guidePinBase = config.');
+    assert.ok(load >= 0);
+    const save = vm.runInNewContext([
+        page.slice(load, page.indexOf("defaultsState.active = 'global';", load)),
+        pageFunction(page, 'withGuidePinEdits'), pageFunction(page, 'submit'), 'submit',
+    ].join('\n'), {
+        config, guideGroups, defaultsState, window: { moonbaseHost: { name: 'Plex' } }, ApiClient: api,
+        document: { querySelector: () => ({ value: '' }), querySelectorAll: () => [] },
+        MoonfinConfig: {}, DEFAULTS_PROFILE_NAMES: ['global'], Dashboard: { processPluginConfigurationUpdateResult() {} },
+        collectActiveDefaults() {}, getPosterBadgeDefaults() {}, getPosterBadgeRules() {}, wholeNumberIn() {}, renderDefaultGuideGroups() {},
+    });
+    return { save, profile: defaultsState.profiles.global };
+}
+
+test('a queued Go save keeps the host settings read for that submission', async () => {
+    const sonarr = { value: '' };
+    let acknowledge;
+    const posted = [];
+    const open = moonbaseSession(async (_, init) => {
+        if (init.method !== 'POST') return { ok: true, json: async () => ({ DefaultUserSettings: {} }) };
+        posted.push(JSON.parse(init.body).SonarrUrl);
+        if (posted.length === 1) await new Promise(resolve => { acknowledge = resolve; });
+        return { ok: true };
+    }, { SonarrUrl: sonarr });
+    const editor = await openMoonbaseSettings(open());
+    const first = editor.save();
+    await new Promise(setImmediate);
+    sonarr.value = 'https://submitted.example';
+    const second = editor.save();
+    await new Promise(setImmediate);
+    sonarr.value = 'https://unsaved.example';
+    acknowledge();
+    await Promise.all([first, second]);
+    assert.deepEqual(posted, [null, 'https://submitted.example']);
+});
+
 test('a restored Go admin save keeps explicit pin edits and preserves other changes', async () => {
     let pins = ['group:News'], expired = false;
     const open = moonbaseSession(async (_, init) => {
@@ -215,33 +255,15 @@ test('a restored Go admin save keeps explicit pin edits and preserves other chan
         pins = JSON.parse(init.body).DefaultUserSettings.liveTvSavedFilters;
         return { ok: true };
     });
-    async function openPage() {
-        const api = open();
-        const config = await api.getPluginConfiguration();
-        const guideGroups = {};
-        const defaultsState = { active: 'global', guideGroups, profiles: { global: config.DefaultUserSettings } };
-        const load = page.indexOf('defaultsState.guidePinBase = config.');
-        assert.ok(load >= 0);
-        const save = vm.runInNewContext([
-            page.slice(load, page.indexOf("defaultsState.active = 'global';", load)),
-            pageFunction(page, 'withGuidePinEdits'), pageFunction(page, 'submit'), 'submit',
-        ].join('\n'), {
-            config, guideGroups, defaultsState, window: { moonbaseHost: { name: 'Plex' } }, ApiClient: api,
-            document: { querySelector: () => ({ value: '' }), querySelectorAll: () => [] },
-            MoonfinConfig: {}, DEFAULTS_PROFILE_NAMES: ['global'], Dashboard: { processPluginConfigurationUpdateResult() {} },
-            collectActiveDefaults() {}, getPosterBadgeDefaults() {}, getPosterBadgeRules() {}, wholeNumberIn() {}, renderDefaultGuideGroups() {},
-        });
-        return { save, profile: defaultsState.profiles.global };
-    }
 
-    const editor = await openPage();
+    const editor = await openMoonbaseSettings(open());
     editor.profile.liveTvSavedFilters = ['category:movies']; // Add Movies and remove News.
     pins = ['category:movies', 'group:Sports']; // Another admin made both edits before our save.
     expired = true;
     await assert.rejects(editor.save(), /401/);
     pins = ['group:News', 'group:Music']; // Both edits were reversed and Sports was removed.
     expired = false;
-    const restored = await openPage();
+    const restored = await openMoonbaseSettings(open());
     assert.deepEqual(Array.from(restored.profile.liveTvSavedFilters), ['category:movies', 'group:Sports']);
     await restored.save();
     assert.deepEqual(pins, ['group:Music', 'category:movies']);

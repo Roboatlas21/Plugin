@@ -200,10 +200,15 @@
                 throw error;
             });
         },
-        updatePluginConfiguration: function (id, config, guidePinKeys) {
-            readArrFields(config);
-            readGamePaths(config);
-            readLogUploadField(config);
+        readHostFields: function () {
+            var fields = {};
+            readArrFields(fields);
+            readGamePaths(fields);
+            readLogUploadField(fields);
+            return fields;
+        },
+        updatePluginConfiguration: function (id, config, guidePinKeys, hostFields) {
+            Object.assign(config, hostFields || this.readHostFields());
             return send('POST', getUrl('Moonfin/Admin/Configuration'), JSON.stringify(config), 'application/json').then(function () {
                 lastConfig = clone(config);
                 lastServerGuidePins = (config.DefaultUserSettings || {}).liveTvSavedFilters || [];

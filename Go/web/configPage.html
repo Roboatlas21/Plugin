@@ -12521,16 +12521,32 @@
                     }
 
                     var fields = {};
-                    // Pin changes are already in the draft. Read the other controls after the configuration arrives.
-                    var formRead = ApiClient.getPluginConfiguration(MoonfinConfig.pluginUniqueId).then(function(config) {
+                    var hostFields;
+                    function checkVisit() {
                         if (visit !== defaultsState.guideGroups) {
                             throw new DOMException('Settings page changed before the save finished. Please save again.', 'AbortError');
                         }
+                    }
+                    // Pin changes are already in the draft. Read the other controls after the configuration arrives.
+                    var formRead = ApiClient.getPluginConfiguration(MoonfinConfig.pluginUniqueId).then(function(config) {
+                        checkVisit();
                         collectActiveDefaults();
                         collectForm(fields);
                         edit.profile = Object.assign({}, defaultsState.profiles.global, {
                             liveTvSavedFilters: edit.profile.liveTvSavedFilters
                         });
+                        // Upstream rereads the configuration before the Go host collects its own controls.
+                        return ApiClient.getPluginConfiguration(MoonfinConfig.pluginUniqueId).then(function(fresh) {
+                            return fresh || config;
+                        }, function(error) {
+                            if (previous) throw error;
+                            return config;
+                        });
+                    }).then(function(config) {
+                        if (ApiClient.readHostFields) {
+                            checkVisit();
+                            hostFields = ApiClient.readHostFields();
+                        }
                         return config;
                     });
                     var queue = defaultsState.pendingSaves || (defaultsState.pendingSaves = []);
@@ -12545,30 +12561,18 @@
                         defaultsState.unconfirmedGuidePins = { visit: visit, keys: edit.changedPins };
                         var read = results[0];
                         if (read.status === 'rejected') throw read.reason;
-                        return writeConfig(Object.assign(read.value, fields));
-                    }
-
-                    function writeConfig(config) {
-                        // Messages live in this object but are managed through their own
-                        // endpoints, so the copy read at the top of submit() is already stale.
-                        return ApiClient.getPluginConfiguration(MoonfinConfig.pluginUniqueId).then(function(fresh) {
-                            return fresh || config;
-                        }, function(error) {
-                            if (previous) throw error;
-                            // Dropping the key would be worse: the server replaces the whole
-                            // object, so an absent Messages deserializes to an empty list.
-                            return config;
-                        }).then(function(fresh) {
-                            config.Messages = fresh.Messages;
-                            if (!('GameLibraryIds' in fields)) config.GameLibraryIds = fresh.GameLibraryIds;
-                            config.DefaultUserSettings = withGuidePinEdits(edit.profile, edit.base, fresh.DefaultUserSettings, edit.changedPins);
+                        var latest = previous ? ApiClient.getPluginConfiguration(MoonfinConfig.pluginUniqueId) : Promise.resolve(read.value);
+                        var saved;
+                        return latest.then(function(config) {
+                            Object.assign(config, fields);
+                            saved = withGuidePinEdits(edit.profile, edit.base, config.DefaultUserSettings, edit.changedPins);
+                            config.DefaultUserSettings = saved;
                             if (window.moonbaseHost) {
                                 return ApiClient.updatePluginConfiguration(MoonfinConfig.pluginUniqueId, config,
-                                    Array.from(edit.changedPins));
+                                    Array.from(edit.changedPins), hostFields);
                             }
                             return ApiClient.updatePluginConfiguration(MoonfinConfig.pluginUniqueId, config);
                         }).then(function(result) {
-                            var saved = config.DefaultUserSettings;
                             defaultsState.unconfirmedGuidePins = null;
                             // Apply each queued edit relative to the form submitted just before it.
                             var previousPins = edit.profile.liveTvSavedFilters;
@@ -12994,7 +12998,8 @@
                         ev.preventDefault();
                         Dashboard.showLoadingMsg();
                         submit().catch(function(error) {
-                            if (error.name !== 'AbortError') throw error;
+                            // Go already reports API failures through its host adapter.
+                            if (window.moonbaseHost && error.name !== 'AbortError') return;
                             Dashboard.hideLoadingMsg();
                             if (Dashboard.alert) Dashboard.alert(error.message);
                             else window.alert(error.message);

@@ -46,6 +46,7 @@ public sealed class SavedGuideFiltersContractTests : IDisposable
     public async Task FailedSettingsReadsPreserveBothCopiesAndCanBeRetried(string failure)
     {
         Assert.Null(await _service.GetResolvedProfileAsync(_user, "tv"));
+        Assert.Null(await _service.GetProfileForPullAsync(_user, "tv", includeLiveTvSavedFilters: true));
         await Edit("tv", "add", "group:Sports");
         var primary = Path.Combine(_path, _user + ".json");
         var backup = AtomicFile.BackupPath(primary);
@@ -56,7 +57,12 @@ public sealed class SavedGuideFiltersContractTests : IDisposable
             File.WriteAllText(backup, "{backup");
         }
         using (failure == "both corrupt" ? null : File.Open(failure == "backup locked" ? backup : primary, FileMode.Open, FileAccess.ReadWrite, FileShare.None)) {
-            var error = await Assert.ThrowsAsync<SettingsReadError>(() => _service.GetResolvedProfileAsync(_user, "tv"));
+            Assert.Null(await _service.GetResolvedProfileAsync(_user, "tv"));
+            Assert.Null(await _service.GetProfileForPullAsync(_user, "tv", includeLiveTvSavedFilters: false));
+            var error = await Assert.ThrowsAsync<SettingsReadError>(() =>
+                _service.GetProfileForPullAsync(_user, "tv", includeLiveTvSavedFilters: true));
+            await Assert.ThrowsAsync<SettingsReadError>(() =>
+                _service.GetResolvedProfileAsync(_user, "global", throwIfUnreadable: true));
             Assert.DoesNotContain(primary, error.Message);
             await Assert.ThrowsAsync<SettingsReadError>(() => Edit("tv", "add", "group:News"));
             await Assert.ThrowsAsync<SettingsReadError>(() => _service.SaveUserSettingsAsync(_user, new()));

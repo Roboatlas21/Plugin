@@ -1033,7 +1033,7 @@ public class MoonfinController : ControllerBase
         }
         var updatedPins = request.LiveTvSavedFilterChange == null
             ? null
-            : (await _settingsService.GetResolvedProfileAsync(userId.Value, "global"))?.LiveTvSavedFilters ?? new List<string>();
+            : (await _settingsService.GetResolvedProfileAsync(userId.Value, "global", throwIfUnreadable: true))?.LiveTvSavedFilters ?? new List<string>();
 
         return Ok(new MoonfinSaveResponse
         {

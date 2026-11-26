@@ -1,0 +1,56 @@
+name: Publish Jellyfin test 3.1.1.7
+
+on:
+  push:
+    branches: [ci/jellyfin-test-3.1.1.7-ede1323]
+    paths: ['.github/workflows/publish-jellyfin-test-3.1.1.7.yml']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: moonbase-jellyfin-test-3.1.1.7
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-26.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: Roboatlas21/Plugin
+      VERSION: '3.1.1.7'
+      SOURCE_SHA: ede1323ae8fc4575daad5f260c105f56ddb53a04
+      CHANGELOG: 'Plugin V7 improves Live TV channel group handling, saved guide filter settings, and administrator guide shortcuts.'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ede1323ae8fc4575daad5f260c105f56ddb53a04
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+      - name: Build versioned Jellyfin test package
+        run: |
+          set -euo pipefail
+          SKIP_MANIFEST_UPDATE=1 bash Jellyfin/build.sh "$VERSION" 10.10.0
+          unzip -t "Jellyfin/Moonfin.Server-$VERSION.zip"
+          unzip -p "Jellyfin/Moonfin.Server-$VERSION.zip" meta.json | jq -e --arg v "$VERSION" '.version == $v and .targetAbi == "10.10.0.0" and .autoUpdate == true'
+      - name: Publish test release and update test feed
+        run: |
+          set -euo pipefail
+          TAG="test-$VERSION"
+          ZIP="Moonfin.Server-$VERSION.zip"
+          URL="https://github.com/$GH_REPO/releases/download/$TAG/$ZIP"
+          CHECKSUM=$(md5sum "Jellyfin/$ZIP" | awk '{print toupper($1)}')
+          TIMESTAMP=$(unzip -p "Jellyfin/$ZIP" meta.json | jq -r .timestamp)
+          gh api "repos/$GH_REPO/contents/test-manifest.json?ref=master" > "$RUNNER_TEMP/catalog-response.json"
+          jq -r .content "$RUNNER_TEMP/catalog-response.json" | base64 -d > "$RUNNER_TEMP/catalog.json"
+          MANIFEST_SHA=$(jq -r .sha "$RUNNER_TEMP/catalog-response.json")
+          jq -e '.[0].guid == "8c5d0e91-4f2a-4b6d-9e3f-1a7c8d9e0f2b"' "$RUNNER_TEMP/catalog.json"
+          jq -e --arg v "$VERSION" '[.[0].versions[] | select(.version == $v)] | length == 0' "$RUNNER_TEMP/catalog.json"
+          jq --arg v "$VERSION" --arg url "$URL" --arg checksum "$CHECKSUM" --arg ts "$TIMESTAMP" --arg changelog "$CHANGELOG" '.[0].versions |= ([{version:$v,targetAbi:"10.10.0.0",sourceUrl:$url,checksum:$checksum,changelog:$changelog,timestamp:$ts,dependencies:[]}] + .)' "$RUNNER_TEMP/catalog.json" > "$RUNNER_TEMP/test-manifest.json"
+          gh release create "$TAG" "Jellyfin/$ZIP" "$RUNNER_TEMP/test-manifest.json" --target "$SOURCE_SHA" --title "Moonbase $VERSION (Jellyfin test build)" --notes "$(printf '%s\n\nBuilt from Plugin V7 commit %s.\n\n[Jellyfin test repository](https://raw.githubusercontent.com/%s/refs/heads/master/test-manifest.json)' "$CHANGELOG" "$SOURCE_SHA" "$GH_REPO")" --draft --prerelease --latest=false
+          gh release edit "$TAG" --draft=false --prerelease --latest=false
+          gh release view "$TAG" --json isDraft,isPrerelease,assets --jq '{isDraft,isPrerelease,assets:[.assets[].name]}'
+          gh api --method PUT "repos/$GH_REPO/contents/test-manifest.json" -f message="Publish Moonbase $VERSION to the Jellyfin test repository" -f sha="$MANIFEST_SHA" -f branch=master -f content="$(base64 -w0 "$RUNNER_TEMP/test-manifest.json")" --jq '.commit.sha'
+          echo "Published Moonbase $VERSION ($CHECKSUM)" >> "$GITHUB_STEP_SUMMARY"

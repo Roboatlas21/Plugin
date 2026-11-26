@@ -253,10 +253,17 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
         const source = emby ? fs.readFileSync(__dirname + '/../../Emby/Emby.Plugins.Moonfin/Pages/moonfin.js', 'utf8') : page;
         const draft = { liveTvSavedFilters: ['group:News', 'group:Shared'] };
         const defaultsState = { active: 'global', profiles: { global: draft }, guidePinBase: draft.liveTvSavedFilters, guideGroups: {} };
-        let librariesReady = false, gameLibraries = ['arcade'];
+        let librariesReady = false, selectedLibraries = [], gameLibraries = ['arcade'];
+        let rommSelection = '', savedRomm, address = '', savedAddress;
         const form = {
-            querySelector: selector => selector === '.gameLibraryCb' && !librariesReady ? null : { value: '' },
-            querySelectorAll: () => [],
+            querySelector(selector) {
+                if (selector === '.gameLibraryCb' && !librariesReady) return null;
+                if (selector === '#GamesRommLibraryId') return { value: rommSelection };
+                if (selector === '#PublicServerUrl') return { value: address };
+                return { value: '' };
+            },
+            querySelectorAll: selector => selector === '.gameLibraryCb:checked'
+                ? selectedLibraries.map(id => ({ getAttribute: () => id })) : [],
         };
         let latest = ['group:Shared', 'group:Sports'], rejectSave = false, rejectRead = false, reads = 0;
         let displayed, editDuringSave;
@@ -265,7 +272,7 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
             pageFunction(source, 'withGuidePinEdits'), emby ? pageFunction(source, 'camelKeysDeep') : '',
             pageFunction(source, emby ? 'saveConfig' : 'submit'), emby ? 'saveConfig' : 'submit',
         ].join('\n'), {
-            defaultsState, document: form, window: {}, DEFAULTS_PROFILE_NAMES: ['global'], loading: { show() {} },
+            defaultsState, document: form, window: {}, DOMException, DEFAULTS_PROFILE_NAMES: ['global'], loading: { show() {} },
             get guideGroupsVisit() { return visit; },
             Dashboard: { processPluginConfigurationUpdateResult() {} }, MoonfinConfig: {}, PluginUniqueId: '',
             getPosterBadgeDefaults() {}, getPosterBadgeRules() {}, collectActiveDefaults() {}, wholeNumberIn() {}, reportConfigError() {},
@@ -273,12 +280,14 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
             ApiClient: {
                 getPluginConfiguration: async () => {
                     if (rejectRead) throw new Error('read failed');
-                    const pins = !emby && ++reads % 2 === 1 ? ['group:Old'] : latest;
+                    const pins = !emby && ++reads === 1 ? ['group:Old'] : latest;
                     return { GameLibraryIds: gameLibraries, DefaultUserSettings: { [emby ? 'LiveTvSavedFilters' : 'liveTvSavedFilters']: pins } };
                 },
                 updatePluginConfiguration: async (_, config) => {
                     if (rejectSave) throw new Error('save failed');
                     gameLibraries = config.GameLibraryIds;
+                    savedRomm = config.GamesRommLibraryId;
+                    savedAddress = config.PublicServerUrl;
                     latest = config.DefaultUserSettings.liveTvSavedFilters;
                     if (editDuringSave) defaultsState.profiles.global = { liveTvSavedFilters: editDuringSave };
                     if (delayedAck) await delayedAck;
@@ -305,14 +314,47 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
         await save(form);
         assert.equal(latest, null);
 
-        await t.test('a loading game picker preserves libraries and a loaded picker can clear them', async () => {
+        await t.test('library picks are read after configuration arrives and can be cleared', async () => {
             gameLibraries = ['arcade'];
+            await save(form); // Game library checkboxes are still loading.
+            assert.deepEqual(Array.from(gameLibraries), ['arcade']);
             const saving = save(form);
             librariesReady = true;
+            selectedLibraries = ['arcade'];
+            rommSelection = 'retro';
             await saving;
             assert.deepEqual(Array.from(gameLibraries), ['arcade']);
+            assert.equal(savedRomm, 'retro');
+            selectedLibraries = [];
+            rommSelection = '';
             await save(form);
             assert.deepEqual(Array.from(gameLibraries), []);
+            assert.equal(savedRomm, null);
+        });
+
+        await t.test('a queued save reads ordinary fields before the earlier write finishes', async () => {
+            let acknowledge;
+            delayedAck = new Promise(resolve => { acknowledge = resolve; });
+            const first = save(form);
+            await new Promise(setImmediate);
+            const second = save(form);
+            address = 'https://submitted.example';
+            await new Promise(setImmediate);
+            address = 'https://unsaved.example';
+            acknowledge();
+            await Promise.all([first, second]);
+            assert.equal(savedAddress, 'https://submitted.example');
+            delayedAck = null;
+        });
+
+        await t.test('a save awaiting the form read cannot use a reopened page', async () => {
+            const before = savedAddress;
+            const saving = save(form);
+            visit++;
+            defaultsState.guideGroups = {};
+            address = 'https://reopened.example';
+            await assert.rejects(saving, /page changed/);
+            assert.equal(savedAddress, before);
         });
 
         for (const failRead of [false, true]) {

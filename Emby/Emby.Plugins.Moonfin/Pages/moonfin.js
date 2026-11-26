@@ -3436,29 +3436,36 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
             });
 
         }
-        var fields = {};
-        try {
-            collectActiveDefaults(view);
-            collectForm(fields);
-        } catch (error) {
-            reportConfigError(error);
-            return Promise.reject(error);
-        }
         var edit = {
-            visit: visit, profile: defaultsState.profiles.global,
+            visit: visit, profile: { liveTvSavedFilters: (defaultsState.profiles.global || {}).liveTvSavedFilters },
             base: defaultsState.guidePinBase, changedPins: new Set()
         };
+        var fields = {};
+        // Pin changes are already in the draft. Read the other controls after the configuration arrives.
+        var formRead = ApiClient.getPluginConfiguration(PluginUniqueId).then(function(config) {
+            if (visit !== guideGroupsVisit) throw new Error('Settings page changed before the save finished. Please save again.');
+            collectActiveDefaults(view);
+            collectForm(fields);
+            edit.profile = Object.assign({}, defaultsState.profiles.global, {
+                liveTvSavedFilters: edit.profile.liveTvSavedFilters
+            });
+            return config;
+        });
         var queue = defaultsState.pendingSaves || (defaultsState.pendingSaves = []);
         var previous = queue[queue.length - 1];
         queue.push(edit);
-        function save() {
+        function save(results) {
             // Keep submitted pin edits retryable even if the configuration read fails.
             var pending = defaultsState.unconfirmedGuidePins;
             if (pending && pending.visit === visit) {
                 pending.keys.forEach(function(key) { edit.changedPins.add(key); });
             }
             defaultsState.unconfirmedGuidePins = { visit: visit, keys: edit.changedPins };
-            return ApiClient.getPluginConfiguration(PluginUniqueId).then(function (config) {
+            var read = results[0];
+            if (read.status === 'rejected') throw read.reason;
+            // A preceding write can change the configuration after this form read.
+            var latest = previous ? ApiClient.getPluginConfiguration(PluginUniqueId) : Promise.resolve(read.value);
+            return latest.then(function (config) {
                 Object.assign(config, fields);
                 var saved = withGuidePinEdits(edit.profile, edit.base, camelKeysDeep(config.DefaultUserSettings), edit.changedPins);
                 config.DefaultUserSettings = saved;
@@ -3485,7 +3492,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
                 });
             });
         }
-        edit.done = (previous ? previous.done.then(save, save) : save()).catch(function (error) {
+        edit.done = Promise.allSettled([formRead, previous && previous.done]).then(save).catch(function (error) {
             reportConfigError(error);
             throw error;
         }).finally(function () { queue.shift(); });

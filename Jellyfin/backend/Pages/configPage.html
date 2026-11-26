@@ -12418,9 +12418,8 @@
 
                 function submit() {
                     var visit = defaultsState.guideGroups;
-                    collectActiveDefaults();
                     var edit = {
-                        visit: visit, profile: defaultsState.profiles.global,
+                        visit: visit, profile: { liveTvSavedFilters: (defaultsState.profiles.global || {}).liveTvSavedFilters },
                         base: defaultsState.guidePinBase, changedPins: new Set()
                     };
                     function collectForm(config) {
@@ -12522,20 +12521,31 @@
                     }
 
                     var fields = {};
-                    collectForm(fields);
+                    // Pin changes are already in the draft. Read the other controls after the configuration arrives.
+                    var formRead = ApiClient.getPluginConfiguration(MoonfinConfig.pluginUniqueId).then(function(config) {
+                        if (visit !== defaultsState.guideGroups) {
+                            throw new DOMException('Settings page changed before the save finished. Please save again.', 'AbortError');
+                        }
+                        collectActiveDefaults();
+                        collectForm(fields);
+                        edit.profile = Object.assign({}, defaultsState.profiles.global, {
+                            liveTvSavedFilters: edit.profile.liveTvSavedFilters
+                        });
+                        return config;
+                    });
                     var queue = defaultsState.pendingSaves || (defaultsState.pendingSaves = []);
                     var previous = queue[queue.length - 1];
                     queue.push(edit);
-                    function save() {
+                    function save(results) {
                         // Keep submitted pin edits retryable even if the configuration read fails.
                         var pending = defaultsState.unconfirmedGuidePins;
                         if (pending && pending.visit === visit) {
                             pending.keys.forEach(function(key) { edit.changedPins.add(key); });
                         }
                         defaultsState.unconfirmedGuidePins = { visit: visit, keys: edit.changedPins };
-                        return ApiClient.getPluginConfiguration(MoonfinConfig.pluginUniqueId).then(function(config) {
-                            return Object.assign(config, fields);
-                        }).then(writeConfig);
+                        var read = results[0];
+                        if (read.status === 'rejected') throw read.reason;
+                        return writeConfig(Object.assign(read.value, fields));
                     }
 
                     function writeConfig(config) {
@@ -12543,7 +12553,8 @@
                         // endpoints, so the copy read at the top of submit() is already stale.
                         return ApiClient.getPluginConfiguration(MoonfinConfig.pluginUniqueId).then(function(fresh) {
                             return fresh || config;
-                        }, function() {
+                        }, function(error) {
+                            if (previous) throw error;
                             // Dropping the key would be worse: the server replaces the whole
                             // object, so an absent Messages deserializes to an empty list.
                             return config;
@@ -12581,7 +12592,7 @@
                         });
                     }
 
-                    edit.done = (previous ? previous.done.then(save, save) : save())
+                    edit.done = Promise.allSettled([formRead, previous && previous.done]).then(save)
                         .finally(function() { queue.shift(); });
                     return edit.done;
                 }
@@ -12982,7 +12993,12 @@
                     .addEventListener('submit', function(ev) {
                         ev.preventDefault();
                         Dashboard.showLoadingMsg();
-                        submit();
+                        submit().catch(function(error) {
+                            if (error.name !== 'AbortError') throw error;
+                            Dashboard.hideLoadingMsg();
+                            if (Dashboard.alert) Dashboard.alert(error.message);
+                            else window.alert(error.message);
+                        });
                         return false;
                     });
 

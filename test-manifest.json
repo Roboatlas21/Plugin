@@ -9,6 +9,15 @@
     "imageUrl": "https://raw.githubusercontent.com/Roboatlas21/Plugin/c472a47f3570671b5340d30eb184c9c696874db7/Jellyfin/backend/assets/logo.png",
     "versions": [
       {
+        "version": "3.1.1.7",
+        "targetAbi": "10.10.0.0",
+        "sourceUrl": "https://github.com/Roboatlas21/Plugin/releases/download/test-3.1.1.7/Moonfin.Server-3.1.1.7.zip",
+        "checksum": "4D7C2B79D4BDC13D60154AC14410B64D",
+        "changelog": "Plugin V7 improves Live TV channel group handling, saved guide filter settings, and administrator guide shortcuts.",
+        "timestamp": "2026-11-26T21:58:39Z",
+        "dependencies": []
+      },
+      {
         "version": "3.1.1.6",
         "targetAbi": "10.10.0.0",
         "sourceUrl": "https://github.com/Roboatlas21/Plugin/releases/download/test-3.1.1.6/Moonfin.Server-3.1.1.6.zip",

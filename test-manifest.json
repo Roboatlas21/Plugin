@@ -9,6 +9,15 @@
     "imageUrl": "https://raw.githubusercontent.com/Roboatlas21/Plugin/972aca8f2f6639e9fd9c444ea70413318a196868/Jellyfin/backend/assets/logo.png",
     "versions": [
       {
+        "version": "3.1.1.5",
+        "targetAbi": "10.10.0.0",
+        "sourceUrl": "https://github.com/Roboatlas21/Plugin/releases/download/test-3.1.1.5/Moonfin.Server-3.1.1.5.zip",
+        "checksum": "A49A3416937D6487F9452ED26EB0BD7F",
+        "changelog": "Plugin v6 consolidates the regression tests for Live TV channel groups and saved guide pins. It ships the same Jellyfin feature code as 3.1.1.4.",
+        "timestamp": "2026-11-26T12:51:56Z",
+        "dependencies": []
+      },
+      {
         "version": "3.1.1.4",
         "targetAbi": "10.10.0.0",
         "sourceUrl": "https://github.com/Roboatlas21/Plugin/releases/download/test-3.1.1.4/Moonfin.Server-3.1.1.4.zip",

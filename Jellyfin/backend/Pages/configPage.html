@@ -12527,6 +12527,12 @@
                     var previous = queue[queue.length - 1];
                     queue.push(edit);
                     function save() {
+                        // Keep submitted pin edits retryable even if the configuration read fails.
+                        var pending = defaultsState.unconfirmedGuidePins;
+                        if (pending && pending.visit === visit) {
+                            pending.keys.forEach(function(key) { edit.changedPins.add(key); });
+                        }
+                        defaultsState.unconfirmedGuidePins = { visit: visit, keys: edit.changedPins };
                         return ApiClient.getPluginConfiguration(MoonfinConfig.pluginUniqueId).then(function(config) {
                             return Object.assign(config, fields);
                         }).then(writeConfig);
@@ -12544,10 +12550,10 @@
                         }).then(function(fresh) {
                             config.Messages = fresh.Messages;
                             if (!('GameLibraryIds' in fields)) config.GameLibraryIds = fresh.GameLibraryIds;
-                            config.DefaultUserSettings = mergePins(fresh.DefaultUserSettings);
+                            config.DefaultUserSettings = withGuidePinEdits(edit.profile, edit.base, fresh.DefaultUserSettings, edit.changedPins);
                             if (window.moonbaseHost) {
                                 return ApiClient.updatePluginConfiguration(MoonfinConfig.pluginUniqueId, config,
-                                    Array.from(defaultsState.unconfirmedGuidePins.keys));
+                                    Array.from(edit.changedPins));
                             }
                             return ApiClient.updatePluginConfiguration(MoonfinConfig.pluginUniqueId, config);
                         }).then(function(result) {
@@ -12575,15 +12581,6 @@
                         });
                     }
 
-                    function mergePins(latest) {
-                        // Track only the pins submitted on this visit until the server acknowledges them.
-                        var pending = defaultsState.unconfirmedGuidePins;
-                        if (!pending || pending.visit !== visit) {
-                            pending = defaultsState.unconfirmedGuidePins = { visit: visit, keys: new Set() };
-                        }
-                        edit.changedPins.forEach(function(key) { pending.keys.add(key); });
-                        return withGuidePinEdits(edit.profile, edit.base, latest, pending.keys);
-                    }
                     edit.done = (previous ? previous.done.then(save, save) : save())
                         .finally(function() { queue.shift(); });
                     return edit.done;

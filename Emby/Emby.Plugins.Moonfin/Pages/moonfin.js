@@ -3451,19 +3451,16 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-checkbox', 'em
         var queue = defaultsState.pendingSaves || (defaultsState.pendingSaves = []);
         var previous = queue[queue.length - 1];
         queue.push(edit);
-        function mergePins(latest) {
-            // Track only the pins submitted on this visit until the server acknowledges them.
-            var pending = defaultsState.unconfirmedGuidePins;
-            if (!pending || pending.visit !== visit) {
-                pending = defaultsState.unconfirmedGuidePins = { visit: visit, keys: new Set() };
-            }
-            edit.changedPins.forEach(function(key) { pending.keys.add(key); });
-            return withGuidePinEdits(edit.profile, edit.base, latest, pending.keys);
-        }
         function save() {
+            // Keep submitted pin edits retryable even if the configuration read fails.
+            var pending = defaultsState.unconfirmedGuidePins;
+            if (pending && pending.visit === visit) {
+                pending.keys.forEach(function(key) { edit.changedPins.add(key); });
+            }
+            defaultsState.unconfirmedGuidePins = { visit: visit, keys: edit.changedPins };
             return ApiClient.getPluginConfiguration(PluginUniqueId).then(function (config) {
                 Object.assign(config, fields);
-                var saved = mergePins(camelKeysDeep(config.DefaultUserSettings));
+                var saved = withGuidePinEdits(edit.profile, edit.base, camelKeysDeep(config.DefaultUserSettings), edit.changedPins);
                 config.DefaultUserSettings = saved;
                 return ApiClient.updatePluginConfiguration(PluginUniqueId, config).then(function (result) {
                     defaultsState.unconfirmedGuidePins = null;

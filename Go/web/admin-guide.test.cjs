@@ -258,7 +258,7 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
             querySelector: selector => selector === '.gameLibraryCb' && !librariesReady ? null : { value: '' },
             querySelectorAll: () => [],
         };
-        let latest = ['group:Shared', 'group:Sports'], rejectSave = false, reads = 0;
+        let latest = ['group:Shared', 'group:Sports'], rejectSave = false, rejectRead = false, reads = 0;
         let displayed, editDuringSave;
         let visit = 1, delayedAck, loseReply = false;
         const save = vm.runInNewContext([
@@ -272,6 +272,7 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
             renderDefaultGuideGroups(...args) { displayed = args.at(-1).liveTvSavedFilters; },
             ApiClient: {
                 getPluginConfiguration: async () => {
+                    if (rejectRead) throw new Error('read failed');
                     const pins = !emby && ++reads % 2 === 1 ? ['group:Old'] : latest;
                     return { GameLibraryIds: gameLibraries, DefaultUserSettings: { [emby ? 'LiveTvSavedFilters' : 'liveTvSavedFilters']: pins } };
                 },
@@ -314,21 +315,31 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
             assert.deepEqual(Array.from(gameLibraries), []);
         });
 
-        await t.test('a queued save keeps explicit pin edits that the first save already saw on the server', async () => {
-            defaultsState.guidePinBase = ['group:News'];
-            defaultsState.profiles.global = { liveTvSavedFilters: ['group:News'] };
-            latest = ['group:Movies'];
-            let acknowledge;
-            delayedAck = new Promise(resolve => { acknowledge = resolve; });
-            const first = save(form);
-            await new Promise(setImmediate);
-            defaultsState.profiles.global = { liveTvSavedFilters: ['group:Movies'] };
-            const second = save(form);
-            latest = ['group:News', 'group:Music']; // The other admin reverses both pins and adds Music.
-            acknowledge();
-            await Promise.all([first, second]);
-            assert.deepEqual(Array.from(latest), ['group:Music', 'group:Movies']);
-        });
+        for (const failRead of [false, true]) {
+            await t.test('queued pin edits survive a concurrent change, failed read=' + failRead, async () => {
+                defaultsState.guidePinBase = ['group:News'];
+                defaultsState.profiles.global = { liveTvSavedFilters: ['group:News'] };
+                latest = ['group:Movies'];
+                let acknowledge;
+                delayedAck = new Promise(resolve => { acknowledge = resolve; });
+                const first = save(form);
+                await new Promise(setImmediate);
+                defaultsState.profiles.global = { liveTvSavedFilters: ['group:Movies'] };
+                const second = save(form);
+                latest = ['group:News', 'group:Music']; // The other admin reverses both pins and adds Music.
+                rejectRead = failRead;
+                acknowledge();
+                if (failRead) {
+                    await assert.rejects(second, /read failed/);
+                    rejectRead = false;
+                    await save(form);
+                } else {
+                    await second;
+                }
+                await first;
+                assert.deepEqual(Array.from(latest), ['group:Music', 'group:Movies']);
+            });
+        }
 
         await t.test('an earlier save reply cannot undo an unpin on a new visit', async () => {
             defaultsState.profiles.global = { liveTvSavedFilters: ['group:News'] };

@@ -60,39 +60,33 @@ function picker(host, pins, responses) {
     }, async reload() {
         discover();
         await nextTurn();
+        return root.innerHTML;
     }};
 }
 
-test('Jellyfin shows partial discovery with or without groups', async () => {
-    const dashboard = picker('Jellyfin', [], [
-        { partial: true, channels: [] }, { partial: true, channels: [{ groups: ['News'] }] },
-        { partial: false, channels: [] },
-    ]);
-    await dashboard.reload();
-    assert.match(dashboard.root.innerHTML, /Reload to retry/);
-    assert.doesNotMatch(dashboard.root.innerHTML, /No channel groups available/);
-    await dashboard.reload();
-    assert.match(dashboard.root.innerHTML, /group:News/);
-    assert.match(dashboard.root.innerHTML, /Reload to retry/);
-    await dashboard.reload();
-    assert.match(dashboard.root.innerHTML, /No channel groups available/);
-    assert.doesNotMatch(dashboard.root.innerHTML, /Reload to retry/);
-});
-
-test('a retained Jellyfin profile switch uses groups from the latest page visit', async () => {
-    const oldRequest = deferred();
-    const jellyfin = picker('Jellyfin', [], [oldRequest.promise, ['News', 'Sports']]);
-    await jellyfin.reload();
-    jellyfin.reopen();
-    await jellyfin.reload();
-    assert.equal(checked(jellyfin.root.innerHTML, 'group:Sports'), false);
-    jellyfin.switchTo('tv');
-    jellyfin.switchTo('global');
-    assert.equal(checked(jellyfin.root.innerHTML, 'group:Sports'), false);
-    oldRequest.resolve(['Old']);
+test('Jellyfin retries incomplete discovery and ignores a late reply after reopening', async () => {
+    const old = deferred();
+    const ui = picker('Jellyfin', [], [old.promise, { partial: true, channels: [] },
+        { partial: true, channels: [{ groups: ['News'] }] }, { partial: false, channels: [] }, ['Sports']]);
+    await ui.reload();
+    ui.reopen();
+    const partial = await ui.reload();
+    assert.match(partial, /Reload to retry/);
+    assert.doesNotMatch(partial, /No channel groups available/);
+    const news = await ui.reload();
+    assert.match(news, /group:News/);
+    assert.match(news, /Reload to retry/);
+    const empty = await ui.reload();
+    assert.match(empty, /No channel groups available/);
+    assert.doesNotMatch(empty, /Reload to retry/);
+    await ui.reload();
+    ui.switchTo('tv');
+    ui.switchTo('global');
+    assert.equal(checked(ui.root.innerHTML, 'group:Sports'), false);
+    old.resolve(['Old']);
     await nextTurn();
-    assert.equal(checked(jellyfin.root.innerHTML, 'group:Sports'), false);
-    assert.doesNotMatch(jellyfin.root.innerHTML, /group:Old/);
+    assert.equal(checked(ui.root.innerHTML, 'group:Sports'), false);
+    assert.doesNotMatch(ui.root.innerHTML, /group:Old/);
 });
 
 test('Emby preserves saved groups during discovery and ignores replies from earlier visits', async () => {
@@ -140,12 +134,16 @@ function checked(html, key) {
 }
 
 test('Plex guide picker uses provider groups and keeps edits; failure and Silo remain safe', async () => {
-    const plex = picker('Plex', ['category:premiere', 'group:Legacy'],
+    const atLimit = 'group:' + 'é'.repeat(509);
+    const tooLong = atLimit + 'x';
+    const plex = picker('Plex', ['category:premiere', 'group:Legacy', atLimit, tooLong],
         [['Sports', 'Sports', 'News'], ['News']]);
     await plex.reload();
     assert.deepEqual(plex.calls, ['https://moonbase.test/Moonfin/Defaults?includeLiveTvGroups=true']);
     assert.equal(checked(plex.root.innerHTML, 'category:premiere'), true);
     assert.equal(checked(plex.root.innerHTML, 'group:Legacy'), true);
+    assert.equal(checked(plex.root.innerHTML, atLimit), true);
+    assert.ok(plex.root.innerHTML.includes('data-guide-filter="' + tooLong + '" disabled'));
     assert.equal((plex.root.innerHTML.match(/data-guide-filter="group:Sports"/g) || []).length, 1);
     plex.root.inputs = [
         { checked: false, getAttribute: () => 'category:premiere' },
@@ -161,15 +159,6 @@ test('Plex guide picker uses provider groups and keeps edits; failure and Silo r
     await silo.reload();
     assert.equal(silo.calls.length, 0);
     assert.equal(checked(silo.root.innerHTML, 'category:movies'), true);
-});
-
-test('Plex uses the same byte limit in the picker as in the settings API', async () => {
-    const atLimit = 'group:' + 'é'.repeat(509);
-    const tooLong = atLimit + 'x';
-    const plex = picker('Plex', [atLimit, tooLong], [[]]);
-    await plex.reload();
-    assert.equal(checked(plex.root.innerHTML, atLimit), true);
-    assert.ok(plex.root.innerHTML.includes('data-guide-filter="' + tooLong + '" disabled'));
 });
 
 function pageFunction(source, name) {
@@ -288,7 +277,7 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
                 ? selectedLibraries.map(id => ({ getAttribute: () => id })) : [],
         };
         let latest = ['group:Shared', 'group:Sports'], rejectSave = false, rejectRead = false, reads = 0;
-        let displayed, editDuringSave;
+        let displayed;
         let visit = 1, delayedAck, loseReply = false;
         const save = vm.runInNewContext([
             pageFunction(source, 'withGuidePinEdits'), emby ? pageFunction(source, 'camelKeysDeep') : '',
@@ -311,7 +300,6 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
                     savedRomm = config.GamesRommLibraryId;
                     savedAddress = config.PublicServerUrl;
                     latest = config.DefaultUserSettings.liveTvSavedFilters;
-                    if (editDuringSave) defaultsState.profiles.global = { liveTvSavedFilters: editDuringSave };
                     if (delayedAck) await delayedAck;
                     if (loseReply) throw new Error('reply lost');
                 },
@@ -342,11 +330,12 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
         await assert.rejects(submit(), /save failed/);
         rejectSave = false;
         latest = [...latest, 'group:Music']; // A different tab adds another pin before the retry.
-        editDuringSave = ['group:Kids', 'group:Movies'];
-        await submit();
+        const retry = await holdSave();
+        edit('group:Kids', 'group:Movies');
+        retry.gate.resolve();
+        await retry.saving;
         assert.deepEqual(Array.from(latest), ['group:Music', 'group:Kids']);
         assert.deepEqual(Array.from(displayed), ['group:Music', 'group:Kids', 'group:Movies']);
-        editDuringSave = null;
         await submit();
         assert.deepEqual(Array.from(latest), ['group:Music', 'group:Kids', 'group:Movies']);
         latest = null; // Another admin clears the pins after this tab's successful save.
@@ -417,33 +406,28 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
             await submit();
             assert.deepEqual(Array.from(latest), []);
         });
-        await t.test('overlapping saves keep the submitted unpin and later unsaved edits', async () => {
-            edit('group:News');
-            const { gate, saving: first } = await holdSave();
-            edit();
-            const second = submit();
-            address = 'https://submitted.example';
-            await nextTurn();
-            address = 'https://unsaved.example';
-            const beforeAcknowledgement = latest;
-            latest = [...latest, 'group:Sports']; // Another administrator adds Sports.
-            edit('group:Kids'); // Still unsaved.
-            gate.resolve();
-            await Promise.all([first, second]);
-            assert.equal(savedAddress, 'https://submitted.example');
-            assert.deepEqual(Array.from(beforeAcknowledgement), ['group:News']);
-            assert.deepEqual(Array.from(latest), ['group:Sports']);
-            assert.deepEqual(Array.from(displayed), ['group:Sports', 'group:Kids']);
-        });
-        await t.test('a lost save reply still allows the queued unpin', async () => {
-            const { gate, saving } = await holdSave();
-            const first = assert.rejects(saving, /save failed/);
-            edit('group:Movies');
-            const second = submit();
-            gate.reject(new Error('save failed'));
-            await Promise.all([first, second]);
-            assert.deepEqual(Array.from(latest), ['group:Movies']);
-        });
+        for (const replyLost of [false, true]) {
+            await t.test('a queued unpin survives other edits, lost acknowledgement=' + replyLost, async () => {
+                defaultsState.guidePinBase = latest = ['group:News'];
+                edit('group:News');
+                const { gate, saving } = await holdSave();
+                const first = replyLost ? assert.rejects(saving, /save failed/) : saving;
+                assert.deepEqual(Array.from(latest), ['group:News']);
+                edit();
+                const second = submit();
+                address = 'https://submitted.example';
+                await nextTurn();
+                address = 'https://unsaved.example';
+                latest = [...latest, 'group:Sports'];
+                edit('group:Kids');
+                if (replyLost) gate.reject(new Error('save failed'));
+                else gate.resolve();
+                await Promise.all([first, second]);
+                assert.equal(savedAddress, 'https://submitted.example');
+                assert.deepEqual(Array.from(latest), ['group:Sports']);
+                assert.deepEqual(Array.from(displayed), ['group:Sports', 'group:Kids']);
+            });
+        }
         await t.test('an edit after a lost reply can undo the earlier pin changes', async () => {
             edit('group:News');
             loseReply = true;

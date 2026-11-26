@@ -328,6 +328,10 @@ func TestGuidePinsUseGlobalDefaultsAndAtomicProfileEdits(t *testing.T) {
 		postGuideSettings(t, s, userMain, "/Moonfin/Settings/Profile/tv", M{"profile": M{}, "liveTvSavedFilterChange": change}, 200)
 	}
 	call(t, s, userMain, "POST", "/Moonfin/Settings/Profile/mobile", `{"profile":{"liveTvSavedFilters":[]}}`, nil)
+	postGuideSettings(t, s, userMain, "/Moonfin/Settings", M{
+		"settings":  M{"global": M{"liveTvSavedFilters": []any{}}, "tv": M{"liveTvSavedFilters": []any{"group:Stale"}}},
+		"mergeMode": "replace",
+	}, 200)
 	check("group:News", "group:Movies")
 	apply := func(profile string) {
 		postGuideSettings(t, s, adminMain, "/Moonfin/Admin/ApplyDefaults", M{
@@ -396,23 +400,32 @@ func TestGuidePinLimitCountsPersonalPinsAndExclusions(t *testing.T) {
 	edit(M{"action": "add", "filter": "group:extra"}, M{}, 200)
 }
 
-func TestGuidePinImportCanRetryAfterUnreadableDefaults(t *testing.T) {
+func TestGuidePinImportRecoversAndKeepsFutureAdminDefaults(t *testing.T) {
 	s := newTestServer()
+	if err := s.kv.Put(t.Context(), keyConfig, []byte("{")); err != nil {
+		t.Fatal(err)
+	}
 	const path = "/Moonfin/Settings/Profile/tv"
-	const body = `{"profile":{},"liveTvSavedFilterChange":{"action":"initializeIfAbsent","filters":["group:News"]}}`
-	if err := s.kv.Put(context.Background(), keyConfig, []byte("{")); err != nil {
+	importPins := M{"profile": M{}, "liveTvSavedFilterChange": M{"action": "initializeIfAbsent", "filters": []string{"group:Local"}}}
+	postGuideSettings(t, s, userMain, path, importPins, 500)
+	// An older configuration can contain malformed or duplicated pins.
+	legacy := M{"DefaultUserSettings": M{"liveTvSavedFilters": []any{"group:Sports", "invalid", "group:Sports"}}}
+	if err := s.saveJSON(t.Context(), keyConfig, legacy); err != nil {
 		t.Fatal(err)
 	}
-	if code, _ := call(t, s, userMain, "POST", path, body, nil); code != 500 {
-		t.Fatalf("pin import with unreadable defaults returned %d", code)
+	assertResolvedGuidePins(t, s, other, nil, []any{"group:Sports"})
+	if got := postGuideSettings(t, s, userMain, path, importPins, 200); got["Created"] != true {
+		t.Fatalf("retry did not create the profile: %v", got)
 	}
-	if err := s.saveJSON(context.Background(), keyConfig, M{"DefaultUserSettings": M{"liveTvSavedFilters": []string{"group:Sports"}}}); err != nil {
-		t.Fatal(err)
-	}
-	code, got := call(t, s, userMain, "POST", path, body, nil)
-	if code != 200 || got["Created"] != true || !reflect.DeepEqual(got["liveTvSavedFilters"], []any{"group:News"}) {
-		t.Fatalf("retry = %d %v", code, got)
-	}
+	assertResolvedGuidePins(t, s, userMain, nil, []any{"group:Local"})
+	remove := M{"profile": M{}, "liveTvSavedFilterChange": M{"action": "remove", "filter": "group:Local"}}
+	postGuideSettings(t, s, userMain, path, remove, 200)
+	postGuideSettings(t, s, userMain, "/Moonfin/Settings/Profile/mobile", importPins, 200)
+	assertResolvedGuidePins(t, s, userMain, nil, []any{})
+	saveConfig(t, s, M{"DefaultUserSettings": M{"liveTvSavedFilters": []any{"group:Local", "group:Tennis"}}})
+	assertResolvedGuidePins(t, s, userMain, nil, []any{"group:Local", "group:Tennis"})
+	postGuideSettings(t, s, userMain, path, remove, 200)
+	assertResolvedGuidePins(t, s, userMain, nil, []any{"group:Tennis"})
 }
 
 type failingIndexStore struct {

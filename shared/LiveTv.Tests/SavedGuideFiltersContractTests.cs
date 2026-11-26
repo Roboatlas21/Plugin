@@ -46,6 +46,7 @@ public sealed class SavedGuideFiltersContractTests : IDisposable
     public async Task FailedSettingsReadsPreserveBothCopiesAndCanBeRetried(string failure)
     {
         Assert.Null(await _service.GetResolvedProfileAsync(_user, "tv"));
+        Assert.Null(await _service.GetProfileForPullAsync(_user, "tv", includeLiveTvSavedFilters: true));
         await Edit("tv", "add", "group:Sports");
         var primary = Path.Combine(_path, _user + ".json");
         var backup = AtomicFile.BackupPath(primary);
@@ -56,7 +57,12 @@ public sealed class SavedGuideFiltersContractTests : IDisposable
             File.WriteAllText(backup, "{backup");
         }
         using (failure == "both corrupt" ? null : File.Open(failure == "backup locked" ? backup : primary, FileMode.Open, FileAccess.ReadWrite, FileShare.None)) {
-            var error = await Assert.ThrowsAsync<SettingsReadError>(() => _service.GetResolvedProfileAsync(_user, "tv"));
+            Assert.Null(await _service.GetResolvedProfileAsync(_user, "tv"));
+            Assert.Null(await _service.GetProfileForPullAsync(_user, "tv", includeLiveTvSavedFilters: false));
+            var error = await Assert.ThrowsAsync<SettingsReadError>(() =>
+                _service.GetProfileForPullAsync(_user, "tv", includeLiveTvSavedFilters: true));
+            await Assert.ThrowsAsync<SettingsReadError>(() =>
+                _service.GetResolvedProfileAsync(_user, "global", throwIfUnreadable: true));
             Assert.DoesNotContain(primary, error.Message);
             await Assert.ThrowsAsync<SettingsReadError>(() => Edit("tv", "add", "group:News"));
             await Assert.ThrowsAsync<SettingsReadError>(() => _service.SaveUserSettingsAsync(_user, new()));
@@ -165,6 +171,24 @@ public sealed class SavedGuideFiltersContractTests : IDisposable
         await _service.ResetUsersToDefaultsAsync(config, ["global"], [_user], deleteOrphans: false);
         Assert.Empty((await Read())!.Global!.LiveTvSavedFilters!);
         await Check("group:Sports", "group:News");
+    }
+
+    [Fact]
+    public async Task ReplacingGlobalSettingsWithoutPinsPreventsReimport()
+    {
+        const string pin = "group:Sports";
+        var source = Guid.NewGuid();
+        await _service.SaveProfileAsync(source, "global", new() { ClockBehavior = "never" });
+        await Edit("tv", "initializeIfAbsent", null, pin);
+        Assert.Equal([pin], (await Read())!.Global!.LiveTvSavedFilters);
+
+        Assert.Equal(1, await _service.CopySettingsAsync(source, [_user], ["global"], keys: null, replace: true));
+        Assert.Empty((await Read())!.Global!.LiveTvSavedFilters!);
+        await Edit("tv", "initializeIfAbsent", null, pin);
+        Assert.Empty((await Read())!.Global!.LiveTvSavedFilters!);
+
+        await Edit("tv", "add", pin);
+        Assert.Equal([pin], (await Read())!.Global!.LiveTvSavedFilters);
     }
 
     [Fact]

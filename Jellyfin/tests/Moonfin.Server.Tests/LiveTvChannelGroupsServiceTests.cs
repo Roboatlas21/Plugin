@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Jellyfin.Data.Entities;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Configuration;
@@ -34,7 +35,7 @@ public class LiveTvChannelGroupsServiceTests : IDisposable
         File.SetLastWriteTimeUtc(path, _start.AddMinutes(minute));
     }
 
-    private LiveTvChannelGroupsService Service(Func<Guid, BaseItem[]> channels, bool hasImport = true)
+    private LiveTvChannelGroupsService Service(Func<Guid, BaseItem[]> channels, bool hasImport = true, Action? onBuildDtos = null)
     {
         _import.StartTimeUtc = _start;
         _import.EndTimeUtc = _start.AddMinutes(5);
@@ -63,8 +64,12 @@ public class LiveTvChannelGroupsServiceTests : IDisposable
             RecordingHostProxy.Create<IUserManager>((_, _) => new User("viewer", "auth", "reset")),
             RecordingHostProxy.Create<ITaskManager>((_, _) => hasImport ? new[] { worker } : Array.Empty<IScheduledTaskWorker>()),
             new NoOpLogger<LiveTvChannelGroupsService>(), RecordingHostProxy.Create<IHostApplicationLifetime>((_, _) => CancellationToken.None),
-            RecordingHostProxy.Create<IDtoService>((_, args) => ((IReadOnlyList<BaseItem>)args![0]!)
-                .Select(item => new BaseItemDto { Id = item.Id, Name = item.ExternalId }).ToArray()));
+            RecordingHostProxy.Create<IDtoService>((_, args) =>
+            {
+                onBuildDtos?.Invoke();
+                return ((IReadOnlyList<BaseItem>)args![0]!)
+                    .Select(item => new BaseItemDto { Id = item.Id, Name = item.ExternalId }).ToArray();
+            }));
     }
 
     [Theory]
@@ -117,6 +122,67 @@ public class LiveTvChannelGroupsServiceTests : IDisposable
             Assert.False(after.Partial);
             Assert.Equal("Sports", Assert.Single(after.Groups[m3u]));
         }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task ChannelResponseTracksGuideRefreshDuringLookup(bool refresh, bool removeAll)
+    {
+        BaseItem[] visible = [_native];
+        var queriedUsers = new List<Guid>();
+        var service = Service(userId =>
+        {
+            queriedUsers.Add(userId);
+            return visible;
+        });
+
+        var lookup = service.GetAsync(_viewer, default);
+        await _started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        if (refresh)
+        {
+            visible = removeAll ? [] : [_m3u, Channel("other_channel")];
+            _import.EndTimeUtc = _start.AddMinutes(10);
+        }
+        _pending.SetResult(Stations("Old group"));
+        var result = await lookup;
+
+        Assert.Equal(refresh ? 2 : 1, queriedUsers.Count);
+        Assert.All(queriedUsers, userId => Assert.Equal(_viewer, userId));
+        var channels = JsonSerializer.SerializeToElement(result.Channels).EnumerateArray();
+        Assert.Equal(visible.Select(c => c.Id.ToString("N")), channels.Select(c => c.GetProperty("Id").GetString()));
+        Assert.Equal(refresh, result.Partial);
+        if (refresh)
+        {
+            Assert.Empty(result.Groups);
+            Assert.Null(result.ProgrammeCategories);
+            Assert.Equal(removeAll ? Array.Empty<string>() : [_m3u.Id.ToString("N")], result.UnresolvedChannelIds);
+        }
+        else
+        {
+            Assert.Equal("Old group", Assert.Single(result.Groups[_native.Id.ToString("N")]));
+        }
+    }
+
+    [Fact]
+    public async Task RefreshWhileBuildingChannelDtosDiscardsOldLineupAndGroups()
+    {
+        var replacement = Channel("xtream_99");
+        BaseItem[] visible = [_m3u];
+        var service = Service(_ => visible, onBuildDtos: () =>
+        {
+            visible = [replacement];
+            _import.EndTimeUtc = _start.AddMinutes(10);
+        });
+
+        var result = await service.GetAsync(_viewer, default);
+
+        var channel = JsonSerializer.SerializeToElement(Assert.Single(result.Channels));
+        Assert.Equal(replacement.Id.ToString("N"), channel.GetProperty("Id").GetString());
+        Assert.Empty(channel.GetProperty("groups").EnumerateArray());
+        Assert.Equal(replacement.Id.ToString("N"), Assert.Single(result.UnresolvedChannelIds!));
+        Assert.True(result.Partial);
     }
 
     [Fact]

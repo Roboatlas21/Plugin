@@ -184,18 +184,6 @@ function moonbaseSession(fetch, controls = {}) {
     };
 }
 
-test('a direct configuration save restores the original pins after sign-in', async () => {
-    const open = moonbaseSession(async (_, init) => init.method === 'POST' ? { ok: false, status: 401 } :
-        { ok: true, json: async () => ({ DefaultUserSettings: { liveTvSavedFilters: ['group:News'] } }) });
-    const api = open();
-    const draft = await api.getPluginConfiguration();
-    draft.DefaultUserSettings.liveTvSavedFilters = ['group:Kids'];
-    await assert.rejects(api.updatePluginConfiguration('', draft), /401/);
-    const restored = await open().getPluginConfiguration();
-    assert.deepEqual(Array.from(restored.moonbaseDraftGuidePinBase), ['group:News']);
-    assert.deepEqual(Array.from(restored.DefaultUserSettings.liveTvSavedFilters), ['group:Kids']);
-});
-
 async function openMoonbaseSettings(api) {
     const config = await api.getPluginConfiguration();
     const guideGroups = {};
@@ -214,49 +202,50 @@ async function openMoonbaseSettings(api) {
     return { save, profile: defaultsState.profiles.global };
 }
 
-test('a queued Go save keeps the host settings read for that submission', async () => {
-    const sonarr = { value: '' };
-    const firstWrite = deferred();
-    const posted = [];
-    const open = moonbaseSession(async (_, init) => {
-        if (init.method !== 'POST') return { ok: true, json: async () => ({ DefaultUserSettings: {} }) };
-        posted.push(JSON.parse(init.body).SonarrUrl);
-        if (posted.length === 1) await firstWrite.promise;
-        return { ok: true };
-    }, { SonarrUrl: sonarr });
-    const editor = await openMoonbaseSettings(open());
-    const first = editor.save();
-    await nextTurn();
-    sonarr.value = 'https://submitted.example';
-    const second = editor.save();
-    await nextTurn();
-    sonarr.value = 'https://unsaved.example';
-    firstWrite.resolve();
-    await Promise.all([first, second]);
-    assert.deepEqual(posted, [null, 'https://submitted.example']);
-});
+for (const direct of [false, true]) {
+    test('Go restores a signed-out ' + (direct ? 'configuration' : 'dashboard') + ' save and queues its retry', async () => {
+        const sonarr = { value: '' }, gate = deferred(), writes = [];
+        let pins = ['group:News'], signedIn = false;
+        const open = moonbaseSession(async (_, init) => {
+            if (init.method !== 'POST') return { ok: true, json: async () => ({ DefaultUserSettings: { liveTvSavedFilters: [...pins] } }) };
+            if (!signedIn) return { ok: false, status: 401 };
+            const config = JSON.parse(init.body);
+            pins = config.DefaultUserSettings.liveTvSavedFilters;
+            writes.push(config.SonarrUrl);
+            if (writes.length === 1) await gate.promise;
+            return { ok: true };
+        }, { SonarrUrl: sonarr });
 
-test('a restored Go admin save keeps explicit pin edits and preserves other changes', async () => {
-    let pins = ['group:News'], expired = false;
-    const open = moonbaseSession(async (_, init) => {
-        if (init.method !== 'POST') return { ok: true, json: async () => ({ DefaultUserSettings: { liveTvSavedFilters: [...pins] } }) };
-        if (expired) return { ok: false, status: 401 };
-        pins = JSON.parse(init.body).DefaultUserSettings.liveTvSavedFilters;
-        return { ok: true };
+        const api = open();
+        if (direct) {
+            const draft = await api.getPluginConfiguration();
+            draft.DefaultUserSettings.liveTvSavedFilters = ['category:movies'];
+            await assert.rejects(api.updatePluginConfiguration('', draft), /401/);
+            const restored = await open().getPluginConfiguration();
+            assert.deepEqual(Array.from(restored.moonbaseDraftGuidePinBase), ['group:News']);
+            assert.deepEqual(Array.from(restored.DefaultUserSettings.liveTvSavedFilters), ['category:movies']);
+        } else {
+            const editor = await openMoonbaseSettings(api);
+            editor.profile.liveTvSavedFilters = ['category:movies'];
+            pins = ['category:movies', 'group:Sports'];
+            await assert.rejects(editor.save(), /401/);
+        }
+        pins = ['group:News', 'group:Music'];
+        signedIn = true;
+        const restored = await openMoonbaseSettings(open());
+        assert.deepEqual(Array.from(restored.profile.liveTvSavedFilters), direct ? ['category:movies'] : ['category:movies', 'group:Sports']);
+        const first = restored.save();
+        await nextTurn();
+        sonarr.value = 'https://submitted.example';
+        const second = restored.save();
+        await nextTurn();
+        sonarr.value = 'https://unsaved.example';
+        gate.resolve();
+        await Promise.all([first, second]);
+        assert.deepEqual(writes, [null, 'https://submitted.example']);
+        assert.deepEqual(pins, ['group:Music', 'category:movies']);
     });
-
-    const editor = await openMoonbaseSettings(open());
-    editor.profile.liveTvSavedFilters = ['category:movies']; // Add Movies and remove News.
-    pins = ['category:movies', 'group:Sports']; // Another admin made both edits before our save.
-    expired = true;
-    await assert.rejects(editor.save(), /401/);
-    pins = ['group:News', 'group:Music']; // Both edits were reversed and Sports was removed.
-    expired = false;
-    const restored = await openMoonbaseSettings(open());
-    assert.deepEqual(Array.from(restored.profile.liveTvSavedFilters), ['category:movies', 'group:Sports']);
-    await restored.save();
-    assert.deepEqual(pins, ['group:Music', 'category:movies']);
-});
+}
 
 for (const host of ['Jellyfin/Go', 'Emby']) {
     test(host + ' saves only the pin changes made in this tab', async t => {
@@ -307,6 +296,11 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
         });
         function edit(...pins) {
             defaultsState.profiles.global = { liveTvSavedFilters: pins };
+        }
+        function reopenWithPins(...pins) {
+            leavePage();
+            defaultsState.guidePinBase = latest = pins;
+            edit(...pins);
         }
         function leavePage() {
             visit++;
@@ -371,8 +365,7 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
 
         for (const failRead of [false, true]) {
             await t.test('queued pin edits survive a concurrent change, failed read=' + failRead, async () => {
-                defaultsState.guidePinBase = ['group:News'];
-                edit('group:News');
+                reopenWithPins('group:News');
                 latest = ['group:Movies'];
                 const { gate, saving: first } = await holdSave();
                 edit('group:Movies');
@@ -396,10 +389,7 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
             edit('group:News');
             const { gate, saving } = await holdSave();
             assert.deepEqual(Array.from(latest), ['group:News']);
-            leavePage();
-            latest = ['group:Sports']; // The reopened page loaded another admin's change.
-            defaultsState.profiles.global = { liveTvSavedFilters: latest };
-            defaultsState.guidePinBase = latest;
+            reopenWithPins('group:Sports');
             gate.resolve();
             await saving;
             edit();
@@ -408,8 +398,7 @@ for (const host of ['Jellyfin/Go', 'Emby']) {
         });
         for (const replyLost of [false, true]) {
             await t.test('a queued unpin survives other edits, lost acknowledgement=' + replyLost, async () => {
-                defaultsState.guidePinBase = latest = ['group:News'];
-                edit('group:News');
+                reopenWithPins('group:News');
                 const { gate, saving } = await holdSave();
                 const first = replyLost ? assert.rejects(saving, /save failed/) : saving;
                 assert.deepEqual(Array.from(latest), ['group:News']);
